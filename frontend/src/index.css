@@ -1,0 +1,108 @@
+/* Professional Toast Notification Styles for National EHR System */
+
+/* Toast Container Customization */
+.toast-container-custom {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  font-size: 14px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15) !important;
+  border-radius: 8px !important;
+}
+
+/* Toast Progress Bar Styling */
+.toast-progress {
+  height: 3px !important;
+  opacity: 0.8;
+}
+
+/* Success Toast */
+.Toastify__toast--success {
+  background: #f0fdf4 !important;
+  color: #166534 !important;
+  border: 1px solid #bbf7d0 !important;
+  border-left: 4px solid #22c55e !important;
+}
+
+.Toastify__toast--success .Toastify__toast-icon {
+  color: #22c55e !important;
+}
+
+.Toastify__toast--success .Toastify__progress-bar {
+  background: #22c55e !important;
+}
+
+/* Error Toast */
+.Toastify__toast--error {
+  background: #fef2f2 !important;
+  color: #991b1b !important;
+  border: 1px solid #fecaca !important;
+  border-left: 4px solid #ef4444 !important;
+}
+
+.Toastify__toast--error .Toastify__toast-icon {
+  color: #ef4444 !important;
+}
+
+.Toastify__toast--error .Toastify__progress-bar {
+  background: #ef4444 !important;
+}
+
+/* Warning Toast */
+.Toastify__toast--warning {
+  background: #fffbeb !important;
+  color: #92400e !important;
+  border: 1px solid #fde68a !important;
+  border-left: 4px solid #f59e0b !important;
+}
+
+.Toastify__toast--warning .Toastify__toast-icon {
+  color: #f59e0b !important;
+}
+
+.Toastify__toast--warning .Toastify__progress-bar {
+  background: #f59e0b !important;
+}
+
+/* Info Toast */
+.Toastify__toast--info {
+  background: #f0f9ff !important;
+  color: #075985 !important;
+  border: 1px solid #bae6fd !important;
+  border-left: 4px solid #0ea5e9 !important;
+}
+
+.Toastify__toast--info .Toastify__toast-icon {
+  color: #0ea5e9 !important;
+}
+
+.Toastify__toast--info .Toastify__progress-bar {
+  background: #0ea5e9 !important;
+}
+
+/* Toast Close Button */
+.Toastify__close-button {
+  color: currentColor !important;
+  opacity: 0.5 !important;
+  transition: opacity 0.2s ease;
+}
+
+.Toastify__close-button:hover {
+  opacity: 1 !important;
+}
+
+/* Toast Body */
+.Toastify__toast-body {
+  padding: 12px 8px !important;
+  font-weight: 500;
+}
+
+/* Toast Title (for multi-line messages) */
+.toast-title {
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+
+/* Toast Message */
+.toast-message {
+  font-weight: 400;
+  opacity: 0.9;
+}

@@ -13,7 +13,7 @@ export const useAuth = () => {
 
 export const AuthProvider = ({ children }) => {
     const [user, setUser] = useState(null);
-    const [loading, setLoading] = useState(false);
+    const [loading, setLoading] = useState(true);
     const [authTokens, setAuthTokens] = useState(() => 
         localStorage.getItem('authTokens') 
             ? JSON.parse(localStorage.getItem('authTokens')) 
@@ -26,6 +26,11 @@ export const AuthProvider = ({ children }) => {
         if (authTokens) {
             try {
                 const decoded = jwtDecode(authTokens.access);
+                const now = Date.now() / 1000;
+                if (decoded.exp && decoded.exp < now) {
+                    refreshToken().finally(() => setLoading(false));
+                    return;
+                }
                 setUser(decoded);
             } catch (error) {
                 console.error('Invalid token:', error);
@@ -33,7 +38,8 @@ export const AuthProvider = ({ children }) => {
                 setAuthTokens(null);
             }
         }
-    }, [authTokens]);
+        setLoading(false);
+    }, []);
 
     const login = async (email, password) => {
         try {
@@ -55,6 +61,30 @@ export const AuthProvider = ({ children }) => {
                 return { success: true, user: decoded };
             } else {
                 return { success: false, error: data.detail || 'Login failed' };
+            }
+        } catch (error) {
+            return { success: false, error: 'Network error. Please try again.' };
+        }
+    };
+
+    const socialLogin = async (provider, accessToken) => {
+        try {
+            const response = await fetch(`${API_BASE_URL}/auth/${provider}/`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ access_token: accessToken }),
+            });
+
+            const data = await response.json();
+
+            if (response.ok) {
+                setAuthTokens(data);
+                const decoded = jwtDecode(data.access);
+                setUser(decoded);
+                localStorage.setItem('authTokens', JSON.stringify(data));
+                return { success: true, user: decoded };
+            } else {
+                return { success: false, error: data.error || `${provider} login failed` };
             }
         } catch (error) {
             return { success: false, error: 'Network error. Please try again.' };
@@ -106,22 +136,25 @@ export const AuthProvider = ({ children }) => {
 
     const apiCall = async (endpoint, options = {}) => {
         const url = `${API_BASE_URL}${endpoint}`;
-        const headers = {
-            ...getAuthHeaders(),
-            ...options.headers,
+        const isFormData = options.body instanceof FormData || options.isFormData;
+
+        const buildHeaders = () => {
+            const baseAuth = isFormData
+                ? { Authorization: `Bearer ${authTokens?.access}` }
+                : getAuthHeaders();
+            return { ...baseAuth, ...options.headers };
         };
 
+        // Clean internal-only flag out of fetch options
+        const { isFormData: _omit, ...fetchOptions } = options;
+
         try {
-            let response = await fetch(url, { ...options, headers });
+            let response = await fetch(url, { ...fetchOptions, headers: buildHeaders() });
 
             if (response.status === 401) {
                 const refreshed = await refreshToken();
                 if (refreshed) {
-                    const newHeaders = {
-                        ...getAuthHeaders(),
-                        ...options.headers,
-                    };
-                    response = await fetch(url, { ...options, headers: newHeaders });
+                    response = await fetch(url, { ...fetchOptions, headers: buildHeaders() });
                 } else {
                     throw new Error('Session expired. Please login again.');
                 }
@@ -150,6 +183,7 @@ export const AuthProvider = ({ children }) => {
         authTokens,
         loading,
         login,
+        socialLogin,
         logout,
         refreshToken,
         apiCall,

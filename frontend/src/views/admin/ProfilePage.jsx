@@ -1,36 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import DashboardLayout from '../../layout/DashboardLayout';
-
-const navItems = [
-  {
-    label: 'Dashboard',
-    items: [
-      { path: '/admin/dashboard', icon: 'fas fa-tachometer-alt', text: 'Overview' },
-    ]
-  },
-  {
-    label: 'User Management',
-    items: [
-      { path: '/admin/users', icon: 'fas fa-users', text: 'All Users' },
-      { path: '/admin/roles', icon: 'fas fa-user-tag', text: 'Roles & Permissions' },
-    ]
-  },
-  {
-    label: 'Organization',
-    items: [
-      { path: '/admin/regions', icon: 'fas fa-globe-africa', text: 'Regions' },
-      { path: '/admin/districts', icon: 'fas fa-map-marked-alt', text: 'Districts' },
-      { path: '/admin/hospitals', icon: 'fas fa-hospital', text: 'Hospitals' },
-    ]
-  },
-  {
-    label: 'Account',
-    items: [
-      { path: '/admin/profile', icon: 'fas fa-user-circle', text: 'My Profile' },
-    ]
-  }
-];
+import { getNavForUser, getBrandForUser, getRoleBadge } from '../../utils/navItems';
 
 function ProfilePage() {
   const { apiCall, user } = useAuth();
@@ -58,6 +29,11 @@ function ProfilePage() {
     confirm_password: '',
   });
 
+  const [notifPrefs, setNotifPrefs] = useState({
+    sms_notifications_enabled: false,
+    email_notifications_enabled: true,
+  });
+
   useEffect(() => {
     fetchProfile();
   }, []);
@@ -78,6 +54,10 @@ function ProfilePage() {
           city: data.profile.city || '',
           state: data.profile.state || '',
           address: data.profile.address || '',
+        });
+        setNotifPrefs({
+          sms_notifications_enabled: !!data.user.sms_notifications_enabled,
+          email_notifications_enabled: data.user.email_notifications_enabled !== false,
         });
       }
     } catch {
@@ -155,7 +135,7 @@ function ProfilePage() {
 
   if (loading) {
     return (
-      <DashboardLayout navItems={navItems} brandTitle="NEHR Admin" roleBadge="Administrator">
+      <DashboardLayout navItems={getNavForUser(user)} brandTitle={getBrandForUser(user)} roleBadge={getRoleBadge(user)}>
         <div className="d-flex justify-content-center align-items-center" style={{ minHeight: '60vh' }}>
           <div className="spinner-border text-primary" role="status">
             <span className="visually-hidden">Loading...</span>
@@ -168,7 +148,7 @@ function ProfilePage() {
   const userData = profileData?.user || {};
 
   return (
-    <DashboardLayout navItems={navItems} brandTitle="NEHR Admin" roleBadge="Administrator">
+    <DashboardLayout navItems={getNavForUser(user)} brandTitle={getBrandForUser(user)} roleBadge={getRoleBadge(user)}>
       <div className="container-fluid py-4">
         {/* Success / Error Messages */}
         {successMsg && (
@@ -323,6 +303,15 @@ function ProfilePage() {
                   <i className="fas fa-lock me-2"></i>Security
                 </button>
               </li>
+              <li className="nav-item">
+                <button
+                  className={`nav-link ${activeTab === 'notifications' ? 'active' : ''}`}
+                  onClick={() => setActiveTab('notifications')}
+                  style={{ cursor: 'pointer', fontWeight: activeTab === 'notifications' ? 600 : 400 }}
+                >
+                  <i className="fas fa-bell me-2"></i>Notifications
+                </button>
+              </li>
             </ul>
           </div>
 
@@ -458,6 +447,130 @@ function ProfilePage() {
                         <><span className="spinner-border spinner-border-sm me-2"></span>Changing...</>
                       ) : (
                         <><i className="fas fa-key me-2"></i>Change Password</>
+                      )}
+                    </button>
+                  </div>
+                </div>
+              </form>
+            )}
+
+            {/* Notifications Tab */}
+            {activeTab === 'notifications' && (
+              <form onSubmit={async (e) => {
+                e.preventDefault();
+                setSaving(true);
+                setSuccessMsg('');
+                setErrorMsg('');
+                try {
+                  const response = await apiCall('/user/my-profile/', {
+                    method: 'PUT',
+                    body: JSON.stringify(notifPrefs),
+                  });
+                  if (response.ok) {
+                    setSuccessMsg('Notification preferences updated!');
+                    setTimeout(() => setSuccessMsg(''), 3000);
+                  } else {
+                    setErrorMsg('Failed to update preferences');
+                  }
+                } catch {
+                  setErrorMsg('Error updating preferences');
+                } finally {
+                  setSaving(false);
+                }
+              }}>
+                <div className="row g-4">
+                  <div className="col-md-12">
+                    <div className="alert alert-info border-0">
+                      <i className="fas fa-info-circle me-2"></i>
+                      Choose how you want to receive notifications when you get new messages.
+                    </div>
+                  </div>
+
+                  {/* SMS Toggle */}
+                  <div className="col-md-12">
+                    <div className="card border" style={{ borderRadius: '10px' }}>
+                      <div className="card-body d-flex justify-content-between align-items-center">
+                        <div style={{ flex: 1 }}>
+                          <div className="d-flex align-items-center mb-2">
+                            <div style={{
+                              width: '44px', height: '44px', borderRadius: '10px',
+                              background: '#eef2ff', color: '#4361ee',
+                              display: 'flex', alignItems: 'center', justifyContent: 'center',
+                              fontSize: '20px', marginRight: '14px',
+                            }}>
+                              <i className="fas fa-mobile-alt"></i>
+                            </div>
+                            <div>
+                              <h6 className="mb-0" style={{ fontWeight: 600 }}>SMS Notifications</h6>
+                              <small className="text-muted">Receive a text message when you get a new in-app message</small>
+                            </div>
+                          </div>
+                          <small className="text-muted d-block" style={{ marginLeft: '58px' }}>
+                            <i className="fas fa-phone me-1"></i>
+                            Phone: <strong>{formData.phone || 'Not set'}</strong>
+                            {!formData.phone && <span className="text-danger ms-2">(Add phone number in Personal Info tab)</span>}
+                          </small>
+                        </div>
+                        <div className="form-check form-switch" style={{ fontSize: '24px' }}>
+                          <input
+                            type="checkbox"
+                            className="form-check-input"
+                            role="switch"
+                            checked={notifPrefs.sms_notifications_enabled}
+                            onChange={(e) => setNotifPrefs({ ...notifPrefs, sms_notifications_enabled: e.target.checked })}
+                            disabled={!formData.phone}
+                            style={{ cursor: formData.phone ? 'pointer' : 'not-allowed' }}
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Email Toggle */}
+                  <div className="col-md-12">
+                    <div className="card border" style={{ borderRadius: '10px' }}>
+                      <div className="card-body d-flex justify-content-between align-items-center">
+                        <div style={{ flex: 1 }}>
+                          <div className="d-flex align-items-center mb-2">
+                            <div style={{
+                              width: '44px', height: '44px', borderRadius: '10px',
+                              background: '#ecfdf5', color: '#059669',
+                              display: 'flex', alignItems: 'center', justifyContent: 'center',
+                              fontSize: '20px', marginRight: '14px',
+                            }}>
+                              <i className="fas fa-envelope"></i>
+                            </div>
+                            <div>
+                              <h6 className="mb-0" style={{ fontWeight: 600 }}>Email Notifications</h6>
+                              <small className="text-muted">Receive an email when you get a new in-app message</small>
+                            </div>
+                          </div>
+                          <small className="text-muted d-block" style={{ marginLeft: '58px' }}>
+                            <i className="fas fa-at me-1"></i>
+                            Email: <strong>{profileData?.user?.email || '-'}</strong>
+                          </small>
+                        </div>
+                        <div className="form-check form-switch" style={{ fontSize: '24px' }}>
+                          <input
+                            type="checkbox"
+                            className="form-check-input"
+                            role="switch"
+                            checked={notifPrefs.email_notifications_enabled}
+                            onChange={(e) => setNotifPrefs({ ...notifPrefs, email_notifications_enabled: e.target.checked })}
+                            style={{ cursor: 'pointer' }}
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="col-12">
+                    <hr />
+                    <button type="submit" className="btn btn-primary px-4" disabled={saving}>
+                      {saving ? (
+                        <><span className="spinner-border spinner-border-sm me-2"></span>Saving...</>
+                      ) : (
+                        <><i className="fas fa-save me-2"></i>Save Preferences</>
                       )}
                     </button>
                   </div>

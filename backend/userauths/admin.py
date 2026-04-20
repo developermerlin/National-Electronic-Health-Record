@@ -1,5 +1,5 @@
 from django.contrib import admin
-from userauths.models import User, Profile, Role, Permission, RolePermission, Region, District, Hospital, Department
+from userauths.models import User, Profile, Role, Permission, RolePermission, Region, District, Chiefdom, Town, Hospital, Department, Patient
 
 class UserAdmin(admin.ModelAdmin):
     search_fields  = ['full_name', 'username', 'email',  'phone', 'employee_id']
@@ -34,15 +34,60 @@ class DistrictAdmin(admin.ModelAdmin):
     list_filter = ['region', 'is_active']
 
 class HospitalAdmin(admin.ModelAdmin):
-    list_display = ['name', 'code', 'hospital_type', 'district', 'is_active', 'created_at']
-    search_fields = ['name', 'code']
-    list_filter = ['hospital_type', 'district__region', 'is_active']
+    list_display = ['name', 'code', 'hospital_type', 'ownership_type', 'level_of_care', 'district', 'operational_status', 'approval_status', 'is_active']
+    search_fields = ['name', 'code', 'facility_code', 'town_city', 'license_number']
+    list_filter = ['hospital_type', 'ownership_type', 'level_of_care', 'operational_status', 'approval_status', 'district__region', 'is_active']
+    readonly_fields = ['code', 'date_registered', 'created_at', 'updated_at']
+    fieldsets = (
+        ('Basic Facility Information', {
+            'fields': ('name', 'code', 'facility_code', 'hospital_type', 'ownership_type', 'level_of_care', 'operational_status', 'date_registered')
+        }),
+        ('Location', {
+            'fields': ('country', 'district', 'chiefdom_ward', 'town_city', 'address', 'latitude', 'longitude')
+        }),
+        ('Contact', {
+            'fields': ('phone', 'secondary_phone', 'email', 'website', 'emergency_contact_line')
+        }),
+        ('Administration', {
+            'fields': ('hospital_admin_name', 'admin_user', 'medical_superintendent', 'facility_manager', 'license_number', 'license_expiry_date')
+        }),
+        ('Services & Capacity', {
+            'fields': ('bed_capacity', 'emergency_services', 'laboratory_available', 'pharmacy_available', 'radiology_available', 'maternity_services', 'surgery_services', 'outpatient_services', 'inpatient_services', 'ambulance_available')
+        }),
+        ('System Configuration', {
+            'fields': ('facility_timezone', 'working_hours', 'patient_id_prefix', 'allow_external_access', 'data_sharing_consent'),
+            'classes': ('collapse',)
+        }),
+        ('Reporting & Government Data', {
+            'fields': ('reporting_facility_code', 'dhis2_code', 'catchment_population', 'referral_level', 'supervising_authority'),
+            'classes': ('collapse',)
+        }),
+        ('Audit', {
+            'fields': ('is_active', 'created_by', 'created_at', 'last_updated_by', 'updated_at', 'approval_status', 'approved_by')
+        }),
+    )
 
 class DepartmentAdmin(admin.ModelAdmin):
-    list_display = ['name', 'hospital', 'head_of_department', 'is_active']
-    search_fields = ['hospital__name']
-    list_filter = ['name', 'is_active']
+    list_display = ['name', 'department_code', 'hospital', 'head_of_department', 'status', 'is_active']
+    search_fields = ['hospital__name', 'department_code']
+    list_filter = ['name', 'status', 'is_active']
+    readonly_fields = ['department_code']
 
+class ChiefdomAdmin(admin.ModelAdmin):
+    list_display = ['name', 'code', 'district', 'is_active', 'created_at']
+    search_fields = ['name', 'code']
+    list_filter = ['district', 'district__region', 'is_active']
+
+class TownAdmin(admin.ModelAdmin):
+    list_display = ['name', 'code', 'district', 'chiefdom', 'is_active', 'created_at']
+    search_fields = ['name', 'code']
+    list_filter = ['district', 'chiefdom', 'district__region', 'is_active']
+
+class PatientAdmin(admin.ModelAdmin):
+    list_display = ['patient_id', 'first_name', 'last_name', 'gender', 'phone', 'hospital', 'status', 'created_at']
+    search_fields = ['patient_id', 'first_name', 'last_name', 'phone', 'national_id', 'insurance_number']
+    list_filter = ['gender', 'blood_type', 'status', 'hospital', 'created_at']
+    readonly_fields = ['patient_id']
 
 admin.site.register(User, UserAdmin)
 admin.site.register(Profile, ProfileAdmin)
@@ -51,5 +96,8 @@ admin.site.register(Permission, PermissionAdmin)
 admin.site.register(RolePermission, RolePermissionAdmin)
 admin.site.register(Region, RegionAdmin)
 admin.site.register(District, DistrictAdmin)
+admin.site.register(Chiefdom, ChiefdomAdmin)
+admin.site.register(Town, TownAdmin)
 admin.site.register(Hospital, HospitalAdmin)
 admin.site.register(Department, DepartmentAdmin)
+admin.site.register(Patient, PatientAdmin)

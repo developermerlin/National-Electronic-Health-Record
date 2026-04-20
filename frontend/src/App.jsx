@@ -10,11 +10,23 @@ import UserManagement from './views/admin/UserManagement';
 import RoleManagement from './views/admin/RoleManagement';
 import RegionManagement from './views/admin/RegionManagement';
 import DistrictManagement from './views/admin/DistrictManagement';
+import ChiefdomManagement from './views/admin/ChiefdomManagement';
+import TownManagement from './views/admin/TownManagement';
 import HospitalManagement from './views/admin/HospitalManagement';
+import DepartmentManagement from './views/admin/DepartmentManagement';
 import MinistryDashboard from './views/ministry/MinistryDashboard';
 import ProfilePage from './views/admin/ProfilePage';
 import ReceptDashboard from './views/auth/ReceptDashboard';
+import PatientList from './views/receptionist/PatientList';
+import PatientRegister from './views/receptionist/PatientRegister';
+import MessagesPage from './views/messages/MessagesPage';
+import LiveChatPage from './views/messages/LiveChatPage';
 import { AuthProvider, useAuth } from './context/AuthContext';
+import { ToastContainer } from 'react-toastify';
+import 'react-toastify/dist/ReactToastify.css';
+import { GoogleOAuthProvider } from '@react-oauth/google';
+
+const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID || '';
 
 function ProtectedRoute({ children, allowedRoles = [] }) {
   const { user, loading } = useAuth();
@@ -53,7 +65,7 @@ function AppContent() {
           </ProtectedRoute>
         } />
         <Route path="/admin/users" element={
-          <ProtectedRoute allowedRoles={['admin']}>
+          <ProtectedRoute allowedRoles={['admin', 'ministry_admin', 'hospital_admin']}>
             <UserManagement />
           </ProtectedRoute>
         } />
@@ -72,9 +84,24 @@ function AppContent() {
             <DistrictManagement />
           </ProtectedRoute>
         } />
+        <Route path="/admin/chiefdoms" element={
+          <ProtectedRoute allowedRoles={['admin', 'ministry_admin', 'district_admin']}>
+            <ChiefdomManagement />
+          </ProtectedRoute>
+        } />
+        <Route path="/admin/towns" element={
+          <ProtectedRoute allowedRoles={['admin', 'ministry_admin', 'district_admin']}>
+            <TownManagement />
+          </ProtectedRoute>
+        } />
         <Route path="/admin/hospitals" element={
           <ProtectedRoute allowedRoles={['admin', 'ministry_admin', 'district_admin', 'hospital_admin']}>
             <HospitalManagement />
+          </ProtectedRoute>
+        } />
+        <Route path="/admin/departments" element={
+          <ProtectedRoute allowedRoles={['admin', 'ministry_admin', 'hospital_admin']}>
+            <DepartmentManagement />
           </ProtectedRoute>
         } />
 
@@ -82,6 +109,20 @@ function AppContent() {
         <Route path="/admin/profile" element={
           <ProtectedRoute allowedRoles={[]}>
             <ProfilePage />
+          </ProtectedRoute>
+        } />
+
+        {/* Messages - accessible to all authenticated users */}
+        <Route path="/messages" element={
+          <ProtectedRoute allowedRoles={[]}>
+            <MessagesPage />
+          </ProtectedRoute>
+        } />
+
+        {/* Live Chat - accessible to all authenticated users */}
+        <Route path="/chat" element={
+          <ProtectedRoute allowedRoles={[]}>
+            <LiveChatPage />
           </ProtectedRoute>
         } />
 
@@ -98,6 +139,16 @@ function AppContent() {
             <ReceptDashboard />
           </ProtectedRoute>
         } />
+        <Route path="/receptionist/patients" element={
+          <ProtectedRoute allowedRoles={['admin', 'receptionist', 'hospital_admin']}>
+            <PatientList />
+          </ProtectedRoute>
+        } />
+        <Route path="/receptionist/patients/register" element={
+          <ProtectedRoute allowedRoles={['admin', 'receptionist', 'hospital_admin']}>
+            <PatientRegister />
+          </ProtectedRoute>
+        } />
       </Routes>
     </BrowserRouter>
   )
@@ -105,9 +156,23 @@ function AppContent() {
 
 function App() {
   return (
-    <AuthProvider>
-      <AppContent />
-    </AuthProvider>
+    <GoogleOAuthProvider clientId={GOOGLE_CLIENT_ID}>
+      <AuthProvider>
+        <AppContent />
+        <ToastContainer
+          position="top-right"
+          autoClose={3000}
+          hideProgressBar={false}
+          newestOnTop
+          closeOnClick
+          rtl={false}
+          pauseOnFocusLoss
+          draggable
+          pauseOnHover
+          theme="colored"
+        />
+      </AuthProvider>
+    </GoogleOAuthProvider>
   )
 }
 

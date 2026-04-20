@@ -2,6 +2,10 @@ import React, { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import DashboardLayout from '../../layout/DashboardLayout';
+import { Chart as ChartJS, ArcElement, Tooltip, Legend, CategoryScale, LinearScale, BarElement, PointElement, LineElement, Filler } from 'chart.js';
+import { Doughnut, Bar, Line } from 'react-chartjs-2';
+
+ChartJS.register(ArcElement, Tooltip, Legend, CategoryScale, LinearScale, BarElement, PointElement, LineElement, Filler);
 
 const navItems = [
   {
@@ -22,7 +26,16 @@ const navItems = [
     items: [
       { path: '/admin/regions', icon: 'fas fa-globe-africa', text: 'Regions' },
       { path: '/admin/districts', icon: 'fas fa-map-marked-alt', text: 'Districts' },
+      { path: '/admin/chiefdoms', icon: 'fas fa-sitemap', text: 'Chiefdoms' },
+      { path: '/admin/towns', icon: 'fas fa-city', text: 'Towns' },
       { path: '/admin/hospitals', icon: 'fas fa-hospital', text: 'Hospitals' },
+      { path: '/admin/departments', icon: 'fas fa-building', text: 'Departments' },
+    ]
+  },
+  {
+    label: 'Communication',
+    items: [
+      { path: '/messages', icon: 'fas fa-envelope', text: 'Messages' },
     ]
   },
   {
@@ -121,7 +134,7 @@ function AdminDashboard() {
     return true;
   });
 
-  const totalRoleUsers = roleDistribution.reduce((sum, r) => sum + r.count, 0) || 1;
+  const _TotalRoleUsers = roleDistribution.reduce((sum, r) => sum + r.count, 0) || 1;
 
   return (
     <DashboardLayout navItems={navItems} brandTitle="NEHR Admin" roleBadge="Administrator">
@@ -197,21 +210,21 @@ function AdminDashboard() {
                 <button className={userFilter === 'inactive' ? 'active' : ''} onClick={() => setUserFilter('inactive')}>Inactive</button>
               </div>
             </div>
-            <div className="dash-card-body" style={{padding: 0}}>
+            <div className="dash-card-body" style={{padding: 0, overflowX: 'auto'}}>
               {loading ? (
                 <div className="text-center py-4">
                   <div className="spinner-border spinner-border-sm text-primary" role="status"></div>
                   <span className="ms-2">Loading users...</span>
                 </div>
               ) : (
-              <table className="dash-table">
+              <table className="dash-table" style={{minWidth: '700px'}}>
                 <thead>
                   <tr>
                     <th>User</th>
                     <th>Role</th>
                     <th>Status</th>
                     <th>Joined</th>
-                    <th>Actions</th>
+                    <th style={{minWidth: '100px'}}>Actions</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -357,10 +370,10 @@ function AdminDashboard() {
         </div>
       </div>
 
-      {/* Bottom row */}
-      <div className="row g-4">
-        {/* User Role Distribution */}
-        <div className="col-xl-6">
+      {/* Charts Row */}
+      <div className="row g-4 mb-4">
+        {/* Role Distribution Doughnut */}
+        <div className="col-xl-4 col-md-6">
           <div className="dash-card">
             <div className="dash-card-header">
               <h6>User Role Distribution</h6>
@@ -373,20 +386,186 @@ function AdminDashboard() {
               ) : roleDistribution.length === 0 ? (
                 <p style={{color: '#6c757d', textAlign: 'center', padding: '20px'}}>No roles configured yet</p>
               ) : (
-                roleDistribution.map((role, idx) => (
-                  <div key={idx} style={{marginBottom: idx < roleDistribution.length - 1 ? '16px' : 0}}>
-                    <div style={{display: 'flex', justifyContent: 'space-between', marginBottom: '6px'}}>
-                      <span style={{fontSize: '14px', fontWeight: 500}}>{role.role_display}</span>
-                      <span style={{fontSize: '13px', color: '#6c757d'}}>{role.count} users</span>
-                    </div>
-                    <div className="dash-progress">
-                      <div className="dash-progress-bar" style={{
-                        width: `${Math.max((role.count / totalRoleUsers) * 100, 2)}%`,
-                        background: roleColors[role.role] || '#4361ee'
-                      }}></div>
-                    </div>
-                  </div>
-                ))
+                <div style={{position: 'relative', height: '280px'}}>
+                  <Doughnut
+                    data={{
+                      labels: roleDistribution.map(r => r.role_display),
+                      datasets: [{
+                        data: roleDistribution.map(r => r.count),
+                        backgroundColor: roleDistribution.map(r => roleColors[r.role] || '#4361ee'),
+                        borderWidth: 2,
+                        borderColor: '#fff',
+                        hoverOffset: 6,
+                      }]
+                    }}
+                    options={{
+                      responsive: true,
+                      maintainAspectRatio: false,
+                      cutout: '60%',
+                      plugins: {
+                        legend: { position: 'bottom', labels: { padding: 12, usePointStyle: true, pointStyleWidth: 8, font: { size: 12 } } },
+                        tooltip: { backgroundColor: '#1d2939', titleFont: { size: 13 }, bodyFont: { size: 12 }, padding: 10, cornerRadius: 8 }
+                      }
+                    }}
+                  />
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* Active vs Inactive Doughnut */}
+        <div className="col-xl-4 col-md-6">
+          <div className="dash-card">
+            <div className="dash-card-header">
+              <h6>User Status Overview</h6>
+            </div>
+            <div className="dash-card-body">
+              {loading ? (
+                <div className="text-center py-3">
+                  <div className="spinner-border spinner-border-sm text-primary" role="status"></div>
+                </div>
+              ) : (
+                <div style={{position: 'relative', height: '280px'}}>
+                  <Doughnut
+                    data={{
+                      labels: ['Active Users', 'Inactive Users'],
+                      datasets: [{
+                        data: [stats.active_users, stats.inactive_users],
+                        backgroundColor: ['#059669', '#e63946'],
+                        borderWidth: 2,
+                        borderColor: '#fff',
+                        hoverOffset: 6,
+                      }]
+                    }}
+                    options={{
+                      responsive: true,
+                      maintainAspectRatio: false,
+                      cutout: '60%',
+                      plugins: {
+                        legend: { position: 'bottom', labels: { padding: 12, usePointStyle: true, pointStyleWidth: 8, font: { size: 12 } } },
+                        tooltip: { backgroundColor: '#1d2939', titleFont: { size: 13 }, bodyFont: { size: 12 }, padding: 10, cornerRadius: 8 }
+                      }
+                    }}
+                  />
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* Users per Role - Bar Chart */}
+        <div className="col-xl-4 col-md-12">
+          <div className="dash-card">
+            <div className="dash-card-header">
+              <h6>Users per Role</h6>
+            </div>
+            <div className="dash-card-body">
+              {loading ? (
+                <div className="text-center py-3">
+                  <div className="spinner-border spinner-border-sm text-primary" role="status"></div>
+                </div>
+              ) : roleDistribution.length === 0 ? (
+                <p style={{color: '#6c757d', textAlign: 'center', padding: '20px'}}>No data available</p>
+              ) : (
+                <div style={{position: 'relative', height: '280px'}}>
+                  <Bar
+                    data={{
+                      labels: roleDistribution.map(r => r.role_display),
+                      datasets: [{
+                        label: 'Users',
+                        data: roleDistribution.map(r => r.count),
+                        backgroundColor: roleDistribution.map(r => (roleColors[r.role] || '#4361ee') + '99'),
+                        borderColor: roleDistribution.map(r => roleColors[r.role] || '#4361ee'),
+                        borderWidth: 1,
+                        borderRadius: 6,
+                      }]
+                    }}
+                    options={{
+                      responsive: true,
+                      maintainAspectRatio: false,
+                      plugins: {
+                        legend: { display: false },
+                        tooltip: { backgroundColor: '#1d2939', titleFont: { size: 13 }, bodyFont: { size: 12 }, padding: 10, cornerRadius: 8 }
+                      },
+                      scales: {
+                        y: { beginAtZero: true, ticks: { stepSize: 1, font: { size: 11 } }, grid: { color: 'rgba(0,0,0,0.05)' } },
+                        x: { ticks: { font: { size: 10 }, maxRotation: 45 }, grid: { display: false } }
+                      }
+                    }}
+                  />
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* User Registration Trend + Recent Events */}
+      <div className="row g-4">
+        <div className="col-xl-6">
+          <div className="dash-card">
+            <div className="dash-card-header">
+              <h6>User Registration Trend</h6>
+            </div>
+            <div className="dash-card-body">
+              {loading ? (
+                <div className="text-center py-3">
+                  <div className="spinner-border spinner-border-sm text-primary" role="status"></div>
+                </div>
+              ) : (
+                <div style={{position: 'relative', height: '280px'}}>
+                  <Line
+                    data={{
+                      labels: (() => {
+                        const months = [];
+                        const now = new Date();
+                        for (let i = 5; i >= 0; i--) {
+                          const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+                          months.push(d.toLocaleString('default', { month: 'short', year: '2-digit' }));
+                        }
+                        return months;
+                      })(),
+                      datasets: [{
+                        label: 'New Users',
+                        data: (() => {
+                          const months = [];
+                          const now = new Date();
+                          for (let i = 5; i >= 0; i--) {
+                            const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+                            const nextMonth = new Date(d.getFullYear(), d.getMonth() + 1, 1);
+                            const count = recentUsers.filter(u => {
+                              const joined = new Date(u.date_joined);
+                              return joined >= d && joined < nextMonth;
+                            }).length;
+                            months.push(count);
+                          }
+                          return months;
+                        })(),
+                        borderColor: '#4361ee',
+                        backgroundColor: 'rgba(67, 97, 238, 0.1)',
+                        tension: 0.4,
+                        fill: true,
+                        pointBackgroundColor: '#4361ee',
+                        pointBorderColor: '#fff',
+                        pointBorderWidth: 2,
+                        pointRadius: 5,
+                      }]
+                    }}
+                    options={{
+                      responsive: true,
+                      maintainAspectRatio: false,
+                      plugins: {
+                        legend: { display: false },
+                        tooltip: { backgroundColor: '#1d2939', titleFont: { size: 13 }, bodyFont: { size: 12 }, padding: 10, cornerRadius: 8 }
+                      },
+                      scales: {
+                        y: { beginAtZero: true, ticks: { stepSize: 1, font: { size: 11 } }, grid: { color: 'rgba(0,0,0,0.05)' } },
+                        x: { ticks: { font: { size: 11 } }, grid: { display: false } }
+                      }
+                    }}
+                  />
+                </div>
               )}
             </div>
           </div>

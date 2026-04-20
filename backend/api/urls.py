@@ -2,6 +2,9 @@ from django.urls import path, include
 from rest_framework.routers import DefaultRouter
 from userauths import views as userauths_views
 from userauths import admin_views
+from userauths import patient_views
+from userauths import social_auth_views
+from userauths import message_views
 
 # from store import views as store_views
 # from customer import views as customer_views
@@ -17,6 +20,9 @@ router.register(r'admin/regions', admin_views.RegionViewSet, basename='region-ma
 router.register(r'admin/districts', admin_views.DistrictViewSet, basename='district-management')
 router.register(r'admin/hospitals', admin_views.HospitalViewSet, basename='hospital-management')
 router.register(r'admin/departments', admin_views.DepartmentViewSet, basename='department-management')
+router.register(r'admin/chiefdoms', admin_views.ChiefdomViewSet, basename='chiefdom-management')
+router.register(r'admin/towns', admin_views.TownViewSet, basename='town-management')
+router.register(r'patients', patient_views.PatientViewSet, basename='patient-management')
 
 urlpatterns = [
     # Include router URLs
@@ -37,6 +43,22 @@ urlpatterns = [
     path('admin/ministry-dashboard/', admin_views.ministry_dashboard, name='ministry-dashboard'),
     path('user/my-profile/', admin_views.my_profile, name='my-profile'),
 
+    # Social Auth endpoints
+    path('auth/google/', social_auth_views.google_login, name='google-login'),
+    path('auth/facebook/', social_auth_views.facebook_login, name='facebook-login'),
+
+    # Messaging endpoints
+    path('messages/inbox/', message_views.inbox, name='messages-inbox'),
+    path('messages/sent/', message_views.sent, name='messages-sent'),
+    path('messages/unread-count/', message_views.unread_count, name='messages-unread-count'),
+    path('messages/recipients/', message_views.recipients, name='messages-recipients'),
+    path('messages/send/', message_views.send_message, name='messages-send'),
+    path('messages/conversations/', message_views.conversations, name='messages-conversations'),
+    path('messages/conversation/<int:user_id>/', message_views.conversation_detail, name='messages-conversation-detail'),
+    path('messages/chat/', message_views.send_chat_message, name='messages-chat-send'),
+    path('messages/<int:message_id>/', message_views.message_detail, name='messages-detail'),
+    path('messages/<int:message_id>/delete/', message_views.delete_message, name='messages-delete'),
+    path('messages/<int:message_id>/read/', message_views.mark_read, name='messages-read'),
 
     # store endpoint
     # path('category/', store_views.CategoryListAPIView.as_view()),

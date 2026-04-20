@@ -1,6 +1,8 @@
-import React, { useState } from 'react';
+import React, { useState, useCallback } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
+import showToast from '../../utils/toast';
+import { useGoogleLogin } from '@react-oauth/google';
 
 function Login() {
   const [formData, setFormData] = useState({
@@ -15,8 +17,66 @@ function Login() {
   const [serverError, setServerError] = useState('');
   const [passwordStrength, setPasswordStrength] = useState({ level: '', score: 0 });
   
-  const { login } = useAuth();
+  const { login, socialLogin } = useAuth();
   const navigate = useNavigate();
+  const [socialLoading, setSocialLoading] = useState('');
+
+  const navigateByRole = useCallback((role) => {
+    const routes = {
+      admin: '/admin/dashboard',
+      ministry_admin: '/ministry/dashboard',
+      district_admin: '/admin/districts',
+      hospital_admin: '/admin/hospitals',
+      doctor: '/doctor/dashboard',
+      nurse: '/nurse/dashboard',
+      receptionist: '/receptionist/dashboard',
+      lab_technician: '/lab/dashboard',
+      pharmacist: '/pharmacy/dashboard',
+      patient: '/patient/dashboard',
+    };
+    navigate(routes[role] || '/');
+  }, [navigate]);
+
+  const handleSocialLogin = useCallback(async (provider, accessToken) => {
+    setSocialLoading(provider);
+    setServerError('');
+    try {
+      const result = await socialLogin(provider, accessToken);
+      if (result.success) {
+        showToast.success(`Signed in with ${provider}!`);
+        navigateByRole(result.user.role);
+      } else {
+        setServerError(result.error || `${provider} login failed`);
+      }
+    } catch {
+      setServerError('An error occurred. Please try again.');
+    } finally {
+      setSocialLoading('');
+    }
+  }, [socialLogin, navigateByRole]);
+
+  const googleLogin = useGoogleLogin({
+    onSuccess: (tokenResponse) => {
+      handleSocialLogin('google', tokenResponse.access_token);
+    },
+    onError: () => {
+      showToast.error('Google sign-in was cancelled or failed.');
+    },
+  });
+
+  const handleFacebookLogin = () => {
+    if (!window.FB) {
+      showToast.info('Facebook SDK is loading. Please try again in a moment.');
+      return;
+    }
+    window.FB.login((response) => {
+      if (response.authResponse) {
+        handleSocialLogin('facebook', response.authResponse.accessToken);
+      } else {
+        showToast.error('Facebook sign-in was cancelled.');
+      }
+    }, { scope: 'email,public_profile' });
+  };
 
   const validateEmail = (email) => {
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -80,6 +140,10 @@ function Login() {
     }));
 
     if (serverError) setServerError('');
+
+    if (name === 'password') {
+      setPasswordStrength(calculatePasswordStrength(fieldValue));
+    }
 
     if (touched[name]) {
       validateField(name, fieldValue);
@@ -184,250 +248,523 @@ function Login() {
   };
 
   return (
-    <div className="login-page-wrapper" style={{
-      minHeight: '100vh',
-      background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)'
+    <div style={{
+      height: '100vh',
+      display: 'flex',
+      background: 'linear-gradient(135deg, #667eea 0%, #764ba2 50%, #6B73C7 100%)',
+      fontFamily: "'Inter', 'Segoe UI', sans-serif",
+      overflow: 'hidden'
     }}>
-      {/* Header */}
+
+      {/* Left Panel - Image Side */}
       <div style={{
-        padding: '15px 20px',
+        flex: '1 1 50%',
+        position: 'relative',
+        overflow: 'hidden',
         display: 'flex',
-        justifyContent: 'space-between',
-        alignItems: 'center'
-      }}>
-        <Link to="/" className="text-decoration-none text-white d-flex align-items-center">
-          <i className="fas fa-arrow-left me-2"></i>
-          <span style={{fontSize: '1rem', fontWeight: 500}}>Back to Home</span>
-        </Link>
-        <div className="text-white" style={{fontSize: '1rem', fontWeight: 600}}>
-          <i className="fas fa-heartbeat me-2"></i>
-          HealthInfo
+        flexDirection: 'column',
+        justifyContent: 'flex-end',
+        height: '100vh',
+      }} className="d-none d-lg-flex">
+        {/* Doctor Image */}
+        <img
+          src="/assets/img/doctor-login.jpg"
+          alt="African Doctor"
+          style={{
+            position: 'absolute',
+            top: 0,
+            left: 0,
+            width: '100%',
+            height: '100%',
+            objectFit: 'cover',
+            objectPosition: 'center 15%',
+            transform: 'scale(1.15)',
+          }}
+        />
+        {/* Gradient Overlay */}
+        <div style={{
+          position: 'absolute',
+          top: 0,
+          left: 0,
+          width: '100%',
+          height: '100%',
+          background: 'linear-gradient(to top, rgba(102,126,234,0.92) 0%, rgba(118,75,162,0.6) 40%, rgba(0,0,0,0.15) 100%)',
+        }}></div>
+
+        {/* Brand Logo */}
+        <div style={{
+          position: 'absolute',
+          top: '30px',
+          left: '30px',
+          zIndex: 2,
+          display: 'flex',
+          alignItems: 'center',
+          gap: '10px'
+        }}>
+          <div style={{
+            width: '40px',
+            height: '40px',
+            borderRadius: '10px',
+            background: 'rgba(255,255,255,0.2)',
+            backdropFilter: 'blur(10px)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center'
+          }}>
+            <i className="fas fa-heartbeat" style={{fontSize: '20px', color: '#fff'}}></i>
+          </div>
+          <span style={{color: '#fff', fontWeight: 700, fontSize: '1rem', letterSpacing: '-0.3px'}}>
+            National Patient Health Record
+          </span>
         </div>
-      </div>
 
-      {/* Main Content */}
-      <div style={{
-        display: 'flex',
-        alignItems: 'flex-start',
-        justifyContent: 'center',
-        padding: '10px 20px',
-      }}>
-      <div className="container">
-        <div className="row justify-content-center">
-          <div className="col-lg-5 col-md-8 col-sm-11">
-            {/* Logo and Branding */}
-            <div className="text-center mb-2">
-              <Link to="/" className="text-decoration-none">
-                <div className="login-logo mb-1">
-                  <i className="fas fa-heartbeat" style={{fontSize: '32px', color: '#fff'}}></i>
-                </div>
-                <h3 className="text-white mb-0" style={{fontWeight: 600, fontSize: '1rem'}}>HealthInfo</h3>
-              </Link>
-              <h2 className="mt-2 mb-0" style={{fontWeight: 700, color: '#fff', fontSize: '1.4rem'}}>Welcome Back</h2>
-              <p className="text-white-50 mb-0" style={{fontSize: '0.8rem'}}>Sign in to National EHR</p>
+        {/* Bottom Text Overlay */}
+        <div style={{position: 'relative', zIndex: 2, padding: '40px 35px'}}>
+          <h1 style={{
+            color: '#fff',
+            fontWeight: 800,
+            fontSize: '2.4rem',
+            lineHeight: 1.15,
+            marginBottom: '12px',
+            letterSpacing: '-1px'
+          }}>
+            Your Health,<br/>Our Priority
+          </h1>
+          <p style={{
+            color: 'rgba(255,255,255,0.85)',
+            fontSize: '1rem',
+            marginBottom: '20px',
+            maxWidth: '380px',
+            lineHeight: 1.6
+          }}>
+            Securely access the National Patient Health Record system to manage and deliver quality healthcare.
+          </p>
+          {/* Trust Badges */}
+          <div style={{display: 'flex', gap: '16px', alignItems: 'center'}}>
+            <div style={{
+              background: 'rgba(255,255,255,0.2)',
+              backdropFilter: 'blur(10px)',
+              borderRadius: '8px',
+              padding: '8px 14px',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px'
+            }}>
+              <i className="fas fa-shield-alt" style={{color: '#fff', fontSize: '14px'}}></i>
+              <span style={{color: '#fff', fontSize: '0.8rem', fontWeight: 500}}>256-bit Encrypted</span>
             </div>
-
-            {/* Login Form Card */}
-            <div className="auth-box card shadow-lg border-0">
-              <div className="card-body px-3 py-2" style={{fontSize: '0.85rem'}}>
-                <form onSubmit={handleSubmit} noValidate>
-                  {serverError && (
-                    <div className="alert alert-danger d-flex align-items-center mb-2 py-2" role="alert" style={{fontSize: '0.875rem'}}>
-                      <i className="fas fa-exclamation-circle me-2"></i>
-                      <div>{serverError}</div>
-                    </div>
-                  )}
-
-                  {/* Email Input */}
-                  <div className="mb-2">
-                    <label htmlFor="email" className="form-label fw-semibold mb-1" style={{fontSize: '0.8rem'}}>
-                      <i className="fas fa-envelope me-1 text-primary"></i>Email Address
-                    </label>
-                    <div className="input-group" style={{border: '2px solid #dee2e6', borderRadius: '8px', overflow: 'hidden'}}>
-                      <span className="input-group-text bg-light border-0" style={{borderRight: '1px solid #e9ecef'}}>
-                        <i className="fas fa-at text-muted"></i>
-                      </span>
-                      <input
-                        type="email"
-                        id="email"
-                        name="email"
-                        className="form-control border-0 ps-2"
-                        style={{boxShadow: 'none'}}
-                        placeholder="Enter your email"
-                        value={formData.email}
-                        onChange={handleChange}
-                        onBlur={handleBlur}
-                        autoComplete="email"
-                      />
-                    </div>
-                    {touched.email && errors.email && (
-                      <div className="text-danger mt-2" style={{fontSize: '0.875rem'}}>
-                        <i className="fas fa-times-circle me-1"></i>{errors.email}
-                      </div>
-                    )}
-                    {touched.email && !errors.email && formData.email && (
-                      <div className="text-success mt-2" style={{fontSize: '0.875rem'}}>
-                        <i className="fas fa-check-circle me-1"></i>Looks good!
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Password Input */}
-                  <div className="mb-2">
-                    <label htmlFor="password" className="form-label fw-semibold mb-1" style={{fontSize: '0.8rem'}}>
-                      <i className="fas fa-lock me-1 text-primary"></i>Password
-                    </label>
-                    <div className="input-group" style={{border: '2px solid #dee2e6', borderRadius: '8px', overflow: 'hidden'}}>
-                      <span className="input-group-text bg-light border-0" style={{borderRight: '1px solid #e9ecef'}}>
-                        <i className="fas fa-key text-muted"></i>
-                      </span>
-                      <input
-                        type={showPassword ? 'text' : 'password'}
-                        id="password"
-                        name="password"
-                        className="form-control border-0 ps-2"
-                        style={{boxShadow: 'none'}}
-                        placeholder="Enter your password"
-                        value={formData.password}
-                        onChange={handleChange}
-                        onBlur={handleBlur}
-                        autoComplete="current-password"
-                      />
-                      <button
-                        type="button"
-                        className="btn btn-link border-0 text-secondary"
-                        onClick={() => setShowPassword(!showPassword)}
-                        tabIndex="-1"
-                        style={{borderLeft: '1px solid #e9ecef'}}
-                      >
-                        <i className={`fas ${showPassword ? 'fa-eye-slash' : 'fa-eye'}`}></i>
-                      </button>
-                    </div>
-
-                    {/* Password Strength Indicator */}
-                    <div className="mt-1">
-                      <div className="d-flex justify-content-between align-items-center mb-1">
-                        <small className="text-muted" style={{fontSize: '0.75rem'}}>Password Strength:</small>
-                        <small className={`fw-bold ${
-                          passwordStrength.level === 'weak' ? 'text-danger' :
-                          passwordStrength.level === 'medium' ? 'text-warning' :
-                          passwordStrength.level === 'strong' ? 'text-success' : 'text-muted'
-                        }`} style={{fontSize: '0.75rem'}}>
-                          {passwordStrength.level === 'weak' && <><i className="fas fa-exclamation-triangle me-1"></i>Weak</>}
-                          {passwordStrength.level === 'medium' && <><i className="fas fa-shield-alt me-1"></i>Medium</>}
-                          {passwordStrength.level === 'strong' && <><i className="fas fa-check-shield me-1"></i>Strong</>}
-                          {!passwordStrength.level && <>-</>}
-                        </small>
-                      </div>
-                      <div className="progress" style={{height: '4px', borderRadius: '2px'}}>
-                        <div
-                          className={`progress-bar ${
-                            passwordStrength.level === 'weak' ? 'bg-danger' :
-                            passwordStrength.level === 'medium' ? 'bg-warning' :
-                            passwordStrength.level === 'strong' ? 'bg-success' : 'bg-secondary'
-                          }`}
-                          role="progressbar"
-                          style={{width: `${passwordStrength.score}%`, transition: 'width 0.3s ease'}}
-                        ></div>
-                      </div>
-                    </div>
-
-                    {/* Validation Feedback */}
-                    {touched.password && errors.password && (
-                      <div className="text-danger mt-2" style={{fontSize: '0.875rem'}}>
-                        <i className="fas fa-times-circle me-1"></i>{errors.password}
-                      </div>
-                    )}
-                    {touched.password && !errors.password && formData.password && (
-                      <div className="text-success mt-2" style={{fontSize: '0.875rem'}}>
-                        <i className="fas fa-check-circle me-1"></i>Excellent! Your password meets all requirements
-                      </div>
-                    )}
-
-                    {/* Password Requirements Checklist */}
-                    <div className="mt-1">
-                      <small className="text-muted d-block mb-1" style={{fontSize: '0.75rem'}}>
-                        <i className="fas fa-info-circle me-1"></i>Password must contain:
-                      </small>
-                      <div className="ps-2" style={{lineHeight: '1.4'}}>
-                        <small className={`d-block ${formData.password && formData.password.length >= 8 ? 'text-success' : 'text-muted'}`} style={{fontSize: '0.75rem'}}>
-                          <i className={`fas ${formData.password && formData.password.length >= 8 ? 'fa-check-circle' : 'fa-circle'} me-1`} style={{fontSize: '0.65rem'}}></i>
-                          At least 8 characters
-                        </small>
-                        <small className={`d-block ${formData.password && /[A-Z]/.test(formData.password) ? 'text-success' : 'text-muted'}`} style={{fontSize: '0.75rem'}}>
-                          <i className={`fas ${formData.password && /[A-Z]/.test(formData.password) ? 'fa-check-circle' : 'fa-circle'} me-1`} style={{fontSize: '0.65rem'}}></i>
-                          One uppercase letter (A-Z)
-                        </small>
-                        <small className={`d-block ${formData.password && /[a-z]/.test(formData.password) ? 'text-success' : 'text-muted'}`} style={{fontSize: '0.75rem'}}>
-                          <i className={`fas ${formData.password && /[a-z]/.test(formData.password) ? 'fa-check-circle' : 'fa-circle'} me-1`} style={{fontSize: '0.65rem'}}></i>
-                          One lowercase letter (a-z)
-                        </small>
-                        <small className={`d-block ${formData.password && /[0-9]/.test(formData.password) ? 'text-success' : 'text-muted'}`} style={{fontSize: '0.75rem'}}>
-                          <i className={`fas ${formData.password && /[0-9]/.test(formData.password) ? 'fa-check-circle' : 'fa-circle'} me-1`} style={{fontSize: '0.65rem'}}></i>
-                          One number (0-9)
-                        </small>
-                        <small className={`d-block ${formData.password && /[!@#$%^&*(),.?":{}|<>]/.test(formData.password) ? 'text-success' : 'text-muted'}`} style={{fontSize: '0.75rem'}}>
-                          <i className={`fas ${formData.password && /[!@#$%^&*(),.?":{}|<>]/.test(formData.password) ? 'fa-check-circle' : 'fa-circle'} me-1`} style={{fontSize: '0.65rem'}}></i>
-                          One special character (!@#$%^&*)
-                        </small>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Remember Me & Forgot Password */}
-                  <div className="d-flex justify-content-between align-items-center mb-2">
-                    <div className="form-check">
-                      <input
-                        type="checkbox"
-                        className="form-check-input"
-                        id="rememberMe"
-                        name="rememberMe"
-                        checked={formData.rememberMe}
-                        onChange={handleChange}
-                      />
-                      <label className="form-check-label" htmlFor="rememberMe" style={{fontSize: '0.8rem'}}>
-                        Remember me
-                      </label>
-                    </div>
-                    <Link to="/forgot-password" className="text-primary text-decoration-none" style={{fontSize: '0.8rem'}}>
-                      <i className="fas fa-question-circle me-1"></i>Forgot Password?
-                    </Link>
-                  </div>
-
-                  {/* Submit Button */}
-                  <button
-                    type="submit"
-                    className="btn btn-primary w-100 py-2 fw-semibold mb-2"
-                    disabled={loading || (touched.email && errors.email) || (touched.password && errors.password)}
-                    style={{fontSize: '16px'}}
-                  >
-                    {loading ? (
-                      <>
-                        <span className="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>
-                        Signing in...
-                      </>
-                    ) : (
-                      <>
-                        <i className="fas fa-sign-in-alt me-2"></i>
-                        Sign In
-                      </>
-                    )}
-                  </button>
-
-                </form>
-              </div>
-            </div>
-
-            {/* Footer */}
-            <div className="text-center mt-2">
-              <small className="text-white-50" style={{fontSize: '0.7rem'}}>
-                <i className="fas fa-shield-alt me-1"></i>
-                Secure connection | &copy; {new Date().getFullYear()} HealthInfo
-              </small>
+            <div style={{
+              background: 'rgba(255,255,255,0.2)',
+              backdropFilter: 'blur(10px)',
+              borderRadius: '8px',
+              padding: '8px 14px',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px'
+            }}>
+              <i className="fas fa-lock" style={{color: '#fff', fontSize: '14px'}}></i>
+              <span style={{color: '#fff', fontSize: '0.8rem', fontWeight: 500}}>HIPAA Compliant</span>
             </div>
           </div>
         </div>
       </div>
+
+      {/* Right Panel - Form Side */}
+      <div style={{
+        flex: '1 1 50%',
+        display: 'flex',
+        flexDirection: 'column',
+        justifyContent: 'center',
+        alignItems: 'center',
+        padding: '24px 20px',
+        background: '#fff',
+        overflowY: 'auto',
+        height: '100vh',
+      }}>
+        <div style={{width: '100%', maxWidth: '370px'}}>
+          {/* Mobile Brand (visible on small screens) */}
+          <div className="d-lg-none text-center mb-4">
+            <i className="fas fa-heartbeat" style={{fontSize: '28px', color: '#667eea'}}></i>
+            <span style={{color: '#333', fontWeight: 700, fontSize: '0.95rem', marginLeft: '8px'}}>National Patient Health Record</span>
+          </div>
+
+          {/* Welcome Text */}
+          <div style={{marginBottom: '14px', textAlign: 'center'}}>
+            <h2 style={{
+              color: '#2d3748',
+              fontWeight: 800,
+              fontSize: '1.45rem',
+              marginBottom: '4px',
+              letterSpacing: '-0.5px'
+            }}>
+              Sign In
+            </h2>
+            <p style={{color: '#718096', fontSize: '0.84rem', margin: 0}}>
+              Sign in to access the National Patient Health Record
+            </p>
+          </div>
+
+          {/* Server Error */}
+          {serverError && (
+            <div style={{
+              background: '#fff5f5',
+              border: '1px solid #fed7d7',
+              borderRadius: '10px',
+              padding: '12px 16px',
+              marginBottom: '20px',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '10px'
+            }}>
+              <i className="fas fa-exclamation-circle" style={{color: '#e53e3e', fontSize: '16px'}}></i>
+              <span style={{color: '#e53e3e', fontSize: '0.85rem'}}>{serverError}</span>
+            </div>
+          )}
+
+          {/* Login Form */}
+          <form onSubmit={handleSubmit} noValidate>
+            {/* Email */}
+            <div style={{marginBottom: '12px'}}>
+              <label htmlFor="email" style={{
+                display: 'block',
+                color: '#4a5568',
+                fontSize: '0.82rem',
+                fontWeight: 600,
+                marginBottom: '6px'
+              }}>
+                Email Address
+              </label>
+              <div style={{
+                display: 'flex',
+                alignItems: 'center',
+                background: '#f7fafc',
+                border: touched.email && errors.email ? '1.5px solid #e53e3e' :
+                  touched.email && !errors.email && formData.email ? '1.5px solid #667eea' :
+                  '1.5px solid #e2e8f0',
+                borderRadius: '10px',
+                transition: 'border-color 0.2s',
+              }}>
+                <input
+                  type="email"
+                  id="email"
+                  name="email"
+                  placeholder="example@healthinfo.com"
+                  value={formData.email}
+                  onChange={handleChange}
+                  onBlur={handleBlur}
+                  autoComplete="email"
+                  style={{
+                    flex: 1,
+                    background: 'transparent',
+                    border: 'none',
+                    outline: 'none',
+                    color: '#2d3748',
+                    padding: '10px 14px',
+                    fontSize: '0.85rem',
+                  }}
+                />
+                {touched.email && !errors.email && formData.email && (
+                  <i className="fas fa-check-circle" style={{color: '#667eea', marginRight: '12px', fontSize: '13px'}}></i>
+                )}
+              </div>
+              {touched.email && errors.email && (
+                <small style={{color: '#e53e3e', fontSize: '0.75rem', marginTop: '4px', display: 'block'}}>
+                  <i className="fas fa-times-circle me-1"></i>{errors.email}
+                </small>
+              )}
+            </div>
+
+            {/* Password */}
+            <div style={{marginBottom: '8px'}}>
+              <label htmlFor="password" style={{
+                display: 'block',
+                color: '#4a5568',
+                fontSize: '0.82rem',
+                fontWeight: 600,
+                marginBottom: '6px'
+              }}>
+                Password
+              </label>
+              <div style={{
+                display: 'flex',
+                alignItems: 'center',
+                background: '#f7fafc',
+                border: touched.password && errors.password ? '1.5px solid #e53e3e' :
+                  touched.password && !errors.password && formData.password ? '1.5px solid #667eea' :
+                  '1.5px solid #e2e8f0',
+                borderRadius: '10px',
+                transition: 'border-color 0.2s',
+              }}>
+                <input
+                  type={showPassword ? 'text' : 'password'}
+                  id="password"
+                  name="password"
+                  placeholder="Enter your password"
+                  value={formData.password}
+                  onChange={handleChange}
+                  onBlur={handleBlur}
+                  autoComplete="current-password"
+                  style={{
+                    flex: 1,
+                    background: 'transparent',
+                    border: 'none',
+                    outline: 'none',
+                    color: '#2d3748',
+                    padding: '10px 14px',
+                    fontSize: '0.85rem',
+                  }}
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  tabIndex="-1"
+                  style={{
+                    background: 'transparent',
+                    border: 'none',
+                    cursor: 'pointer',
+                    padding: '0 14px',
+                    color: '#a0aec0'
+                  }}
+                >
+                  <i className={`fas ${showPassword ? 'fa-eye-slash' : 'fa-eye'}`}></i>
+                </button>
+              </div>
+
+              {/* Password Strength Bar */}
+              {formData.password && (
+                <div style={{marginTop: '8px'}}>
+                  <div style={{
+                    width: '100%',
+                    height: '5px',
+                    borderRadius: '3px',
+                    background: '#e2e8f0',
+                    overflow: 'hidden',
+                  }}>
+                    <div style={{
+                      width: `${passwordStrength.score}%`,
+                      height: '100%',
+                      borderRadius: '3px',
+                      background: passwordStrength.score <= 40
+                        ? '#e53e3e'
+                        : passwordStrength.score <= 80
+                        ? 'linear-gradient(90deg, #e53e3e 0%, #d69e2e 100%)'
+                        : 'linear-gradient(90deg, #e53e3e 0%, #d69e2e 40%, #38a169 100%)',
+                      transition: 'width 0.3s ease, background 0.3s ease',
+                    }}></div>
+                  </div>
+                  <div style={{display: 'flex', justifyContent: 'space-between', marginTop: '4px'}}>
+                    <small style={{
+                      color: passwordStrength.level === 'weak' ? '#e53e3e'
+                        : passwordStrength.level === 'medium' ? '#d69e2e'
+                        : passwordStrength.level === 'strong' ? '#38a169' : '#a0aec0',
+                      fontSize: '0.72rem',
+                      fontWeight: 600,
+                    }}>
+                      {passwordStrength.level === 'weak' && 'Simple'}
+                      {passwordStrength.level === 'medium' && 'Medium'}
+                      {passwordStrength.level === 'strong' && 'Complex'}
+                    </small>
+                    <div style={{display: 'flex', gap: '8px'}}>
+                      <small style={{fontSize: '0.68rem', color: passwordStrength.score >= 20 ? '#e53e3e' : '#cbd5e0', fontWeight: 500}}>Simple</small>
+                      <small style={{fontSize: '0.68rem', color: passwordStrength.score > 40 ? '#d69e2e' : '#cbd5e0', fontWeight: 500}}>Medium</small>
+                      <small style={{fontSize: '0.68rem', color: passwordStrength.score > 80 ? '#38a169' : '#cbd5e0', fontWeight: 500}}>Complex</small>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {touched.password && errors.password && (
+                <small style={{color: '#e53e3e', fontSize: '0.78rem', marginTop: '6px', display: 'block'}}>
+                  <i className="fas fa-times-circle me-1"></i>{errors.password}
+                </small>
+              )}
+            </div>
+
+            {/* Remember Me & Forgot Password */}
+            <div style={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              marginBottom: '14px',
+              marginTop: '8px'
+            }}>
+              <label style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px',
+                cursor: 'pointer',
+                color: '#718096',
+                fontSize: '0.8rem'
+              }}>
+                <input
+                  type="checkbox"
+                  name="rememberMe"
+                  checked={formData.rememberMe}
+                  onChange={handleChange}
+                  style={{
+                    width: '15px',
+                    height: '15px',
+                    accentColor: '#667eea',
+                    cursor: 'pointer'
+                  }}
+                />
+                Remember me
+              </label>
+              <Link to="/forgot-password" style={{
+                color: '#667eea',
+                textDecoration: 'none',
+                fontSize: '0.8rem',
+                fontWeight: 500
+              }}>
+                Forgot Password?
+              </Link>
+            </div>
+
+            {/* Submit Button */}
+            <button
+              type="submit"
+              disabled={loading || (touched.email && errors.email) || (touched.password && errors.password)}
+              style={{
+                width: '100%',
+                padding: '11px',
+                borderRadius: '10px',
+                border: 'none',
+                background: loading ? 'rgba(102,126,234,0.5)' : 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                color: '#fff',
+                fontSize: '0.9rem',
+                fontWeight: 700,
+                cursor: loading ? 'not-allowed' : 'pointer',
+                transition: 'all 0.2s',
+                letterSpacing: '0.3px',
+                boxShadow: '0 4px 15px rgba(102,126,234,0.4)',
+                opacity: (touched.email && errors.email) || (touched.password && errors.password) ? 0.5 : 1
+              }}
+            >
+              {loading ? (
+                <>
+                  <span className="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true" style={{width:'16px', height:'16px'}}></span>
+                  Signing in...
+                </>
+              ) : (
+                'Log In'
+              )}
+            </button>
+          </form>
+
+          {/* Divider */}
+          <div style={{
+            display: 'flex',
+            alignItems: 'center',
+            margin: '14px 0',
+            gap: '10px'
+          }}>
+            <div style={{flex: 1, height: '1px', background: '#e2e8f0'}}></div>
+            <span style={{color: '#a0aec0', fontSize: '0.8rem', fontWeight: 500}}>Or</span>
+            <div style={{flex: 1, height: '1px', background: '#e2e8f0'}}></div>
+          </div>
+
+          {/* OAuth Buttons */}
+          <div style={{display: 'flex', flexDirection: 'column', gap: '10px'}}>
+            <button
+              type="button"
+              onClick={() => googleLogin()}
+              disabled={!!socialLoading}
+              style={{
+                width: '100%',
+                padding: '10px',
+                borderRadius: '10px',
+                border: '1.5px solid #e2e8f0',
+                background: '#fff',
+                color: '#4a5568',
+                fontSize: '0.84rem',
+                fontWeight: 600,
+                cursor: socialLoading ? 'not-allowed' : 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: '10px',
+                transition: 'all 0.2s',
+                opacity: socialLoading && socialLoading !== 'google' ? 0.5 : 1
+              }}
+              onMouseEnter={(e) => { if (!socialLoading) e.currentTarget.style.background = '#f7fafc'; }}
+              onMouseLeave={(e) => { e.currentTarget.style.background = '#fff'; }}
+            >
+              {socialLoading === 'google' ? (
+                <><span className="spinner-border spinner-border-sm text-secondary" style={{width:'16px', height:'16px'}}></span> Signing in...</>
+              ) : (
+                <>
+                  <svg width="18" height="18" viewBox="0 0 24 24">
+                    <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 0 1-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z"/>
+                    <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
+                    <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/>
+                    <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/>
+                  </svg>
+                  Continue with Google
+                </>
+              )}
+            </button>
+
+            <button
+              type="button"
+              onClick={handleFacebookLogin}
+              disabled={!!socialLoading}
+              style={{
+                width: '100%',
+                padding: '10px',
+                borderRadius: '10px',
+                border: '1.5px solid #e2e8f0',
+                background: '#fff',
+                color: '#4a5568',
+                fontSize: '0.84rem',
+                fontWeight: 600,
+                cursor: socialLoading ? 'not-allowed' : 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: '10px',
+                transition: 'all 0.2s',
+                opacity: socialLoading && socialLoading !== 'facebook' ? 0.5 : 1
+              }}
+              onMouseEnter={(e) => { if (!socialLoading) e.currentTarget.style.background = '#f7fafc'; }}
+              onMouseLeave={(e) => { e.currentTarget.style.background = '#fff'; }}
+            >
+              {socialLoading === 'facebook' ? (
+                <><span className="spinner-border spinner-border-sm text-secondary" style={{width:'16px', height:'16px'}}></span> Signing in...</>
+              ) : (
+                <>
+                  <svg width="18" height="18" viewBox="0 0 24 24">
+                    <path fill="#1877F2" d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/>
+                  </svg>
+                  Continue with Facebook
+                </>
+              )}
+            </button>
+          </div>
+
+          {/* Back to Home */}
+          <div style={{textAlign: 'center', marginTop: '14px'}}>
+            <Link to="/" style={{
+              color: '#667eea',
+              textDecoration: 'none',
+              fontSize: '0.82rem',
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '6px',
+              transition: 'color 0.2s'
+            }}>
+              <i className="fas fa-arrow-left" style={{fontSize: '11px'}}></i>
+              Back to Home
+            </Link>
+          </div>
+
+          {/* Footer */}
+          <div style={{textAlign: 'center', marginTop: '10px'}}>
+            <small style={{color: '#a0aec0', fontSize: '0.72rem'}}>
+              <i className="fas fa-shield-alt me-1"></i>
+              Secure connection | &copy; {new Date().getFullYear()} HealthInfo
+            </small>
+          </div>
+        </div>
       </div>
     </div>
   );

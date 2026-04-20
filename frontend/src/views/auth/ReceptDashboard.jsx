@@ -1,28 +1,36 @@
 import React from 'react';
 import DashboardLayout from '../../layout/DashboardLayout';
+import { Chart as ChartJS, ArcElement, Tooltip, Legend, CategoryScale, LinearScale, BarElement, PointElement, LineElement, Filler } from 'chart.js';
+import { Doughnut, Bar, Line } from 'react-chartjs-2';
+
+ChartJS.register(ArcElement, Tooltip, Legend, CategoryScale, LinearScale, BarElement, PointElement, LineElement, Filler);
 
 const navItems = [
   {
     label: 'Main',
     items: [
       { path: '/receptionist/dashboard', icon: 'fas fa-tachometer-alt', text: 'Dashboard' },
-      { path: '/receptionist/patients', icon: 'fas fa-user-injured', text: 'Patients', badge: 'New' },
-      { path: '/receptionist/appointments', icon: 'fas fa-calendar-check', text: 'Appointments' },
-      { path: '/receptionist/register', icon: 'fas fa-user-plus', text: 'Register Patient' },
+      { path: '/receptionist/patients', icon: 'fas fa-user-injured', text: 'Patients' },
+      { path: '/receptionist/patients/register', icon: 'fas fa-user-plus', text: 'Register Patient' },
     ]
   },
   {
     label: 'Management',
     items: [
+      { path: '/receptionist/appointments', icon: 'fas fa-calendar-check', text: 'Appointments' },
       { path: '/receptionist/queue', icon: 'fas fa-list-ol', text: 'Patient Queue' },
-      { path: '/receptionist/billing', icon: 'fas fa-file-invoice-dollar', text: 'Billing' },
-      { path: '/receptionist/reports', icon: 'fas fa-chart-bar', text: 'Reports' },
+    ]
+  },
+  {
+    label: 'Communication',
+    items: [
+      { path: '/messages', icon: 'fas fa-envelope', text: 'Messages' },
     ]
   },
   {
     label: 'Account',
     items: [
-      { path: '/receptionist/profile', icon: 'fas fa-user-circle', text: 'My Profile' },
+      { path: '/admin/profile', icon: 'fas fa-user-circle', text: 'My Profile' },
     ]
   }
 ];
@@ -272,107 +280,232 @@ function ReceptDashboard() {
         </div>
       </div>
 
-      {/* Bottom row */}
-      <div className="row g-4">
-        {/* Department Queue */}
-        <div className="col-xl-6">
+      {/* Charts Row */}
+      <div className="row g-4 mb-4">
+        {/* Department Queue - Bar Chart */}
+        <div className="col-xl-4 col-md-6">
           <div className="dash-card">
             <div className="dash-card-header">
               <h6>Department Queue Status</h6>
             </div>
             <div className="dash-card-body">
-              <div style={{marginBottom: '16px'}}>
-                <div style={{display: 'flex', justifyContent: 'space-between', marginBottom: '6px'}}>
-                  <span style={{fontSize: '14px', fontWeight: 500}}>General Medicine</span>
-                  <span style={{fontSize: '13px', color: '#6c757d'}}>8 patients</span>
-                </div>
-                <div className="dash-progress">
-                  <div className="dash-progress-bar" style={{width: '80%', background: '#4361ee'}}></div>
-                </div>
-              </div>
-              <div style={{marginBottom: '16px'}}>
-                <div style={{display: 'flex', justifyContent: 'space-between', marginBottom: '6px'}}>
-                  <span style={{fontSize: '14px', fontWeight: 500}}>Pediatrics</span>
-                  <span style={{fontSize: '13px', color: '#6c757d'}}>5 patients</span>
-                </div>
-                <div className="dash-progress">
-                  <div className="dash-progress-bar" style={{width: '50%', background: '#2ec4b6'}}></div>
-                </div>
-              </div>
-              <div style={{marginBottom: '16px'}}>
-                <div style={{display: 'flex', justifyContent: 'space-between', marginBottom: '6px'}}>
-                  <span style={{fontSize: '14px', fontWeight: 500}}>Cardiology</span>
-                  <span style={{fontSize: '13px', color: '#6c757d'}}>3 patients</span>
-                </div>
-                <div className="dash-progress">
-                  <div className="dash-progress-bar" style={{width: '30%', background: '#f77f00'}}></div>
-                </div>
-              </div>
-              <div style={{marginBottom: '16px'}}>
-                <div style={{display: 'flex', justifyContent: 'space-between', marginBottom: '6px'}}>
-                  <span style={{fontSize: '14px', fontWeight: 500}}>Dermatology</span>
-                  <span style={{fontSize: '13px', color: '#6c757d'}}>2 patients</span>
-                </div>
-                <div className="dash-progress">
-                  <div className="dash-progress-bar" style={{width: '20%', background: '#e63946'}}></div>
-                </div>
-              </div>
-              <div>
-                <div style={{display: 'flex', justifyContent: 'space-between', marginBottom: '6px'}}>
-                  <span style={{fontSize: '14px', fontWeight: 500}}>Orthopedics</span>
-                  <span style={{fontSize: '13px', color: '#6c757d'}}>4 patients</span>
-                </div>
-                <div className="dash-progress">
-                  <div className="dash-progress-bar" style={{width: '40%', background: '#7c3aed'}}></div>
-                </div>
+              <div style={{position: 'relative', height: '280px'}}>
+                <Bar
+                  data={{
+                    labels: ['General Medicine', 'Pediatrics', 'Orthopedics', 'Cardiology', 'Dermatology'],
+                    datasets: [{
+                      label: 'Patients Waiting',
+                      data: [8, 5, 4, 3, 2],
+                      backgroundColor: [
+                        'rgba(67, 97, 238, 0.7)',
+                        'rgba(46, 196, 182, 0.7)',
+                        'rgba(124, 58, 237, 0.7)',
+                        'rgba(247, 127, 0, 0.7)',
+                        'rgba(230, 57, 70, 0.7)',
+                      ],
+                      borderColor: ['#4361ee', '#2ec4b6', '#7c3aed', '#f77f00', '#e63946'],
+                      borderWidth: 1,
+                      borderRadius: 6,
+                    }]
+                  }}
+                  options={{
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    indexAxis: 'y',
+                    plugins: {
+                      legend: { display: false },
+                      tooltip: { backgroundColor: '#1d2939', titleFont: { size: 13 }, bodyFont: { size: 12 }, padding: 10, cornerRadius: 8 }
+                    },
+                    scales: {
+                      x: { beginAtZero: true, ticks: { stepSize: 1, font: { size: 11 } }, grid: { color: 'rgba(0,0,0,0.05)' } },
+                      y: { ticks: { font: { size: 11 } }, grid: { display: false } }
+                    }
+                  }}
+                />
               </div>
             </div>
           </div>
         </div>
 
-        {/* Today's Summary */}
-        <div className="col-xl-6">
+        {/* Today's Summary - Doughnut */}
+        <div className="col-xl-4 col-md-6">
           <div className="dash-card">
             <div className="dash-card-header">
               <h6>Today's Summary</h6>
             </div>
-            <div className="dash-card-body" style={{padding: 0}}>
-              <table className="dash-table">
-                <thead>
-                  <tr>
-                    <th>Metric</th>
-                    <th>Count</th>
-                    <th>Status</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <tr>
-                    <td><strong>Total Appointments</strong></td>
-                    <td>58</td>
-                    <td><span className="dash-badge dash-badge-primary">Scheduled</span></td>
-                  </tr>
-                  <tr>
-                    <td><strong>Patients Checked In</strong></td>
-                    <td>41</td>
-                    <td><span className="dash-badge dash-badge-success">Completed</span></td>
-                  </tr>
-                  <tr>
-                    <td><strong>Currently Waiting</strong></td>
-                    <td>12</td>
-                    <td><span className="dash-badge dash-badge-warning">Active</span></td>
-                  </tr>
-                  <tr>
-                    <td><strong>No Shows</strong></td>
-                    <td>3</td>
-                    <td><span className="dash-badge dash-badge-danger">Missed</span></td>
-                  </tr>
-                  <tr>
-                    <td><strong>New Registrations</strong></td>
-                    <td>24</td>
-                    <td><span className="dash-badge dash-badge-info">Today</span></td>
-                  </tr>
-                </tbody>
-              </table>
+            <div className="dash-card-body">
+              <div style={{position: 'relative', height: '280px'}}>
+                <Doughnut
+                  data={{
+                    labels: ['Checked In', 'Waiting', 'Scheduled', 'No Shows'],
+                    datasets: [{
+                      data: [41, 12, 5, 3],
+                      backgroundColor: ['#059669', '#f77f00', '#4361ee', '#e63946'],
+                      borderWidth: 2,
+                      borderColor: '#fff',
+                      hoverOffset: 6,
+                    }]
+                  }}
+                  options={{
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    cutout: '60%',
+                    plugins: {
+                      legend: { position: 'bottom', labels: { padding: 12, usePointStyle: true, pointStyleWidth: 8, font: { size: 12 } } },
+                      tooltip: { backgroundColor: '#1d2939', titleFont: { size: 13 }, bodyFont: { size: 12 }, padding: 10, cornerRadius: 8 }
+                    }
+                  }}
+                />
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Weekly Appointment Trend - Line Chart */}
+        <div className="col-xl-4 col-md-12">
+          <div className="dash-card">
+            <div className="dash-card-header">
+              <h6>Weekly Appointment Trend</h6>
+            </div>
+            <div className="dash-card-body">
+              <div style={{position: 'relative', height: '280px'}}>
+                <Line
+                  data={{
+                    labels: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'],
+                    datasets: [
+                      {
+                        label: 'Appointments',
+                        data: [45, 52, 49, 58, 55, 30, 18],
+                        borderColor: '#4361ee',
+                        backgroundColor: 'rgba(67, 97, 238, 0.1)',
+                        tension: 0.4,
+                        fill: true,
+                        pointBackgroundColor: '#4361ee',
+                        pointBorderColor: '#fff',
+                        pointBorderWidth: 2,
+                        pointRadius: 5,
+                      },
+                      {
+                        label: 'Check-Ins',
+                        data: [38, 45, 42, 50, 48, 25, 12],
+                        borderColor: '#059669',
+                        backgroundColor: 'rgba(5, 150, 105, 0.1)',
+                        tension: 0.4,
+                        fill: true,
+                        pointBackgroundColor: '#059669',
+                        pointBorderColor: '#fff',
+                        pointBorderWidth: 2,
+                        pointRadius: 5,
+                      }
+                    ]
+                  }}
+                  options={{
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                      legend: { position: 'top', labels: { padding: 12, usePointStyle: true, pointStyleWidth: 8, font: { size: 12 } } },
+                      tooltip: { backgroundColor: '#1d2939', titleFont: { size: 13 }, bodyFont: { size: 12 }, padding: 10, cornerRadius: 8 }
+                    },
+                    scales: {
+                      y: { beginAtZero: true, ticks: { font: { size: 11 } }, grid: { color: 'rgba(0,0,0,0.05)' } },
+                      x: { ticks: { font: { size: 11 } }, grid: { display: false } }
+                    }
+                  }}
+                />
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Registration & Patient Flow Row */}
+      <div className="row g-4">
+        {/* Daily Patient Flow - Bar Chart */}
+        <div className="col-xl-6">
+          <div className="dash-card">
+            <div className="dash-card-header">
+              <h6>Daily Patient Flow</h6>
+            </div>
+            <div className="dash-card-body">
+              <div style={{position: 'relative', height: '280px'}}>
+                <Bar
+                  data={{
+                    labels: ['8 AM', '9 AM', '10 AM', '11 AM', '12 PM', '1 PM', '2 PM', '3 PM', '4 PM'],
+                    datasets: [
+                      {
+                        label: 'Arrivals',
+                        data: [5, 12, 9, 8, 4, 6, 10, 7, 3],
+                        backgroundColor: 'rgba(67, 97, 238, 0.7)',
+                        borderColor: '#4361ee',
+                        borderWidth: 1,
+                        borderRadius: 4,
+                      },
+                      {
+                        label: 'Checked Out',
+                        data: [2, 4, 8, 7, 6, 3, 5, 8, 6],
+                        backgroundColor: 'rgba(5, 150, 105, 0.7)',
+                        borderColor: '#059669',
+                        borderWidth: 1,
+                        borderRadius: 4,
+                      }
+                    ]
+                  }}
+                  options={{
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                      legend: { position: 'top', labels: { padding: 12, usePointStyle: true, pointStyleWidth: 8, font: { size: 12 } } },
+                      tooltip: { backgroundColor: '#1d2939', titleFont: { size: 13 }, bodyFont: { size: 12 }, padding: 10, cornerRadius: 8 }
+                    },
+                    scales: {
+                      y: { beginAtZero: true, ticks: { stepSize: 2, font: { size: 11 } }, grid: { color: 'rgba(0,0,0,0.05)' } },
+                      x: { ticks: { font: { size: 11 } }, grid: { display: false } }
+                    }
+                  }}
+                />
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* New Registrations Trend - Line Chart */}
+        <div className="col-xl-6">
+          <div className="dash-card">
+            <div className="dash-card-header">
+              <h6>Patient Registration Trend</h6>
+            </div>
+            <div className="dash-card-body">
+              <div style={{position: 'relative', height: '280px'}}>
+                <Line
+                  data={{
+                    labels: ['Week 1', 'Week 2', 'Week 3', 'Week 4', 'This Week'],
+                    datasets: [{
+                      label: 'New Registrations',
+                      data: [18, 22, 20, 28, 24],
+                      borderColor: '#7c3aed',
+                      backgroundColor: 'rgba(124, 58, 237, 0.1)',
+                      tension: 0.4,
+                      fill: true,
+                      pointBackgroundColor: '#7c3aed',
+                      pointBorderColor: '#fff',
+                      pointBorderWidth: 2,
+                      pointRadius: 6,
+                    }]
+                  }}
+                  options={{
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                      legend: { display: false },
+                      tooltip: { backgroundColor: '#1d2939', titleFont: { size: 13 }, bodyFont: { size: 12 }, padding: 10, cornerRadius: 8 }
+                    },
+                    scales: {
+                      y: { beginAtZero: true, ticks: { font: { size: 11 } }, grid: { color: 'rgba(0,0,0,0.05)' } },
+                      x: { ticks: { font: { size: 11 } }, grid: { display: false } }
+                    }
+                  }}
+                />
+              </div>
             </div>
           </div>
         </div>

@@ -2,41 +2,18 @@ import React, { useState, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { Link } from 'react-router-dom';
 import DashboardLayout from '../../layout/DashboardLayout';
+import { getNavForUser, getBrandForUser, getRoleBadge } from '../../utils/navItems';
+import showToast from '../../utils/toast';
+import ConfirmModal from '../../components/ConfirmModal';
 
-const navItems = [
-  {
-    label: 'Dashboard',
-    items: [
-      { path: '/admin/dashboard', icon: 'fas fa-tachometer-alt', text: 'Overview' },
-    ]
-  },
-  {
-    label: 'User Management',
-    items: [
-      { path: '/admin/users', icon: 'fas fa-users', text: 'All Users' },
-      { path: '/admin/roles', icon: 'fas fa-user-tag', text: 'Roles & Permissions' },
-    ]
-  },
-  {
-    label: 'Organization',
-    items: [
-      { path: '/admin/regions', icon: 'fas fa-globe-africa', text: 'Regions' },
-      { path: '/admin/districts', icon: 'fas fa-map-marked-alt', text: 'Districts' },
-      { path: '/admin/hospitals', icon: 'fas fa-hospital', text: 'Hospitals' },
-    ]
-  },
-  {
-    label: 'Account',
-    items: [
-      { path: '/admin/profile', icon: 'fas fa-user-circle', text: 'My Profile' },
-    ]
-  }
-];
 
 function UserManagement() {
-  const { apiCall } = useAuth();
+  const { apiCall, user } = useAuth();
   const [users, setUsers] = useState([]);
   const [roles, setRoles] = useState([]);
+  const [hospitals, setHospitals] = useState([]);
+  const [districts, setDistricts] = useState([]);
+  const [departments, setDepartments] = useState([]);
   const [loading, setLoading] = useState(true);
   const [filters, setFilters] = useState({
     search: '',
@@ -51,13 +28,32 @@ function UserManagement() {
     full_name: '',
     phone: '',
     role: '',
+    hospital: '',
+    department: '',
+    district: '',
     password: '',
     is_active: false
   });
+  const [confirmDeactivate, setConfirmDeactivate] = useState({ show: false, id: null });
+  const [confirmPermanentDelete, setConfirmPermanentDelete] = useState({ show: false, id: null, confirmed: false, typedName: '' });
+  const [showResetModal, setShowResetModal] = useState({ show: false, id: null });
+  const [newPassword, setNewPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [showResetPassword, setShowResetPassword] = useState(false);
+
+  // Check if current user is admin (role is stored as string in JWT token)
+  const isAdmin = user?.role === 'admin';
+  const isReadOnly = user?.role === 'ministry_admin';
+
+  // Get selected role info
+  const selectedRoleName = roles.find(r => r.id === parseInt(formData.role))?.name || '';
 
   useEffect(() => {
     fetchUsers();
     fetchRoles();
+    fetchHospitals();
+    fetchDistricts();
+    fetchDepartments();
   }, [filters]);
 
   const fetchUsers = async () => {
@@ -93,6 +89,36 @@ function UserManagement() {
     }
   };
 
+  const fetchHospitals = async () => {
+    try {
+      const response = await apiCall('/admin/hospitals/');
+      const data = await response.json();
+      if (response.ok) setHospitals(data);
+    } catch {
+      console.error('Error fetching hospitals');
+    }
+  };
+
+  const fetchDistricts = async () => {
+    try {
+      const response = await apiCall('/admin/districts/');
+      const data = await response.json();
+      if (response.ok) setDistricts(data);
+    } catch {
+      console.error('Error fetching districts');
+    }
+  };
+
+  const fetchDepartments = async () => {
+    try {
+      const response = await apiCall('/admin/departments/');
+      const data = await response.json();
+      if (response.ok) setDepartments(data);
+    } catch {
+      console.error('Error fetching departments');
+    }
+  };
+
   const handleCreateUser = async (e) => {
     e.preventDefault();
     try {
@@ -105,13 +131,14 @@ function UserManagement() {
         setShowCreateModal(false);
         resetForm();
         fetchUsers();
-        alert('User created successfully!');
+        showToast.success('User created successfully!');
       } else {
         const data = await response.json();
-        alert(`Error: ${JSON.stringify(data)}`);
+        const msg = Object.values(data).flat().join(', ');
+        showToast.error(msg || 'Failed to create user');
       }
     } catch {
-      alert('Error creating user');
+      showToast.error('Error creating user. Please try again.');
     }
   };
 
@@ -135,30 +162,66 @@ function UserManagement() {
         setSelectedUser(null);
         resetForm();
         fetchUsers();
-        alert('User updated successfully!');
+        showToast.success('User updated successfully!');
       } else {
         const data = await response.json();
-        alert(`Error: ${JSON.stringify(data)}`);
+        const msg = Object.values(data).flat().join(', ');
+        showToast.error(msg || 'Failed to update user');
       }
     } catch {
-      alert('Error updating user');
+      showToast.error('Error updating user. Please try again.');
     }
   };
 
-  const handleDeactivateUser = async (userId) => {
-    if (!confirm('Are you sure you want to deactivate this user?')) return;
+  const [userToDeactivate, setUserToDeactivate] = useState(null);
+  const [userToDelete, setUserToDelete] = useState(null);
 
+  const handleDeactivateUser = (user) => {
+    setUserToDeactivate(user);
+    setConfirmDeactivate({ show: true, id: user.id });
+  };
+
+  const handlePermanentDelete = (user) => {
+    setUserToDelete(user);
+    setConfirmPermanentDelete({ show: true, id: user.id, confirmed: false, typedName: '' });
+  };
+
+  const confirmPermanentDeleteAction = async () => {
     try {
-      const response = await apiCall(`/admin/users/${userId}/`, {
+      const response = await apiCall(`/admin/users/${confirmPermanentDelete.id}/permanent_delete/`, {
         method: 'DELETE'
       });
-
       if (response.ok) {
         fetchUsers();
-        alert('User deactivated successfully!');
+        showToast.deleted('User');
+      } else {
+        const data = await response.json();
+        showToast.error(data.error || 'Failed to delete user');
       }
     } catch {
-      alert('Error deactivating user');
+      showToast.deleteError('User');
+    } finally {
+      setConfirmPermanentDelete({ show: false, id: null, confirmed: false, typedName: '' });
+      setUserToDelete(null);
+    }
+  };
+
+  const confirmDeactivateAction = async () => {
+    try {
+      const response = await apiCall(`/admin/users/${confirmDeactivate.id}/`, {
+        method: 'DELETE'
+      });
+      if (response.ok) {
+        fetchUsers();
+        showToast.success('User deactivated successfully!');
+      } else {
+        showToast.error('Failed to deactivate user');
+      }
+    } catch {
+      showToast.error('Error deactivating user. Please try again.');
+    } finally {
+      setConfirmDeactivate({ show: false, id: null, confirmed: false });
+      setUserToDeactivate(null);
     }
   };
 
@@ -167,31 +230,42 @@ function UserManagement() {
       const response = await apiCall(`/admin/users/${userId}/activate/`, {
         method: 'POST'
       });
-
       if (response.ok) {
         fetchUsers();
-        alert('User activated successfully!');
+        showToast.success('User activated successfully!');
+      } else {
+        showToast.error('Failed to activate user');
       }
     } catch {
-      alert('Error activating user');
+      showToast.error('Error activating user. Please try again.');
     }
   };
 
-  const handleResetPassword = async (userId) => {
-    const newPassword = prompt('Enter new password for this user:');
-    if (!newPassword) return;
+  const handleResetPassword = (userId) => {
+    setShowResetModal({ show: true, id: userId });
+    setNewPassword('');
+  };
 
+  const confirmResetPassword = async () => {
+    if (!newPassword) {
+      showToast.warning('Please enter a new password');
+      return;
+    }
     try {
-      const response = await apiCall(`/admin/users/${userId}/reset_password/`, {
+      const response = await apiCall(`/admin/users/${showResetModal.id}/reset_password/`, {
         method: 'POST',
         body: JSON.stringify({ password: newPassword })
       });
-
       if (response.ok) {
-        alert('Password reset successfully!');
+        showToast.success('Password reset successfully!');
+      } else {
+        showToast.error('Failed to reset password');
       }
     } catch {
-      alert('Error resetting password');
+      showToast.error('Error resetting password. Please try again.');
+    } finally {
+      setShowResetModal({ show: false, id: null });
+      setNewPassword('');
     }
   };
 
@@ -213,13 +287,16 @@ function UserManagement() {
       full_name: '',
       phone: '',
       role: '',
+      hospital: '',
+      department: '',
+      district: '',
       password: '',
       is_active: false
     });
   };
 
   return (
-    <DashboardLayout navItems={navItems} brandTitle="NEHR Admin" roleBadge="Administrator">
+    <DashboardLayout navItems={getNavForUser(user)} brandTitle={getBrandForUser(user)} roleBadge={getRoleBadge(user)}>
       <div className="container-fluid py-4">
         <div className="row mb-4">
           <div className="col-12">
@@ -228,13 +305,15 @@ function UserManagement() {
                 <h1 className="h3 mb-0">User Management</h1>
                 <p className="text-muted">Manage system users and their roles</p>
               </div>
-              <button 
-                className="btn btn-primary"
-                onClick={() => setShowCreateModal(true)}
-              >
-                <i className="bi bi-person-plus me-2"></i>
-                Create New User
-              </button>
+              {!isReadOnly && (
+                <button 
+                  className="btn btn-primary"
+                  onClick={() => setShowCreateModal(true)}
+                >
+                  <i className="bi bi-person-plus me-2"></i>
+                  Create New User
+                </button>
+              )}
             </div>
           </div>
         </div>
@@ -259,7 +338,7 @@ function UserManagement() {
                 >
                   <option value="">All Roles</option>
                   {roles.map((role) => (
-                    <option key={role.id} value={role.name}>{role.name}</option>
+                    <option key={role.id} value={role.name}>{role.display_name || role.name}</option>
                   ))}
                 </select>
               </div>
@@ -331,6 +410,9 @@ function UserManagement() {
                             )}
                           </td>
                           <td>
+                            {isReadOnly ? (
+                              <span className="text-muted small">View only</span>
+                            ) : (
                             <div className="btn-group btn-group-sm">
                               <button
                                 className="btn btn-outline-primary"
@@ -349,7 +431,7 @@ function UserManagement() {
                               {user.is_active ? (
                                 <button
                                   className="btn btn-outline-danger"
-                                  onClick={() => handleDeactivateUser(user.id)}
+                                  onClick={() => handleDeactivateUser(user)}
                                   title="Deactivate"
                                 >
                                   <i className="bi bi-x-circle"></i>
@@ -363,7 +445,18 @@ function UserManagement() {
                                   <i className="bi bi-check-circle"></i>
                                 </button>
                               )}
+                              {/* Permanent Delete - Admin Only */}
+                              {isAdmin && (
+                                <button
+                                  className="btn btn-outline-dark"
+                                  onClick={() => handlePermanentDelete(user)}
+                                  title="Delete Permanently"
+                                >
+                                  <i className="bi bi-trash"></i>
+                                </button>
+                              )}
                             </div>
+                            )}
                           </td>
                         </tr>
                       ))
@@ -432,20 +525,101 @@ function UserManagement() {
                       >
                         <option value="">Select Role</option>
                         {roles.map((role) => (
-                          <option key={role.id} value={role.id}>{role.name}</option>
+                          <option key={role.id} value={role.id}>{role.display_name || role.name}</option>
                         ))}
                       </select>
                     </div>
-                    <div className="col-md-12">
+                    <div className="col-md-6">
                       <label className="form-label">Password *</label>
-                      <input
-                        type="password"
-                        className="form-control"
-                        value={formData.password}
-                        onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-                        required
-                      />
+                      <div className="input-group">
+                        <input
+                          type={showPassword ? "text" : "password"}
+                          className="form-control"
+                          value={formData.password}
+                          onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+                          required
+                        />
+                        <button
+                          type="button"
+                          className="btn btn-outline-secondary"
+                          onClick={() => setShowPassword(!showPassword)}
+                          tabIndex="-1"
+                        >
+                          <i className={`fas ${showPassword ? "fa-eye-slash" : "fa-eye"}`}></i>
+                        </button>
+                      </div>
                     </div>
+
+                    {/* Auto-generated Employee ID Info */}
+                    <div className="col-md-12">
+                      <div className="alert alert-info d-flex align-items-center py-2" style={{ fontSize: '13px' }}>
+                        <i className="fas fa-info-circle me-2"></i>
+                        <span><strong>Employee ID:</strong> Will be automatically generated (format: EMP-XXXXX)</span>
+                      </div>
+                    </div>
+
+                    {/* District selection for District Admin */}
+                    {selectedRoleName === 'district_admin' && (
+                      <div className="col-md-12">
+                        <label className="form-label">Assigned District *</label>
+                        <select
+                          className="form-select"
+                          value={formData.district}
+                          onChange={(e) => setFormData({ ...formData, district: e.target.value })}
+                          required
+                        >
+                          <option value="">Select District</option>
+                          {districts.map((d) => (
+                            <option key={d.id} value={d.id}>{d.name}</option>
+                          ))}
+                        </select>
+                      </div>
+                    )}
+
+                    {/* Hospital selection for Hospital Admin, Doctors, Nurses, etc. */}
+                    {['hospital_admin', 'doctor', 'nurse', 'receptionist', 'lab_technician', 'pharmacist'].includes(selectedRoleName) && (
+                      <div className="col-md-12">
+                        <label className="form-label">Assigned Hospital *</label>
+                        <select
+                          className="form-select"
+                          value={formData.hospital}
+                          onChange={(e) => setFormData({ ...formData, hospital: e.target.value, department: '' })}
+                          required
+                        >
+                          <option value="">Select Hospital</option>
+                          {hospitals.map((h) => (
+                            <option key={h.id} value={h.id}>{h.name}</option>
+                          ))}
+                        </select>
+                      </div>
+                    )}
+
+                    {/* Department selection for clinical staff */}
+                    {['doctor', 'nurse', 'lab_technician', 'pharmacist'].includes(selectedRoleName) && formData.hospital && (
+                      <div className="col-md-12">
+                        <label className="form-label">Department *</label>
+                        <select
+                          className="form-select"
+                          value={formData.department}
+                          onChange={(e) => setFormData({ ...formData, department: e.target.value })}
+                          required
+                        >
+                          <option value="">Select Department</option>
+                          {departments
+                            .filter(d => d.hospital === parseInt(formData.hospital))
+                            .map((d) => (
+                              <option key={d.id} value={d.id}>{d.name_display}</option>
+                            ))}
+                        </select>
+                        {departments.filter(d => d.hospital === parseInt(formData.hospital)).length === 0 && (
+                          <small className="text-warning">
+                            <i className="fas fa-exclamation-triangle me-1"></i>
+                            No departments found for this hospital. Please add departments first.
+                          </small>
+                        )}
+                      </div>
+                    )}
+
                     <div className="col-md-12">
                       <div className="card border-0" style={{ backgroundColor: formData.is_active ? '#e8f5e9' : '#fff3e0', borderRadius: '8px' }}>
                         <div className="card-body py-3 d-flex align-items-center justify-content-between">
@@ -548,9 +722,18 @@ function UserManagement() {
                       >
                         <option value="">Select Role</option>
                         {roles.map((role) => (
-                          <option key={role.id} value={role.id}>{role.name}</option>
+                          <option key={role.id} value={role.id}>{role.display_name || role.name}</option>
                         ))}
                       </select>
+                    </div>
+                    <div className="col-md-6">
+                      <label className="form-label">Employee ID</label>
+                      <input
+                        type="text"
+                        className="form-control bg-light"
+                        value={selectedUser?.employee_id || 'N/A'}
+                        disabled
+                      />
                     </div>
                     <div className="col-md-12">
                       <div className="card border-0" style={{ backgroundColor: formData.is_active ? '#e8f5e9' : '#fff3e0', borderRadius: '8px' }}>
@@ -594,6 +777,246 @@ function UserManagement() {
                   </button>
                 </div>
               </form>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* Professional User Deactivate Modal */}
+      {confirmDeactivate.show && userToDeactivate && (
+        <div className="modal show d-block" style={{ backgroundColor: 'rgba(0,0,0,0.6)', position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, zIndex: 1060 }}>
+          <div className="modal-dialog modal-dialog-centered" style={{ maxWidth: '450px', margin: '1.75rem auto' }}>
+            <div className="modal-content border-0 shadow-lg">
+              {/* Modal Header with Warning Color */}
+              <div className="modal-header bg-danger text-white">
+                <h5 className="modal-title">
+                  <i className="fas fa-user-slash me-2"></i>
+                  Deactivate User Account
+                </h5>
+                <button
+                  type="button"
+                  className="btn-close btn-close-white"
+                  onClick={() => { setConfirmDeactivate({ show: false, id: null }); setUserToDeactivate(null); }}
+                ></button>
+              </div>
+
+              {/* Modal Body */}
+              <div className="modal-body p-4" style={{ maxHeight: '75vh', overflowY: 'auto' }}>
+                {/* Warning Alert */}
+                <div className="alert alert-warning d-flex align-items-center mb-3">
+                  <i className="fas fa-exclamation-triangle me-2" style={{ fontSize: '18px' }}></i>
+                  <div style={{ fontSize: '13px' }}>
+                    <strong>Warning:</strong> This will disable the user's access. They cannot log in until reactivated.
+                  </div>
+                </div>
+
+                {/* User Info */}
+                <div className="d-flex align-items-center mb-3 p-3 bg-light rounded">
+                  <div className="rounded-circle bg-primary text-white d-flex align-items-center justify-content-center me-3" style={{ width: '48px', height: '48px', fontSize: '18px', fontWeight: 'bold' }}>
+                    {userToDeactivate.full_name ? userToDeactivate.full_name.charAt(0).toUpperCase() : '?'}
+                  </div>
+                  <div>
+                    <div style={{ fontWeight: 600, fontSize: '15px' }}>{userToDeactivate.full_name}</div>
+                    <small className="text-muted" style={{ fontSize: '12px' }}>{userToDeactivate.email}</small>
+                  </div>
+                </div>
+
+                {/* Info Grid */}
+                <div className="row g-2 mb-3" style={{ fontSize: '12px' }}>
+                  <div className="col-6">
+                    <span className="text-muted">Role:</span>
+                    <span className="ms-1 badge bg-info text-dark">{userToDeactivate.role_display || userToDeactivate.role_name || 'N/A'}</span>
+                  </div>
+                  <div className="col-6">
+                    <span className="text-muted">ID:</span> <span className="fw-medium">{userToDeactivate.employee_id || 'N/A'}</span>
+                  </div>
+                  <div className="col-12">
+                    <span className="text-muted">Hospital:</span> <span className="fw-medium">{userToDeactivate.hospital_name || 'N/A'}</span>
+                  </div>
+                </div>
+
+                {/* Consequences */}
+                <div className="mb-3">
+                  <small className="text-muted fw-bold d-block mb-2" style={{ fontSize: '12px' }}>Consequences:</small>
+                  <ul className="list-unstyled mb-0" style={{ fontSize: '12px' }}>
+                    <li className="mb-1"><i className="fas fa-times-circle text-danger me-2"></i>User logged out immediately (if active)</li>
+                    <li className="mb-1"><i className="fas fa-times-circle text-danger me-2"></i>Cannot log in until reactivated</li>
+                    <li className="mb-1"><i className="fas fa-check-circle text-success me-2"></i>User data and records remain intact</li>
+                    <li><i className="fas fa-check-circle text-success me-2"></i>Can be reactivated at any time</li>
+                  </ul>
+                </div>
+
+                {/* Confirmation Checkbox */}
+                <div className="form-check">
+                  <input
+                    className="form-check-input"
+                    type="checkbox"
+                    id="confirmDeactivate"
+                    checked={confirmDeactivate.confirmed}
+                    onChange={(e) => setConfirmDeactivate({ ...confirmDeactivate, confirmed: e.target.checked })}
+                  />
+                  <label className="form-check-label" htmlFor="confirmDeactivate" style={{ fontSize: '13px' }}>
+                    I understand and want to deactivate <strong>{userToDeactivate.full_name}</strong>
+                  </label>
+                </div>
+              </div>
+
+              {/* Modal Footer */}
+              <div className="modal-footer bg-light">
+                <button
+                  type="button"
+                  className="btn btn-secondary"
+                  onClick={() => { setConfirmDeactivate({ show: false, id: null }); setUserToDeactivate(null); }}
+                >
+                  <i className="fas fa-times me-1"></i>Cancel
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-danger"
+                  onClick={confirmDeactivateAction}
+                  disabled={!confirmDeactivate.confirmed}
+                >
+                  <i className="fas fa-user-slash me-1"></i>Deactivate User
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Permanent Delete Modal - Admin Only */}
+      {confirmPermanentDelete.show && userToDelete && (
+        <div className="modal show d-block" style={{ backgroundColor: 'rgba(0,0,0,0.7)', position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, zIndex: 1070 }}>
+          <div className="modal-dialog modal-dialog-centered" style={{ maxWidth: '450px', margin: '1.75rem auto' }}>
+            <div className="modal-content border-0 shadow-lg">
+              {/* Modal Header */}
+              <div className="modal-header bg-dark text-white">
+                <h5 className="modal-title">
+                  <i className="fas fa-exclamation-triangle me-2 text-danger"></i>
+                  Delete User Permanently
+                </h5>
+                <button
+                  type="button"
+                  className="btn-close btn-close-white"
+                  onClick={() => { setConfirmPermanentDelete({ show: false, id: null, confirmed: false, typedName: '' }); setUserToDelete(null); }}
+                ></button>
+              </div>
+
+              {/* Modal Body */}
+              <div className="modal-body p-4" style={{ maxHeight: '75vh', overflowY: 'auto' }}>
+                {/* Critical Warning */}
+                <div className="alert alert-danger d-flex align-items-center mb-3">
+                  <i className="fas fa-skull-crossbones me-2" style={{ fontSize: '18px' }}></i>
+                  <div style={{ fontSize: '13px' }}>
+                    <strong>CRITICAL:</strong> This will <strong>permanently delete</strong> this user. This <strong>cannot be undone</strong>.
+                  </div>
+                </div>
+
+                {/* User Info */}
+                <div className="d-flex align-items-center mb-3 p-3 bg-light rounded">
+                  <div className="rounded-circle bg-danger text-white d-flex align-items-center justify-content-center me-3" style={{ width: '48px', height: '48px', fontSize: '18px', fontWeight: 'bold' }}>
+                    {userToDelete.full_name ? userToDelete.full_name.charAt(0).toUpperCase() : '?'}
+                  </div>
+                  <div>
+                    <div style={{ fontWeight: 600, fontSize: '15px' }}>{userToDelete.full_name}</div>
+                    <small className="text-muted" style={{ fontSize: '12px' }}>{userToDelete.email}</small>
+                  </div>
+                </div>
+
+                {/* Info Grid */}
+                <div className="row g-2 mb-3" style={{ fontSize: '12px' }}>
+                  <div className="col-6">
+                    <span className="text-muted">Role:</span>
+                    <span className="ms-1 badge bg-info text-dark">{userToDelete.role_display || userToDelete.role_name || 'N/A'}</span>
+                  </div>
+                  <div className="col-6">
+                    <span className="text-muted">ID:</span> <span className="fw-medium">{userToDelete.employee_id || 'N/A'}</span>
+                  </div>
+                  <div className="col-12">
+                    <span className="text-muted">Hospital:</span> <span className="fw-medium">{userToDelete.hospital_name || 'N/A'}</span>
+                  </div>
+                </div>
+
+                {/* Consequences */}
+                <div className="mb-3">
+                  <small className="text-danger fw-bold d-block mb-2" style={{ fontSize: '12px' }}>Will be permanently removed:</small>
+                  <ul className="list-unstyled mb-0" style={{ fontSize: '12px' }}>
+                    <li className="mb-1"><i className="fas fa-times text-danger me-2"></i>User account and login credentials</li>
+                    <li className="mb-1"><i className="fas fa-times text-danger me-2"></i>Personal information and profile data</li>
+                    <li className="mb-1"><i className="fas fa-times text-danger me-2"></i>Role assignments and permissions</li>
+                    <li className="text-muted"><i className="fas fa-info-circle me-2"></i><small>Medical records remain in the system</small></li>
+                  </ul>
+                </div>
+
+                {/* Type to Confirm */}
+                <div className="form-group">
+                  <label className="form-label" style={{ fontSize: '13px', fontWeight: 600 }}>
+                    Type <code className="text-danger">{userToDelete.full_name}</code> to confirm:
+                  </label>
+                  <input
+                    type="text"
+                    className="form-control border-danger"
+                    placeholder="Enter the user's full name"
+                    value={confirmPermanentDelete.typedName || ''}
+                    onChange={(e) => setConfirmPermanentDelete({ ...confirmPermanentDelete, typedName: e.target.value })}
+                    autoFocus
+                  />
+                </div>
+              </div>
+
+              {/* Modal Footer */}
+              <div className="modal-footer bg-light">
+                <button
+                  type="button"
+                  className="btn btn-secondary"
+                  onClick={() => { setConfirmPermanentDelete({ show: false, id: null, confirmed: false, typedName: '' }); setUserToDelete(null); }}
+                >
+                  <i className="fas fa-times me-1"></i>Cancel
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-dark"
+                  onClick={confirmPermanentDeleteAction}
+                  disabled={confirmPermanentDelete.typedName !== userToDelete.full_name}
+                >
+                  <i className="fas fa-trash-alt me-1"></i>Permanently Delete
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Reset Password Modal */}
+      {showResetModal.show && (
+        <div className="modal show d-block" style={{ backgroundColor: 'rgba(0,0,0,0.5)', position: 'fixed', top: 0, left: 0, width: '100%', height: '100%', zIndex: 1060, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div className="modal-dialog" style={{ maxWidth: '420px' }}>
+            <div className="modal-content border-0 shadow">
+              <div className="modal-body text-center py-4">
+                <i className="fas fa-key" style={{ fontSize: '48px', color: '#ffc107', marginBottom: '16px', display: 'block' }}></i>
+                <h5 className="mb-3">Reset Password</h5>
+                <div className="input-group mb-2">
+                  <input
+                    type={showResetPassword ? "text" : "password"}
+                    className="form-control"
+                    placeholder="Enter new password"
+                    value={newPassword}
+                    onChange={(e) => setNewPassword(e.target.value)}
+                    autoFocus
+                  />
+                  <button
+                    type="button"
+                    className="btn btn-outline-secondary"
+                    onClick={() => setShowResetPassword(!showResetPassword)}
+                    tabIndex="-1"
+                  >
+                    <i className={`fas ${showResetPassword ? "fa-eye-slash" : "fa-eye"}`}></i>
+                  </button>
+                </div>
+              </div>
+              <div className="modal-footer border-0 justify-content-center pb-4">
+                <button className="btn btn-secondary px-4" onClick={() => { setShowResetModal({ show: false, id: null }); setNewPassword(''); }}>Cancel</button>
+                <button className="btn btn-warning px-4" onClick={confirmResetPassword}>Reset Password</button>
+              </div>
             </div>
           </div>
         </div>

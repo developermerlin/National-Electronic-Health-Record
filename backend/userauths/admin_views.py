@@ -2,12 +2,13 @@ from rest_framework import generics, status, viewsets
 from rest_framework.decorators import api_view, permission_classes, action
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated, AllowAny
-from django.db.models import Q, Count
-from userauths.models import User, Role, Permission, RolePermission, Region, District, Hospital, Department
+from django.db.models import Q, Count, Sum, Avg
+from userauths.models import User, Role, Permission, RolePermission, Region, District, Chiefdom, Town, Hospital, Department
 from userauths.serializer import (
     UserSerializer, UserCreateSerializer, UserUpdateSerializer,
     RoleSerializer, SimplePermissionSerializer, RolePermissionAssignSerializer,
-    RegionSerializer, DistrictSerializer, HospitalSerializer, HospitalCreateSerializer,
+    RegionSerializer, DistrictSerializer, ChiefdomSerializer, TownSerializer,
+    HospitalSerializer, HospitalCreateSerializer,
     DepartmentSerializer, ProfileSerializer
 )
 from userauths.models import Profile
@@ -30,6 +31,25 @@ class UserManagementViewSet(viewsets.ModelViewSet):
     
     def get_queryset(self):
         queryset = super().get_queryset()
+        user = self.request.user
+        user_role = user.role.name if user.role else None
+        
+        # Hospital admins can only see users at their hospital
+        if user_role == 'hospital_admin':
+            if user.hospital:
+                queryset = queryset.filter(hospital=user.hospital)
+            else:
+                # If hospital admin has no hospital assigned, show no users
+                queryset = queryset.none()
+        
+        # District admins can only see users in their district
+        if user_role == 'district_admin':
+            if user.district:
+                queryset = queryset.filter(
+                    Q(hospital__district=user.district) | Q(district=user.district)
+                )
+            else:
+                queryset = queryset.none()
         
         # Filter by role
         role = self.request.query_params.get('role', None)
@@ -53,16 +73,49 @@ class UserManagementViewSet(viewsets.ModelViewSet):
         return queryset
     
     def create(self, request, *args, **kwargs):
-        """Create a new user account"""
+        """Create a new user account. Only admin, ministry_admin, and hospital_admin can create users."""
+        user = request.user
+        role = user.role.name if user.role else None
+        
+        # Only specific roles can create users
+        allowed_roles = ['admin', 'ministry_admin', 'hospital_admin']
+        if role not in allowed_roles:
+            return Response(
+                {'error': 'You do not have permission to create users.'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
+        # Hospital admins can only create staff for their own hospital
+        if role == 'hospital_admin':
+            target_hospital_id = request.data.get('hospital')
+            if not user.hospital or str(target_hospital_id) != str(user.hospital.id):
+                return Response(
+                    {'error': 'You can only create users for your assigned hospital.'},
+                    status=status.HTTP_403_FORBIDDEN
+                )
+            # Hospital admins cannot create ministry_admin, district_admin, or admin
+            target_role_id = request.data.get('role')
+            if target_role_id:
+                from userauths.models import Role
+                try:
+                    target_role = Role.objects.get(id=target_role_id)
+                    if target_role.name in ['admin', 'ministry_admin', 'district_admin']:
+                        return Response(
+                            {'error': 'You cannot create administrator accounts.'},
+                            status=status.HTTP_403_FORBIDDEN
+                        )
+                except Role.DoesNotExist:
+                    pass
+        
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         
         # Set the created_by field to the current user
-        user = serializer.save(created_by=request.user)
+        new_user = serializer.save(created_by=request.user)
         
         return Response({
             'message': 'User created successfully',
-            'user': UserSerializer(user).data
+            'user': UserSerializer(new_user).data
         }, status=status.HTTP_201_CREATED)
     
     def update(self, request, *args, **kwargs):
@@ -99,6 +152,43 @@ class UserManagementViewSet(viewsets.ModelViewSet):
             'message': 'User activated successfully',
             'user': UserSerializer(user).data
         })
+
+    @action(detail=True, methods=['delete'])
+    def permanent_delete(self, request, pk=None):
+        """Permanently delete user from system - Admin only"""
+        user = request.user
+        user_role = user.role.name if user.role else None
+        
+        # Only admin can permanently delete
+        if user_role != 'admin':
+            return Response(
+                {'error': 'Only system administrators can permanently delete users.'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
+        instance = self.get_object()
+        user_name = instance.full_name or instance.email
+        
+        # Prevent self-deletion
+        if instance.id == user.id:
+            return Response(
+                {'error': 'You cannot delete your own account.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Prevent deletion of other admins (optional safeguard)
+        if instance.role and instance.role.name == 'admin':
+            return Response(
+                {'error': 'Cannot delete system administrator accounts.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        instance.delete()
+        
+        return Response({
+            'message': f'User "{user_name}" has been permanently deleted.',
+            'deleted': True
+        }, status=status.HTTP_200_OK)
     
     @action(detail=True, methods=['post'])
     def reset_password(self, request, pk=None):
@@ -313,9 +403,54 @@ class DistrictViewSet(viewsets.ModelViewSet):
         return queryset
 
 
+class ChiefdomViewSet(viewsets.ModelViewSet):
+    """CRUD for Chiefdoms"""
+    queryset = Chiefdom.objects.all().select_related('district', 'district__region').order_by('district__region__name', 'district__name', 'name')
+    serializer_class = ChiefdomSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        district = self.request.query_params.get('district')
+        if district:
+            qs = qs.filter(district_id=district)
+        search = self.request.query_params.get('search')
+        if search:
+            qs = qs.filter(Q(name__icontains=search) | Q(code__icontains=search))
+        is_active = self.request.query_params.get('is_active')
+        if is_active is not None:
+            qs = qs.filter(is_active=is_active.lower() == 'true')
+        return qs
+
+
+class TownViewSet(viewsets.ModelViewSet):
+    """CRUD for Towns"""
+    queryset = Town.objects.all().select_related('district', 'district__region', 'chiefdom').order_by('district__region__name', 'district__name', 'name')
+    serializer_class = TownSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        district = self.request.query_params.get('district')
+        if district:
+            qs = qs.filter(district_id=district)
+        chiefdom = self.request.query_params.get('chiefdom')
+        if chiefdom:
+            qs = qs.filter(chiefdom_id=chiefdom)
+        search = self.request.query_params.get('search')
+        if search:
+            qs = qs.filter(Q(name__icontains=search) | Q(code__icontains=search))
+        is_active = self.request.query_params.get('is_active')
+        if is_active is not None:
+            qs = qs.filter(is_active=is_active.lower() == 'true')
+        return qs
+
+
 class HospitalViewSet(viewsets.ModelViewSet):
     """CRUD for Hospitals"""
-    queryset = Hospital.objects.all().select_related('district', 'district__region').order_by('name')
+    queryset = Hospital.objects.all().select_related(
+        'district', 'district__region', 'admin_user', 'created_by', 'last_updated_by', 'approved_by'
+    ).order_by('name')
     permission_classes = [IsAuthenticated]
 
     def get_serializer_class(self):
@@ -334,9 +469,24 @@ class HospitalViewSet(viewsets.ModelViewSet):
         hospital_type = self.request.query_params.get('type', None)
         if hospital_type:
             queryset = queryset.filter(hospital_type=hospital_type)
+        ownership = self.request.query_params.get('ownership', None)
+        if ownership:
+            queryset = queryset.filter(ownership_type=ownership)
+        level = self.request.query_params.get('level', None)
+        if level:
+            queryset = queryset.filter(level_of_care=level)
+        op_status = self.request.query_params.get('operational_status', None)
+        if op_status:
+            queryset = queryset.filter(operational_status=op_status)
+        approval = self.request.query_params.get('approval_status', None)
+        if approval:
+            queryset = queryset.filter(approval_status=approval)
         search = self.request.query_params.get('search', None)
         if search:
-            queryset = queryset.filter(Q(name__icontains=search) | Q(code__icontains=search))
+            queryset = queryset.filter(
+                Q(name__icontains=search) | Q(code__icontains=search) |
+                Q(facility_code__icontains=search) | Q(town_city__icontains=search)
+            )
         is_active = self.request.query_params.get('is_active', None)
         if is_active is not None:
             queryset = queryset.filter(is_active=is_active.lower() == 'true')
@@ -345,11 +495,22 @@ class HospitalViewSet(viewsets.ModelViewSet):
     def create(self, request, *args, **kwargs):
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-        hospital = serializer.save()
+        hospital = serializer.save(created_by=request.user)
         return Response({
             'message': 'Hospital created successfully',
             'hospital': HospitalSerializer(hospital).data
         }, status=status.HTTP_201_CREATED)
+
+    def update(self, request, *args, **kwargs):
+        partial = kwargs.pop('partial', False)
+        instance = self.get_object()
+        serializer = self.get_serializer(instance, data=request.data, partial=partial)
+        serializer.is_valid(raise_exception=True)
+        hospital = serializer.save(last_updated_by=request.user)
+        return Response({
+            'message': 'Hospital updated successfully',
+            'hospital': HospitalSerializer(hospital).data
+        })
 
 
 class DepartmentViewSet(viewsets.ModelViewSet):
@@ -407,6 +568,75 @@ def ministry_dashboard(request):
     # Recent hospitals
     recent_hospitals = Hospital.objects.filter(is_active=True).order_by('-created_at')[:5]
 
+    # Users by role
+    users_by_role = list(
+        User.objects.values('role__name')
+        .annotate(count=Count('id'))
+        .order_by('-count')
+    )
+
+    # Active vs Inactive Users
+    active_users = User.objects.filter(is_active=True).count()
+    inactive_users = User.objects.filter(is_active=False).count()
+
+    # Hospitals by ownership type
+    hospitals_by_ownership = list(
+        Hospital.objects.filter(is_active=True)
+        .values('ownership_type')
+        .annotate(count=Count('id'))
+        .order_by('-count')
+    )
+
+    # Hospitals by level of care
+    hospitals_by_level = list(
+        Hospital.objects.filter(is_active=True)
+        .values('level_of_care')
+        .annotate(count=Count('id'))
+        .order_by('-count')
+    )
+
+    # Bed capacity
+    bed_agg = Hospital.objects.filter(is_active=True).aggregate(
+        total_beds=Sum('bed_capacity'),
+        avg_beds=Avg('bed_capacity'),
+    )
+    total_beds = bed_agg['total_beds'] or 0
+    avg_beds = round(bed_agg['avg_beds'] or 0, 1)
+
+    # Service availability (% of hospitals with each service)
+    total_active_hospitals = total_hospitals or 1  # avoid division by zero
+    service_availability = [
+        {'service': 'Emergency', 'count': Hospital.objects.filter(is_active=True, emergency_services=True).count()},
+        {'service': 'Laboratory', 'count': Hospital.objects.filter(is_active=True, laboratory_available=True).count()},
+        {'service': 'Pharmacy', 'count': Hospital.objects.filter(is_active=True, pharmacy_available=True).count()},
+        {'service': 'Radiology', 'count': Hospital.objects.filter(is_active=True, radiology_available=True).count()},
+        {'service': 'Maternity', 'count': Hospital.objects.filter(is_active=True, maternity_services=True).count()},
+        {'service': 'Surgery', 'count': Hospital.objects.filter(is_active=True, surgery_services=True).count()},
+        {'service': 'Ambulance', 'count': Hospital.objects.filter(is_active=True, ambulance_available=True).count()},
+    ]
+    for s in service_availability:
+        s['percentage'] = round((s['count'] / total_active_hospitals) * 100, 1)
+
+    # Top hospitals by staff count
+    top_hospitals_by_staff = []
+    for h in Hospital.objects.filter(is_active=True):
+        staff_cnt = User.objects.filter(hospital=h, is_active=True).count()
+        if staff_cnt > 0:
+            top_hospitals_by_staff.append({
+                'id': h.id,
+                'name': h.name,
+                'region': h.district.region.name if h.district and h.district.region else '—',
+                'staff_count': staff_cnt,
+            })
+    top_hospitals_by_staff = sorted(top_hospitals_by_staff, key=lambda x: x['staff_count'], reverse=True)[:5]
+
+    # Approval status breakdown
+    approval_breakdown = list(
+        Hospital.objects.values('approval_status')
+        .annotate(count=Count('id'))
+        .order_by('-count')
+    )
+
     return Response({
         'overview': {
             'total_regions': total_regions,
@@ -415,9 +645,19 @@ def ministry_dashboard(request):
             'total_departments': total_departments,
             'total_staff': total_staff,
             'total_users': total_users,
+            'active_users': active_users,
+            'inactive_users': inactive_users,
+            'total_beds': total_beds,
+            'avg_beds_per_hospital': avg_beds,
         },
         'hospitals_by_type': hospitals_by_type,
+        'hospitals_by_ownership': hospitals_by_ownership,
+        'hospitals_by_level': hospitals_by_level,
         'staff_by_region': staff_by_region,
+        'users_by_role': users_by_role,
+        'service_availability': service_availability,
+        'top_hospitals_by_staff': top_hospitals_by_staff,
+        'approval_breakdown': approval_breakdown,
         'recent_hospitals': HospitalSerializer(recent_hospitals, many=True).data,
     })
 
@@ -445,6 +685,8 @@ def my_profile(request):
                 'date_joined': user.date_joined,
                 'last_login': user.last_login,
                 'is_active': user.is_active,
+                'sms_notifications_enabled': user.sms_notifications_enabled,
+                'email_notifications_enabled': user.email_notifications_enabled,
             },
             'profile': {
                 'image': profile.image.url if profile.image else None,
@@ -466,6 +708,10 @@ def my_profile(request):
             user.full_name = data['full_name']
         if 'phone' in data:
             user.phone = data['phone']
+        if 'sms_notifications_enabled' in data:
+            user.sms_notifications_enabled = bool(data['sms_notifications_enabled'])
+        if 'email_notifications_enabled' in data:
+            user.email_notifications_enabled = bool(data['email_notifications_enabled'])
 
         # Update password if provided
         if 'current_password' in data and 'new_password' in data:

@@ -1,45 +1,32 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import DashboardLayout from '../../layout/DashboardLayout';
-
-const navItems = [
-  {
-    label: 'Dashboard',
-    items: [
-      { path: '/admin/dashboard', icon: 'fas fa-tachometer-alt', text: 'Overview' },
-    ]
-  },
-  {
-    label: 'User Management',
-    items: [
-      { path: '/admin/users', icon: 'fas fa-users', text: 'All Users' },
-      { path: '/admin/roles', icon: 'fas fa-user-tag', text: 'Roles & Permissions' },
-    ]
-  },
-  {
-    label: 'Organization',
-    items: [
-      { path: '/admin/regions', icon: 'fas fa-globe-africa', text: 'Regions' },
-      { path: '/admin/districts', icon: 'fas fa-map-marked-alt', text: 'Districts' },
-      { path: '/admin/hospitals', icon: 'fas fa-hospital', text: 'Hospitals' },
-    ]
-  },
-  {
-    label: 'Account',
-    items: [
-      { path: '/admin/profile', icon: 'fas fa-user-circle', text: 'My Profile' },
-    ]
-  }
-];
+import showToast from '../../utils/toast';
+import ConfirmModal from '../../components/ConfirmModal';
+import { getNavForUser, getBrandForUser, getRoleBadge } from '../../utils/navItems';
 
 function RegionManagement() {
-  const { apiCall } = useAuth();
+  const { apiCall, user } = useAuth();
+  const isReadOnly = user?.role === 'ministry_admin';
   const [regions, setRegions] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
   const [selectedRegion, setSelectedRegion] = useState(null);
-  const [formData, setFormData] = useState({ name: '', code: '', description: '', is_active: true });
+  const [formData, setFormData] = useState({ name: '', description: '', is_active: true });
+  const [confirmDelete, setConfirmDelete] = useState({ show: false, id: null });
+
+  const generateRegionCode = (name) => {
+    if (!name) return '';
+    const words = name.replace(/[^a-zA-Z\s]/g, '').split(/\s+/).filter(Boolean);
+    let letters;
+    if (words.length >= 2) {
+      letters = words.slice(0, 3).map(w => w[0].toUpperCase()).join('');
+    } else {
+      letters = name.slice(0, 3).toUpperCase();
+    }
+    return `REG-${letters}-001`;
+  };
 
   useEffect(() => {
     fetchRegions();
@@ -67,15 +54,16 @@ function RegionManagement() {
       });
       if (response.ok) {
         setShowCreateModal(false);
-        setFormData({ name: '', code: '', description: '', is_active: true });
+        setFormData({ name: '', description: '', is_active: true });
         fetchRegions();
-        alert('Region created successfully!');
+        showToast.success('Region created successfully!');
       } else {
         const data = await response.json();
-        alert(`Error: ${JSON.stringify(data)}`);
+        const msg = Object.values(data).flat().join(', ');
+        showToast.error(msg || 'Failed to create region');
       }
     } catch {
-      alert('Error creating region');
+      showToast.error('Error creating region. Please try again.');
     }
   };
 
@@ -89,34 +77,42 @@ function RegionManagement() {
       if (response.ok) {
         setShowEditModal(false);
         setSelectedRegion(null);
-        setFormData({ name: '', code: '', description: '', is_active: true });
+        setFormData({ name: '', description: '', is_active: true });
         fetchRegions();
-        alert('Region updated successfully!');
+        showToast.success('Region updated successfully!');
       } else {
         const data = await response.json();
-        alert(`Error: ${JSON.stringify(data)}`);
+        const msg = Object.values(data).flat().join(', ');
+        showToast.error(msg || 'Failed to update region');
       }
     } catch {
-      alert('Error updating region');
+      showToast.error('Error updating region. Please try again.');
     }
   };
 
-  const handleDelete = async (id) => {
-    if (!confirm('Are you sure you want to delete this region? All districts and hospitals under it will be affected.')) return;
+  const handleDelete = (id) => {
+    setConfirmDelete({ show: true, id });
+  };
+
+  const confirmDeleteAction = async () => {
     try {
-      const response = await apiCall(`/admin/regions/${id}/`, { method: 'DELETE' });
+      const response = await apiCall(`/admin/regions/${confirmDelete.id}/`, { method: 'DELETE' });
       if (response.ok) {
         fetchRegions();
-        alert('Region deleted successfully!');
+        showToast.success('Region deleted successfully!');
+      } else {
+        showToast.error('Failed to delete region');
       }
     } catch {
-      alert('Error deleting region');
+      showToast.error('Error deleting region. Please try again.');
+    } finally {
+      setConfirmDelete({ show: false, id: null });
     }
   };
 
   const openEditModal = (region) => {
     setSelectedRegion(region);
-    setFormData({ name: region.name, code: region.code, description: region.description || '', is_active: region.is_active });
+    setFormData({ name: region.name, description: region.description || '', is_active: region.is_active });
     setShowEditModal(true);
   };
 
@@ -126,7 +122,7 @@ function RegionManagement() {
   };
 
   return (
-    <DashboardLayout navItems={navItems} brandTitle="NEHR Admin" roleBadge="Administrator">
+    <DashboardLayout navItems={getNavForUser(user)} brandTitle={getBrandForUser(user)} roleBadge={getRoleBadge(user)}>
       <div className="container-fluid py-4">
         <div className="row mb-4">
           <div className="col-12">
@@ -135,10 +131,12 @@ function RegionManagement() {
                 <h1 className="h3 mb-0">Regions</h1>
                 <p className="text-muted mb-0">Manage geographical regions across the country</p>
               </div>
-              <button className="btn btn-primary"
-                onClick={() => { setFormData({ name: '', code: '', description: '', is_active: true }); setShowCreateModal(true); }}>
-                <i className="fas fa-plus me-2"></i>Add Region
-              </button>
+              {!isReadOnly && (
+                <button className="btn btn-primary"
+                  onClick={() => { setFormData({ name: '', description: '', is_active: true }); setShowCreateModal(true); }}>
+                  <i className="fas fa-plus me-2"></i>Add Region
+                </button>
+              )}
             </div>
           </div>
         </div>
@@ -175,28 +173,38 @@ function RegionManagement() {
                   {region.description && (
                     <p className="text-muted small mb-3">{region.description}</p>
                   )}
-                  <div className="row text-center mb-3">
-                    <div className="col-4">
+                  <div className="d-flex flex-wrap justify-content-between text-center mb-3 gap-2">
+                    <div style={{minWidth: '60px'}}>
                       <h5 className="mb-0 text-primary">{region.district_count || 0}</h5>
-                      <small className="text-muted">Districts</small>
+                      <small className="text-muted" style={{fontSize: '11px'}}>Districts</small>
                     </div>
-                    <div className="col-4">
+                    <div style={{minWidth: '60px'}}>
+                      <h5 className="mb-0 text-warning">{region.chiefdom_count || 0}</h5>
+                      <small className="text-muted" style={{fontSize: '11px'}}>Chiefdoms</small>
+                    </div>
+                    <div style={{minWidth: '60px'}}>
+                      <h5 className="mb-0 text-secondary">{region.town_count || 0}</h5>
+                      <small className="text-muted" style={{fontSize: '11px'}}>Towns</small>
+                    </div>
+                    <div style={{minWidth: '60px'}}>
                       <h5 className="mb-0 text-info">{region.hospital_count || 0}</h5>
-                      <small className="text-muted">Hospitals</small>
+                      <small className="text-muted" style={{fontSize: '11px'}}>Hospitals</small>
                     </div>
-                    <div className="col-4">
+                    <div style={{minWidth: '60px'}}>
                       <h5 className="mb-0 text-success">{region.staff_count || 0}</h5>
-                      <small className="text-muted">Staff</small>
+                      <small className="text-muted" style={{fontSize: '11px'}}>Staff</small>
                     </div>
                   </div>
-                  <div className="d-flex gap-2">
-                    <button className="btn btn-sm btn-outline-primary flex-fill" onClick={() => openEditModal(region)}>
-                      <i className="fas fa-edit me-1"></i>Edit
-                    </button>
-                    <button className="btn btn-sm btn-outline-danger" onClick={() => handleDelete(region.id)}>
-                      <i className="fas fa-trash"></i>
-                    </button>
-                  </div>
+                  {!isReadOnly && (
+                    <div className="d-flex gap-2">
+                      <button className="btn btn-sm btn-outline-primary flex-fill" onClick={() => openEditModal(region)}>
+                        <i className="fas fa-edit me-1"></i>Edit
+                      </button>
+                      <button className="btn btn-sm btn-outline-danger" onClick={() => handleDelete(region.id)}>
+                        <i className="fas fa-trash"></i>
+                      </button>
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
@@ -221,12 +229,17 @@ function RegionManagement() {
                       onChange={(e) => setFormData({ ...formData, name: e.target.value })} required
                       placeholder="e.g. Greater Accra Region" />
                   </div>
-                  <div className="mb-3">
-                    <label className="form-label">Region Code *</label>
-                    <input type="text" className="form-control" value={formData.code}
-                      onChange={(e) => setFormData({ ...formData, code: e.target.value })} required
-                      placeholder="e.g. GA" />
-                  </div>
+                  {formData.name && (
+                    <div className="mb-3">
+                      <label className="form-label text-muted" style={{fontSize: '13px'}}>Auto-generated Code</label>
+                      <div>
+                        <span className="badge bg-primary" style={{fontSize: '14px', padding: '8px 16px', letterSpacing: '1px'}}>
+                          <i className="fas fa-code me-1"></i>{generateRegionCode(formData.name)}
+                        </span>
+                        <small className="text-muted ms-2">Generated from name</small>
+                      </div>
+                    </div>
+                  )}
                   <div className="mb-3">
                     <label className="form-label">Description</label>
                     <textarea className="form-control" rows="2" value={formData.description}
@@ -260,9 +273,13 @@ function RegionManagement() {
                       onChange={(e) => setFormData({ ...formData, name: e.target.value })} required />
                   </div>
                   <div className="mb-3">
-                    <label className="form-label">Region Code *</label>
-                    <input type="text" className="form-control" value={formData.code}
-                      onChange={(e) => setFormData({ ...formData, code: e.target.value })} required />
+                    <label className="form-label text-muted" style={{fontSize: '13px'}}>Current Code</label>
+                    <div>
+                      <span className="badge bg-secondary" style={{fontSize: '14px', padding: '8px 16px', letterSpacing: '1px'}}>
+                        <i className="fas fa-code me-1"></i>{selectedRegion?.code}
+                      </span>
+                      <small className="text-muted ms-2">Code is set at creation</small>
+                    </div>
                   </div>
                   <div className="mb-3">
                     <label className="form-label">Description</label>
@@ -285,6 +302,15 @@ function RegionManagement() {
           </div>
         </div>
       )}
+      <ConfirmModal
+        show={confirmDelete.show}
+        title="Delete Region?"
+        message="This will permanently delete this region. All districts and hospitals under it will be affected."
+        confirmLabel="Delete"
+        variant="danger"
+        onConfirm={confirmDeleteAction}
+        onCancel={() => setConfirmDelete({ show: false, id: null })}
+      />
     </DashboardLayout>
   );
 }
