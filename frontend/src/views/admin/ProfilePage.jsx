@@ -353,7 +353,7 @@ function ProfilePage() {
                     </label>
                     <input type="text" className="form-control" value={formData.country}
                       onChange={(e) => setFormData({ ...formData, country: e.target.value })}
-                      placeholder="e.g. Ghana" />
+                      placeholder="e.g. Sierra Leone" />
                   </div>
                   <div className="col-md-6">
                     <label className="form-label fw-semibold">
@@ -361,7 +361,7 @@ function ProfilePage() {
                     </label>
                     <input type="text" className="form-control" value={formData.state}
                       onChange={(e) => setFormData({ ...formData, state: e.target.value })}
-                      placeholder="e.g. Ashanti Region" />
+                      placeholder="e.g. Western Area" />
                   </div>
                   <div className="col-md-6">
                     <label className="form-label fw-semibold">
@@ -369,7 +369,7 @@ function ProfilePage() {
                     </label>
                     <input type="text" className="form-control" value={formData.city}
                       onChange={(e) => setFormData({ ...formData, city: e.target.value })}
-                      placeholder="e.g. Kumasi" />
+                      placeholder="e.g. Freetown" />
                   </div>
                   <div className="col-md-12">
                     <label className="form-label fw-semibold">

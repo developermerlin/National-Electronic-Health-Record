@@ -1,4 +1,4 @@
-from userauths.models import Profile, User, Role, Permission, RolePermission, Region, District, Chiefdom, Town, Hospital, Department, Patient, Message
+from userauths.models import Profile, User, Role, Permission, RolePermission, Region, District, Chiefdom, Town, Hospital, Department, Patient, Message, Appointment
 
 # ===import jwt serializers for token===
 from django.contrib.auth.password_validation import validate_password
@@ -410,6 +410,9 @@ class PatientSerializer(serializers.ModelSerializer):
     blood_type_display = serializers.CharField(source='get_blood_type_display', read_only=True)
     status_display = serializers.CharField(source='get_status_display', read_only=True)
     marital_status_display = serializers.CharField(source='get_marital_status_display', read_only=True, default=None)
+    district_name = serializers.CharField(source='district.name', read_only=True, default=None)
+    chiefdom_name = serializers.CharField(source='chiefdom.name', read_only=True, default=None)
+    town_name = serializers.CharField(source='town.name', read_only=True, default=None)
 
     class Meta:
         model = Patient
@@ -424,6 +427,7 @@ class PatientCreateSerializer(serializers.ModelSerializer):
             'first_name', 'last_name', 'other_names', 'date_of_birth', 'gender',
             'marital_status', 'nationality', 'national_id', 'photo',
             'phone', 'alt_phone', 'email', 'address', 'city', 'region',
+            'district', 'chiefdom', 'town',
             'blood_type', 'allergies', 'chronic_conditions', 'disabilities',
             'insurance_provider', 'insurance_number', 'insurance_expiry',
             'next_of_kin_name', 'next_of_kin_phone', 'next_of_kin_relationship', 'next_of_kin_address',
@@ -438,6 +442,7 @@ class PatientUpdateSerializer(serializers.ModelSerializer):
             'first_name', 'last_name', 'other_names', 'date_of_birth', 'gender',
             'marital_status', 'nationality', 'national_id', 'photo',
             'phone', 'alt_phone', 'email', 'address', 'city', 'region',
+            'district', 'chiefdom', 'town',
             'blood_type', 'allergies', 'chronic_conditions', 'disabilities',
             'insurance_provider', 'insurance_number', 'insurance_expiry',
             'next_of_kin_name', 'next_of_kin_phone', 'next_of_kin_relationship', 'next_of_kin_address',
@@ -516,3 +521,134 @@ class MessageCreateSerializer(serializers.ModelSerializer):
         raise serializers.ValidationError(
             "You can only send messages to users in your hospital or department, or to administrators."
         )
+
+
+# ═══════════════════════════════════════════════════════════════
+# APPOINTMENT SERIALIZERS
+# ═══════════════════════════════════════════════════════════════
+
+class AppointmentUserSerializer(serializers.ModelSerializer):
+    """Minimal user info for appointment displays."""
+    class Meta:
+        model = User
+        fields = ['id', 'full_name', 'email', 'phone']
+
+
+class AppointmentPatientSerializer(serializers.ModelSerializer):
+    """Minimal patient info for appointment displays."""
+    full_name = serializers.CharField(read_only=True)
+
+    class Meta:
+        model = Patient
+        fields = ['id', 'patient_id', 'full_name', 'phone', 'email']
+
+
+class AppointmentSerializer(serializers.ModelSerializer):
+    """Full appointment data with nested relations."""
+    doctor = AppointmentUserSerializer(read_only=True)
+    patient = AppointmentPatientSerializer(read_only=True)
+    created_by = AppointmentUserSerializer(read_only=True)
+    checked_in_by = AppointmentUserSerializer(read_only=True)
+    hospital = serializers.StringRelatedField(read_only=True)
+    department = serializers.StringRelatedField(read_only=True)
+
+    class Meta:
+        model = Appointment
+        fields = [
+            'id', 'patient', 'doctor', 'hospital', 'department',
+            'scheduled_at', 'duration_minutes', 'status', 'priority',
+            'reason', 'notes',
+            'created_by', 'created_at',
+            'checked_in_at', 'checked_in_by',
+            'started_at', 'completed_at',
+            'cancelled_at', 'cancellation_reason',
+            'updated_at',
+        ]
+
+
+class AppointmentCreateSerializer(serializers.ModelSerializer):
+    """Serializer for creating new appointments."""
+    class Meta:
+        model = Appointment
+        fields = ['patient', 'doctor', 'scheduled_at', 'duration_minutes', 'priority', 'reason', 'notes']
+
+    def validate(self, attrs):
+        request = self.context.get('request')
+        user = request.user if request else None
+        if not user:
+            raise serializers.ValidationError("Authentication required.")
+
+        doctor = attrs.get('doctor')
+        patient = attrs.get('patient')
+
+        # Validate doctor belongs to user's hospital (for non-admins)
+        role = user.role.name if user.role else None
+        if role not in ('admin', 'ministry_admin'):
+            if user.hospital_id and doctor.hospital_id != user.hospital_id:
+                raise serializers.ValidationError("Doctor must belong to your hospital.")
+            if user.hospital_id and patient.hospital_id != user.hospital_id:
+                raise serializers.ValidationError("Patient must belong to your hospital.")
+
+        # Validate scheduled_at is in the future
+        from django.utils import timezone
+        if attrs.get('scheduled_at') and attrs['scheduled_at'] < timezone.now():
+            raise serializers.ValidationError("Appointment time must be in the future.")
+
+        return attrs
+
+    def create(self, validated_data):
+        request = self.context.get('request')
+        user = request.user if request else None
+
+        # Auto-set hospital and department from doctor
+        doctor = validated_data.get('doctor')
+        validated_data['hospital_id'] = doctor.hospital_id
+        validated_data['department_id'] = doctor.department_id
+        validated_data['created_by'] = user
+
+        return super().create(validated_data)
+
+
+class AppointmentStatusUpdateSerializer(serializers.ModelSerializer):
+    """Serializer for updating appointment status (check-in, complete, cancel, etc.)"""
+    class Meta:
+        model = Appointment
+        fields = ['status', 'cancellation_reason']
+
+    def validate(self, attrs):
+        request = self.context.get('request')
+        user = request.user if request else None
+        instance = self.instance
+        role = user.role.name if user.role else None
+
+        # Only doctor can set 'in_consultation' or 'completed'
+        if attrs.get('status') in ('in_consultation', 'completed'):
+            if role != 'doctor' and role not in ('admin', 'ministry_admin'):
+                raise serializers.ValidationError("Only doctors can start or complete consultations.")
+            if instance.doctor_id != user.id and role not in ('admin', 'ministry_admin'):
+                raise serializers.ValidationError("You can only manage your own appointments.")
+
+        # Receptionist/Admin can do check-in, cancel, no_show
+        if attrs.get('status') in ('checked_in', 'cancelled', 'no_show', 'scheduled'):
+            if role not in ('receptionist', 'admin', 'hospital_admin', 'ministry_admin') and user.hospital_id != instance.hospital_id:
+                raise serializers.ValidationError("You do not have permission to update this appointment status.")
+
+        return attrs
+
+    def update(self, instance, validated_data):
+        from django.utils import timezone
+        user = self.context['request'].user
+        new_status = validated_data.get('status')
+
+        # Set timestamps based on status transition
+        if new_status == 'checked_in' and instance.status != 'checked_in':
+            instance.checked_in_at = timezone.now()
+            instance.checked_in_by = user
+        elif new_status == 'in_consultation' and instance.status != 'in_consultation':
+            instance.started_at = timezone.now()
+        elif new_status == 'completed' and instance.status != 'completed':
+            instance.completed_at = timezone.now()
+        elif new_status == 'cancelled' and instance.status != 'cancelled':
+            instance.cancelled_at = timezone.now()
+
+        return super().update(instance, validated_data)

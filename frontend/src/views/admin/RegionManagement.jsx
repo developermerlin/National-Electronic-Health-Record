@@ -227,7 +227,7 @@ function RegionManagement() {
                     <label className="form-label">Region Name *</label>
                     <input type="text" className="form-control" value={formData.name}
                       onChange={(e) => setFormData({ ...formData, name: e.target.value })} required
-                      placeholder="e.g. Greater Accra Region" />
+                      placeholder="e.g. Western Area Region" />
                   </div>
                   {formData.name && (
                     <div className="mb-3">

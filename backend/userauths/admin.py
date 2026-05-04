@@ -1,5 +1,5 @@
 from django.contrib import admin
-from userauths.models import User, Profile, Role, Permission, RolePermission, Region, District, Chiefdom, Town, Hospital, Department, Patient
+from userauths.models import User, Profile, Role, Permission, RolePermission, Region, District, Chiefdom, Town, Hospital, Department, Patient, Appointment, Message
 
 class UserAdmin(admin.ModelAdmin):
     search_fields  = ['full_name', 'username', 'email',  'phone', 'employee_id']
@@ -89,6 +89,17 @@ class PatientAdmin(admin.ModelAdmin):
     list_filter = ['gender', 'blood_type', 'status', 'hospital', 'created_at']
     readonly_fields = ['patient_id']
 
+class AppointmentAdmin(admin.ModelAdmin):
+    list_display = ['patient', 'doctor', 'hospital', 'scheduled_at', 'status', 'priority', 'created_at']
+    search_fields = ['patient__first_name', 'patient__last_name', 'doctor__full_name', 'patient__patient_id']
+    list_filter = ['status', 'priority', 'hospital', 'scheduled_at']
+    readonly_fields = ['created_at', 'updated_at']
+
+class MessageAdmin(admin.ModelAdmin):
+    list_display = ['sender', 'recipient', 'subject', 'is_read', 'created_at']
+    search_fields = ['sender__full_name', 'recipient__full_name', 'subject', 'body']
+    list_filter = ['is_read', 'created_at']
+
 admin.site.register(User, UserAdmin)
 admin.site.register(Profile, ProfileAdmin)
 admin.site.register(Role, RoleAdmin)
@@ -101,3 +112,5 @@ admin.site.register(Town, TownAdmin)
 admin.site.register(Hospital, HospitalAdmin)
 admin.site.register(Department, DepartmentAdmin)
 admin.site.register(Patient, PatientAdmin)
+admin.site.register(Appointment, AppointmentAdmin)
+admin.site.register(Message, MessageAdmin)

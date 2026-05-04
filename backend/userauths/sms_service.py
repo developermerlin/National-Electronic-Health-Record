@@ -104,3 +104,58 @@ def send_message_sms(message):
     preview = (message.body or '').strip().replace('\n', ' ')[:100]
     sms_body = f"[NEHR] New message from {sender_name}: {preview}... Login to reply."
     return send_sms(recipient.phone, sms_body)
+
+
+def send_appointment_sms(appointment, action='created'):
+    """
+    Send SMS notification for appointment events.
+    
+    Actions:
+      - 'created': Appointment booked confirmation
+      - 'reminder': Day-before reminder
+      - 'cancelled': Appointment cancelled
+      
+    Respects patient notification preferences if implemented.
+    """
+    patient = appointment.patient
+    if not patient or not patient.phone:
+        return False
+    
+    patient_name = patient.full_name or 'Patient'
+    hospital_name = appointment.hospital.name if appointment.hospital else 'the hospital'
+    doctor_name = appointment.doctor.full_name if appointment.doctor else 'a doctor'
+    
+    if action == 'created':
+        from django.utils import timezone
+        apt_time = timezone.localtime(appointment.scheduled_at)
+        date_str = apt_time.strftime('%d %b %Y')
+        time_str = apt_time.strftime('%I:%M %p')
+        
+        sms_body = (
+            f"[NEHR] Hi {patient_name}, your appointment with Dr. {doctor_name} "
+            f"at {hospital_name} is confirmed for {date_str} at {time_str}. "
+            f"Please arrive 15 mins early. Reply NO to cancel."
+        )
+        
+    elif action == 'cancelled':
+        reason = appointment.cancellation_reason or 'Cancelled by hospital'
+        sms_body = (
+            f"[NEHR] Hi {patient_name}, your appointment with Dr. {doctor_name} "
+            f"at {hospital_name} has been CANCELLED. Reason: {reason}. "
+            f"Please call to reschedule."
+        )
+        
+    elif action == 'reminder':
+        from django.utils import timezone
+        apt_time = timezone.localtime(appointment.scheduled_at)
+        time_str = apt_time.strftime('%I:%M %p')
+        
+        sms_body = (
+            f"[NEHR] Reminder: You have an appointment tomorrow at {time_str} "
+            f"with Dr. {doctor_name} at {hospital_name}. See you there!"
+        )
+        
+    else:
+        return False
+    
+    return send_sms(patient.phone, sms_body)

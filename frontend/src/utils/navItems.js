@@ -108,10 +108,40 @@ const receptionistNav = [
   },
 ];
 
+const doctorNav = [
+  {
+    label: 'Dashboard',
+    items: [
+      { path: '/doctor/dashboard', icon: 'fas fa-tachometer-alt', text: 'Overview' },
+    ],
+  },
+  {
+    label: 'Patients',
+    items: [
+      { path: '/doctor/queue', icon: 'fas fa-list-ol', text: 'My Queue' },
+      { path: '/doctor/patients', icon: 'fas fa-users', text: 'My Patients' },
+    ],
+  },
+  {
+    label: 'Communication',
+    items: [
+      { path: '/chat', icon: 'fas fa-comments', text: 'Live Chat' },
+      { path: '/messages', icon: 'fas fa-envelope', text: 'Messages' },
+    ],
+  },
+  {
+    label: 'Account',
+    items: [
+      { path: '/admin/profile', icon: 'fas fa-user-circle', text: 'My Profile' },
+    ],
+  },
+];
+
 export function getNavForUser(user) {
   const role = user?.role;
   if (role === 'ministry_admin') return ministryNav;
   if (role === 'receptionist') return receptionistNav;
+  if (role === 'doctor') return doctorNav;
   return adminNav;
 }
 
@@ -119,6 +149,7 @@ export function getBrandForUser(user) {
   const role = user?.role;
   if (role === 'ministry_admin') return 'NEHR Ministry';
   if (role === 'receptionist') return 'NEHR System';
+  if (role === 'doctor') return 'NEHR Clinic';
   return 'NEHR Admin';
 }
 
@@ -134,4 +165,4 @@ export function getRoleBadge(user) {
   return 'User';
 }
 
-export { ministryNav, adminNav, receptionistNav };
+export { ministryNav, adminNav, receptionistNav, doctorNav };

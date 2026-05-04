@@ -19,6 +19,9 @@ import ProfilePage from './views/admin/ProfilePage';
 import ReceptDashboard from './views/auth/ReceptDashboard';
 import PatientList from './views/receptionist/PatientList';
 import PatientRegister from './views/receptionist/PatientRegister';
+import ReceptionistAppointments from './views/receptionist/ReceptionistAppointments';
+import DoctorQueue from './views/doctor/DoctorQueue';
+import DoctorDashboard from './views/doctor/DoctorDashboard';
 import MessagesPage from './views/messages/MessagesPage';
 import LiveChatPage from './views/messages/LiveChatPage';
 import { AuthProvider, useAuth } from './context/AuthContext';
@@ -147,6 +150,23 @@ function AppContent() {
         <Route path="/receptionist/patients/register" element={
           <ProtectedRoute allowedRoles={['admin', 'receptionist', 'hospital_admin']}>
             <PatientRegister />
+          </ProtectedRoute>
+        } />
+        <Route path="/receptionist/appointments" element={
+          <ProtectedRoute allowedRoles={['admin', 'receptionist', 'hospital_admin']}>
+            <ReceptionistAppointments />
+          </ProtectedRoute>
+        } />
+
+        {/* Doctor Routes */}
+        <Route path="/doctor/dashboard" element={
+          <ProtectedRoute allowedRoles={['doctor', 'admin', 'hospital_admin']}>
+            <DoctorDashboard />
+          </ProtectedRoute>
+        } />
+        <Route path="/doctor/queue" element={
+          <ProtectedRoute allowedRoles={['doctor', 'admin', 'hospital_admin']}>
+            <DoctorQueue />
           </ProtectedRoute>
         } />
       </Routes>

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import DashboardLayout from '../../layout/DashboardLayout';
@@ -40,7 +40,7 @@ const initialFormData = {
   date_of_birth: '',
   gender: '',
   marital_status: '',
-  nationality: 'Ghanaian',
+  nationality: 'Sierra Leonean',
   national_id: '',
   phone: '',
   alt_phone: '',
@@ -48,6 +48,9 @@ const initialFormData = {
   address: '',
   city: '',
   region: '',
+  district: '',
+  chiefdom: '',
+  town: '',
   blood_type: 'unknown',
   allergies: '',
   chronic_conditions: '',
@@ -55,14 +58,33 @@ const initialFormData = {
   insurance_provider: '',
   insurance_number: '',
   insurance_expiry: '',
-  next_of_kin_name: '',
-  next_of_kin_phone: '',
-  next_of_kin_relationship: '',
-  next_of_kin_address: '',
   emergency_contact_name: '',
   emergency_contact_phone: '',
   emergency_contact_relationship: '',
 };
+
+function calculateAge(dob) {
+  if (!dob) return null;
+  const birthDate = new Date(dob);
+  const today = new Date();
+  if (isNaN(birthDate.getTime()) || birthDate > today) return null;
+  let years = today.getFullYear() - birthDate.getFullYear();
+  let months = today.getMonth() - birthDate.getMonth();
+  let days = today.getDate() - birthDate.getDate();
+  if (days < 0) {
+    months--;
+    const prevMonth = new Date(today.getFullYear(), today.getMonth(), 0);
+    days += prevMonth.getDate();
+  }
+  if (months < 0) {
+    years--;
+    months += 12;
+  }
+  if (years >= 2) return `${years} years`;
+  if (years === 1) return months > 0 ? `1 year, ${months} mo` : '1 year';
+  if (months >= 1) return days > 0 ? `${months} mo, ${days} days` : `${months} mo`;
+  return `${days} day${days !== 1 ? 's' : ''}`;
+}
 
 function PatientRegister() {
   const { apiCall } = useAuth();
@@ -72,9 +94,160 @@ function PatientRegister() {
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [step, setStep] = useState(1);
+  const computedAge = calculateAge(formData.date_of_birth);
+
+  // Camera / photo capture
+  const [photoPreview, setPhotoPreview] = useState(null);
+  const [photoFile, setPhotoFile] = useState(null);
+  const [cameraActive, setCameraActive] = useState(false);
+  const videoRef = useRef(null);
+  const canvasRef = useRef(null);
+  const streamRef = useRef(null);
+
+  const startCamera = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user', width: 640, height: 480 } });
+      streamRef.current = stream;
+      setCameraActive(true); // render <video> first, then attach stream in useEffect
+    } catch {
+      setError('Unable to access camera. Please check permissions or use file upload instead.');
+    }
+  };
+
+  // After cameraActive becomes true the <video> element is in the DOM — attach the stream
+  useEffect(() => {
+    if (cameraActive && videoRef.current && streamRef.current) {
+      videoRef.current.srcObject = streamRef.current;
+      videoRef.current.play().catch(() => {});
+    }
+  }, [cameraActive]);
+
+  const capturePhoto = () => {
+    if (!videoRef.current || !canvasRef.current) return;
+    const canvas = canvasRef.current;
+    const video = videoRef.current;
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    canvas.getContext('2d').drawImage(video, 0, 0);
+    canvas.toBlob((blob) => {
+      if (blob) {
+        const file = new File([blob], `patient-photo-${Date.now()}.jpg`, { type: 'image/jpeg' });
+        setPhotoFile(file);
+        setPhotoPreview(URL.createObjectURL(blob));
+      }
+    }, 'image/jpeg', 0.85);
+    stopCamera();
+  };
+
+  const stopCamera = () => {
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach(t => t.stop());
+      streamRef.current = null;
+    }
+    setCameraActive(false);
+  };
+
+  const handleFileUpload = (e) => {
+    const file = e.target.files[0];
+    if (file) {
+      setPhotoFile(file);
+      setPhotoPreview(URL.createObjectURL(file));
+    }
+  };
+
+  const removePhoto = () => {
+    setPhotoFile(null);
+    setPhotoPreview(null);
+  };
+
+  // Geographic cascading dropdowns
+  const [regions, setRegions] = useState([]);
+  const [districts, setDistricts] = useState([]);
+  const [chiefdoms, setChiefdoms] = useState([]);
+  const [towns, setTowns] = useState([]);
+
+  // Fetch regions on mount
+  useEffect(() => {
+    const fetchRegions = async () => {
+      try {
+        const res = await apiCall('/admin/regions/');
+        if (res.ok) {
+          const data = await res.json();
+          setRegions(Array.isArray(data) ? data : data.results || []);
+        }
+      } catch { /* ignore */ }
+    };
+    fetchRegions();
+  }, [apiCall]);
+
+  // Fetch districts when region changes
+  const fetchDistricts = useCallback(async (regionId) => {
+    if (!regionId) { setDistricts([]); setChiefdoms([]); setTowns([]); return; }
+    try {
+      const res = await apiCall(`/admin/districts/?region=${regionId}`);
+      if (res.ok) {
+        const data = await res.json();
+        setDistricts(Array.isArray(data) ? data : data.results || []);
+      }
+    } catch { /* ignore */ }
+    setChiefdoms([]);
+    setTowns([]);
+  }, [apiCall]);
+
+  // Fetch chiefdoms when district changes
+  const fetchChiefdoms = useCallback(async (districtId) => {
+    if (!districtId) { setChiefdoms([]); setTowns([]); return; }
+    try {
+      const res = await apiCall(`/admin/chiefdoms/?district=${districtId}`);
+      if (res.ok) {
+        const data = await res.json();
+        setChiefdoms(Array.isArray(data) ? data : data.results || []);
+      }
+    } catch { /* ignore */ }
+    setTowns([]);
+  }, [apiCall]);
+
+  // Fetch towns when chiefdom changes
+  const fetchTowns = useCallback(async (districtId, chiefdomId) => {
+    if (!districtId) { setTowns([]); return; }
+    try {
+      let url = `/admin/towns/?district=${districtId}`;
+      if (chiefdomId) url += `&chiefdom=${chiefdomId}`;
+      const res = await apiCall(url);
+      if (res.ok) {
+        const data = await res.json();
+        setTowns(Array.isArray(data) ? data : data.results || []);
+      }
+    } catch { /* ignore */ }
+  }, [apiCall]);
 
   const handleChange = (e) => {
     setFormData({ ...formData, [e.target.name]: e.target.value });
+  };
+
+  const handleRegionChange = (e) => {
+    const regionId = e.target.value;
+    // Find region name text
+    const regionObj = regions.find(r => String(r.id) === String(regionId));
+    setFormData({ ...formData, region: regionObj ? regionObj.name : '', district: '', chiefdom: '', town: '' });
+    fetchDistricts(regionId);
+  };
+
+  const handleDistrictChange = (e) => {
+    const districtId = e.target.value;
+    setFormData({ ...formData, district: districtId, chiefdom: '', town: '' });
+    fetchChiefdoms(districtId);
+    fetchTowns(districtId, '');
+  };
+
+  const handleChiefdomChange = (e) => {
+    const chiefdomId = e.target.value;
+    setFormData({ ...formData, chiefdom: chiefdomId, town: '' });
+    fetchTowns(formData.district, chiefdomId);
+  };
+
+  const handleTownChange = (e) => {
+    setFormData({ ...formData, town: e.target.value });
   };
 
   const handleSubmit = async (e) => {
@@ -91,10 +264,15 @@ function PatientRegister() {
 
     try {
       setSaving(true);
+      const fd = new FormData();
+      Object.entries(formData).forEach(([key, val]) => {
+        if (val !== '' && val !== null && val !== undefined) fd.append(key, val);
+      });
+      if (photoFile) fd.append('photo', photoFile);
       const response = await apiCall('/patients/', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(formData),
+        body: fd,
+        isFormData: true,
       });
       const data = await response.json();
       if (response.ok) {
@@ -121,7 +299,7 @@ function PatientRegister() {
       }
       setError('');
     }
-    setStep(s => Math.min(s + 1, 4));
+    setStep(s => Math.min(s + 1, 3));
   };
   const prevStep = () => setStep(s => Math.max(s - 1, 1));
 
@@ -145,7 +323,6 @@ function PatientRegister() {
               { num: 1, label: 'Personal Info', icon: 'fas fa-user' },
               { num: 2, label: 'Contact & Address', icon: 'fas fa-map-marker-alt' },
               { num: 3, label: 'Medical & Insurance', icon: 'fas fa-heartbeat' },
-              { num: 4, label: 'Next of Kin', icon: 'fas fa-user-friends' },
             ].map((s, i) => (
               <div key={s.num} className="text-center" style={{flex: 1, position: 'relative'}}>
                 <div
@@ -163,7 +340,7 @@ function PatientRegister() {
                 <small style={{fontSize: '11px', color: step >= s.num ? '#4361ee' : '#6c757d', fontWeight: step === s.num ? 600 : 400}}>
                   {s.label}
                 </small>
-                {i < 3 && (
+                {i < 2 && (
                   <div style={{
                     position: 'absolute', top: '20px', left: '60%', width: '80%', height: '2px',
                     background: step > s.num ? '#4361ee' : '#e9ecef',
@@ -212,7 +389,14 @@ function PatientRegister() {
                 </div>
                 <div className="col-md-4">
                   <label className="form-label">Date of Birth <span className="text-danger">*</span></label>
-                  <input type="date" className="form-control" name="date_of_birth" value={formData.date_of_birth} onChange={handleChange} required />
+                  <input type="date" className="form-control" name="date_of_birth" value={formData.date_of_birth} onChange={handleChange} max={new Date().toISOString().split('T')[0]} required />
+                  {computedAge && (
+                    <div className="mt-1">
+                      <span className="badge bg-info text-dark" style={{fontSize: '12px'}}>
+                        <i className="fas fa-birthday-cake me-1"></i>Age: {computedAge}
+                      </span>
+                    </div>
+                  )}
                 </div>
                 <div className="col-md-4">
                   <label className="form-label">Gender <span className="text-danger">*</span></label>
@@ -238,14 +422,76 @@ function PatientRegister() {
                   <input type="text" className="form-control" name="nationality" value={formData.nationality} onChange={handleChange} />
                 </div>
                 <div className="col-md-4">
-                  <label className="form-label">National ID (Ghana Card)</label>
+                  <label className="form-label">National ID (NIN)</label>
                   <input type="text" className="form-control" name="national_id" value={formData.national_id} onChange={handleChange}
-                    placeholder="GHA-XXXXXXXXX-X" />
+                    placeholder="e.g. 1234567890" />
                 </div>
                 <div className="col-md-4">
                   <label className="form-label">Phone <span className="text-danger">*</span></label>
                   <input type="tel" className="form-control" name="phone" value={formData.phone} onChange={handleChange} required
-                    placeholder="02XXXXXXXX" />
+                    placeholder="e.g. 076 123 456" />
+                </div>
+
+                {/* Patient Photo Capture */}
+                <div className="col-12">
+                  <hr className="mt-3" />
+                  <h6 className="mb-3"><i className="fas fa-camera me-2 text-primary"></i>Patient Photo</h6>
+                  <div className="d-flex align-items-start gap-3 flex-wrap">
+                    {/* Preview / Camera area */}
+                    <div style={{
+                      width: cameraActive ? '100%' : '200px',
+                      maxWidth: '480px',
+                      minHeight: cameraActive ? '360px' : '160px',
+                      border: '2px solid ' + (cameraActive ? '#4361ee' : '#dee2e6'),
+                      borderRadius: '12px',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      overflow: 'hidden', background: '#000', position: 'relative',
+                      transition: 'all 0.3s',
+                    }}>
+                      {cameraActive ? (
+                        <video ref={videoRef} autoPlay playsInline muted
+                          style={{width: '100%', height: '100%', objectFit: 'contain', display: 'block'}} />
+                      ) : photoPreview ? (
+                        <img src={photoPreview} alt="Patient" style={{width: '100%', height: '100%', objectFit: 'cover', borderRadius: '10px'}} />
+                      ) : (
+                        <div className="text-center text-muted" style={{padding: '20px', background: '#f8f9fa', width: '100%', height: '100%',
+                          display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center'}}>
+                          <i className="fas fa-user-circle" style={{fontSize: '48px', opacity: 0.3}}></i>
+                          <div style={{fontSize: '11px', marginTop: '6px'}}>No photo</div>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Controls */}
+                    <div className="d-flex flex-column gap-2">
+                      {!cameraActive ? (
+                        <>
+                          <button type="button" className="btn btn-outline-primary btn-sm" onClick={startCamera}>
+                            <i className="fas fa-camera me-1"></i>Open Camera
+                          </button>
+                          <label className="btn btn-outline-secondary btn-sm mb-0" style={{cursor: 'pointer'}}>
+                            <i className="fas fa-upload me-1"></i>Upload Photo
+                            <input type="file" accept="image/*" onChange={handleFileUpload} hidden />
+                          </label>
+                          {photoPreview && (
+                            <button type="button" className="btn btn-outline-danger btn-sm" onClick={removePhoto}>
+                              <i className="fas fa-trash me-1"></i>Remove
+                            </button>
+                          )}
+                        </>
+                      ) : (
+                        <>
+                          <button type="button" className="btn btn-success btn-sm" onClick={capturePhoto}>
+                            <i className="fas fa-circle me-1"></i>Capture
+                          </button>
+                          <button type="button" className="btn btn-outline-secondary btn-sm" onClick={stopCamera}>
+                            <i className="fas fa-times me-1"></i>Cancel
+                          </button>
+                        </>
+                      )}
+                    </div>
+                    <canvas ref={canvasRef} style={{display: 'none'}} />
+                  </div>
                 </div>
               </div>
             </div>
@@ -273,31 +519,59 @@ function PatientRegister() {
                   <textarea className="form-control" name="address" value={formData.address} onChange={handleChange} rows="2"
                     placeholder="House number, street, landmark"></textarea>
                 </div>
-                <div className="col-md-6">
-                  <label className="form-label">City / Town</label>
-                  <input type="text" className="form-control" name="city" value={formData.city} onChange={handleChange} />
-                </div>
+
+                {/* Region dropdown - fetched from API */}
                 <div className="col-md-6">
                   <label className="form-label">Region</label>
-                  <select className="form-select" name="region" value={formData.region} onChange={handleChange}>
+                  <select className="form-select" onChange={handleRegionChange}
+                    value={regions.find(r => r.name === formData.region)?.id || ''}>
                     <option value="">Select Region</option>
-                    <option value="Greater Accra">Greater Accra</option>
-                    <option value="Ashanti">Ashanti</option>
-                    <option value="Western">Western</option>
-                    <option value="Eastern">Eastern</option>
-                    <option value="Central">Central</option>
-                    <option value="Northern">Northern</option>
-                    <option value="Volta">Volta</option>
-                    <option value="Upper East">Upper East</option>
-                    <option value="Upper West">Upper West</option>
-                    <option value="Brong Ahafo">Brong Ahafo</option>
-                    <option value="Western North">Western North</option>
-                    <option value="Ahafo">Ahafo</option>
-                    <option value="Bono East">Bono East</option>
-                    <option value="Oti">Oti</option>
-                    <option value="North East">North East</option>
-                    <option value="Savannah">Savannah</option>
+                    {regions.map(r => (
+                      <option key={r.id} value={r.id}>{r.name}</option>
+                    ))}
                   </select>
+                </div>
+
+                {/* District dropdown - loads when region selected */}
+                <div className="col-md-6">
+                  <label className="form-label">District</label>
+                  <select className="form-select" onChange={handleDistrictChange} value={formData.district}
+                    disabled={districts.length === 0}>
+                    <option value="">{districts.length === 0 ? 'Select Region first' : 'Select District'}</option>
+                    {districts.map(d => (
+                      <option key={d.id} value={d.id}>{d.name}</option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Chiefdom dropdown - loads when district selected */}
+                <div className="col-md-6">
+                  <label className="form-label">Chiefdom</label>
+                  <select className="form-select" onChange={handleChiefdomChange} value={formData.chiefdom}
+                    disabled={chiefdoms.length === 0}>
+                    <option value="">{chiefdoms.length === 0 ? 'Select District first' : 'Select Chiefdom'}</option>
+                    {chiefdoms.map(c => (
+                      <option key={c.id} value={c.id}>{c.name}</option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Town dropdown - loads when district/chiefdom selected */}
+                <div className="col-md-6">
+                  <label className="form-label">Town</label>
+                  <select className="form-select" onChange={handleTownChange} value={formData.town}
+                    disabled={towns.length === 0}>
+                    <option value="">{towns.length === 0 ? 'Select District first' : 'Select Town'}</option>
+                    {towns.map(t => (
+                      <option key={t.id} value={t.id}>{t.name}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="col-md-6">
+                  <label className="form-label">City / Town (text)</label>
+                  <input type="text" className="form-control" name="city" value={formData.city} onChange={handleChange}
+                    placeholder="Optional: type if not in dropdown" />
                 </div>
               </div>
             </div>
@@ -344,7 +618,7 @@ function PatientRegister() {
                   <label className="form-label">Insurance Provider</label>
                   <select className="form-select" name="insurance_provider" value={formData.insurance_provider} onChange={handleChange}>
                     <option value="">No Insurance</option>
-                    <option value="NHIS">NHIS (National Health Insurance)</option>
+                    <option value="SLeSHI">SLeSHI (Sierra Leone Social Health Insurance)</option>
                     <option value="Private">Private Insurance</option>
                     <option value="Company">Company Insurance</option>
                     <option value="Other">Other</option>
@@ -358,49 +632,9 @@ function PatientRegister() {
                   <label className="form-label">Expiry Date</label>
                   <input type="date" className="form-control" name="insurance_expiry" value={formData.insurance_expiry} onChange={handleChange} />
                 </div>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Step 4: Next of Kin & Emergency */}
-        {step === 4 && (
-          <div className="dash-card">
-            <div className="dash-card-header">
-              <h6><i className="fas fa-user-friends me-2"></i>Next of Kin & Emergency Contact</h6>
-            </div>
-            <div className="dash-card-body">
-              <div className="row g-3">
-                <h6 className="mb-0 text-primary">Next of Kin</h6>
-                <div className="col-md-4">
-                  <label className="form-label">Full Name</label>
-                  <input type="text" className="form-control" name="next_of_kin_name" value={formData.next_of_kin_name} onChange={handleChange} />
-                </div>
-                <div className="col-md-4">
-                  <label className="form-label">Phone Number</label>
-                  <input type="tel" className="form-control" name="next_of_kin_phone" value={formData.next_of_kin_phone} onChange={handleChange} />
-                </div>
-                <div className="col-md-4">
-                  <label className="form-label">Relationship</label>
-                  <select className="form-select" name="next_of_kin_relationship" value={formData.next_of_kin_relationship} onChange={handleChange}>
-                    <option value="">Select</option>
-                    <option value="Spouse">Spouse</option>
-                    <option value="Parent">Parent</option>
-                    <option value="Child">Child</option>
-                    <option value="Sibling">Sibling</option>
-                    <option value="Guardian">Guardian</option>
-                    <option value="Friend">Friend</option>
-                    <option value="Other">Other</option>
-                  </select>
-                </div>
-                <div className="col-md-12">
-                  <label className="form-label">Address</label>
-                  <input type="text" className="form-control" name="next_of_kin_address" value={formData.next_of_kin_address} onChange={handleChange} />
-                </div>
 
                 <hr className="mt-4" />
-                <h6 className="mb-0 text-danger">Emergency Contact</h6>
-                <p className="text-muted" style={{fontSize: '12px', marginTop: '2px'}}>If different from next of kin</p>
+                <h6 className="mb-0"><i className="fas fa-phone-alt me-2 text-danger"></i>Emergency Contact</h6>
                 <div className="col-md-4">
                   <label className="form-label">Full Name</label>
                   <input type="text" className="form-control" name="emergency_contact_name" value={formData.emergency_contact_name} onChange={handleChange} />
@@ -435,7 +669,7 @@ function PatientRegister() {
             </button>
           ) : <div></div>}
 
-          {step < 4 ? (
+          {step < 3 ? (
             <button type="button" className="btn btn-primary" onClick={nextStep}>
               Next <i className="fas fa-arrow-right ms-1"></i>
             </button>

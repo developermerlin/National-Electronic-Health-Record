@@ -5,6 +5,7 @@ from userauths import admin_views
 from userauths import patient_views
 from userauths import social_auth_views
 from userauths import message_views
+from userauths import appointment_views
 
 # from store import views as store_views
 # from customer import views as customer_views
@@ -23,6 +24,7 @@ router.register(r'admin/departments', admin_views.DepartmentViewSet, basename='d
 router.register(r'admin/chiefdoms', admin_views.ChiefdomViewSet, basename='chiefdom-management')
 router.register(r'admin/towns', admin_views.TownViewSet, basename='town-management')
 router.register(r'patients', patient_views.PatientViewSet, basename='patient-management')
+router.register(r'appointments', appointment_views.AppointmentViewSet, basename='appointment-management')
 
 urlpatterns = [
     # Include router URLs

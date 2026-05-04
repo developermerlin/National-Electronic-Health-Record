@@ -487,7 +487,7 @@ function PatientList() {
                     <label className="form-label">Provider</label>
                     <input type="text" className="form-control" value={editForm.insurance_provider}
                       onChange={(e) => setEditForm({...editForm, insurance_provider: e.target.value})}
-                      placeholder="e.g. NHIS" />
+                      placeholder="e.g. SLeSHI" />
                   </div>
                   <div className="col-md-4">
                     <label className="form-label">Number</label>

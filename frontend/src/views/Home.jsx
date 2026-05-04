@@ -1,10 +1,29 @@
-import React from 'react'
+import React, { useEffect } from 'react'
 import Header from './base/Header';
 import Footer from './base/Footer';
 import useTemplateScripts from '../hooks/useTemplateScripts';
+import { useAuth } from '../context/AuthContext';
+import { useNavigate } from 'react-router-dom';
 
 function Home() {
   useTemplateScripts();
+  const { user } = useAuth();
+  const navigate = useNavigate();
+
+  useEffect(() => {
+    if (user && user.role) {
+      if (user.role === 'admin' || user.role === 'hospital_admin') {
+        navigate('/admin/dashboard');
+      } else if (user.role === 'ministry_admin' || user.role === 'district_admin') {
+        navigate('/ministry/dashboard');
+      } else if (user.role === 'receptionist') {
+        navigate('/receptionist/dashboard');
+      } else if (user.role === 'doctor') {
+        navigate('/doctor/dashboard');
+      }
+    }
+  }, [user, navigate]);
+
   
   return (
 

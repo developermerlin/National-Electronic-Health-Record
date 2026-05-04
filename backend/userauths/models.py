@@ -545,8 +545,8 @@ class Patient(models.Model):
     date_of_birth = models.DateField()
     gender = models.CharField(max_length=10, choices=GENDER_CHOICES)
     marital_status = models.CharField(max_length=20, choices=MARITAL_STATUS_CHOICES, blank=True, null=True)
-    nationality = models.CharField(max_length=100, default='Ghanaian')
-    national_id = models.CharField(max_length=50, blank=True, null=True, help_text='Ghana Card / National ID number')
+    nationality = models.CharField(max_length=100, default='Sierra Leonean')
+    national_id = models.CharField(max_length=50, blank=True, null=True, help_text='NIN / National Identification Number')
     photo = models.ImageField(upload_to='patients/photos/', blank=True, null=True)
 
     # Contact
@@ -556,6 +556,9 @@ class Patient(models.Model):
     address = models.TextField(blank=True, null=True)
     city = models.CharField(max_length=200, blank=True, null=True)
     region = models.CharField(max_length=200, blank=True, null=True)
+    district = models.ForeignKey(District, on_delete=models.SET_NULL, null=True, blank=True, related_name='patients')
+    chiefdom = models.ForeignKey(Chiefdom, on_delete=models.SET_NULL, null=True, blank=True, related_name='patients')
+    town = models.ForeignKey(Town, on_delete=models.SET_NULL, null=True, blank=True, related_name='patients')
 
     # Medical
     blood_type = models.CharField(max_length=10, choices=BLOOD_TYPE_CHOICES, default='unknown')
@@ -564,7 +567,7 @@ class Patient(models.Model):
     disabilities = models.TextField(blank=True, null=True)
 
     # Insurance
-    insurance_provider = models.CharField(max_length=200, blank=True, null=True, help_text='e.g. NHIS, Private')
+    insurance_provider = models.CharField(max_length=200, blank=True, null=True, help_text='e.g. SLeSHI, Private')
     insurance_number = models.CharField(max_length=100, blank=True, null=True)
     insurance_expiry = models.DateField(blank=True, null=True)
 
@@ -632,6 +635,70 @@ class Patient(models.Model):
 #         return mark_safe('<img src="/media/%s" width="50" height="50" object-fit:"cover" style="border-radius: 30px; object-fit: cover;" />' % (self.image))
     
     
+# ═══════════════════════════════════════════════════════════════
+# APPOINTMENTS
+# ═══════════════════════════════════════════════════════════════
+
+class Appointment(models.Model):
+    """A scheduled appointment between a patient and a doctor at a hospital."""
+
+    STATUS_CHOICES = [
+        ('scheduled', 'Scheduled'),
+        ('checked_in', 'Checked In'),
+        ('in_consultation', 'In Consultation'),
+        ('completed', 'Completed'),
+        ('cancelled', 'Cancelled'),
+        ('no_show', 'No Show'),
+    ]
+
+    PRIORITY_CHOICES = [
+        ('normal', 'Normal'),
+        ('urgent', 'Urgent'),
+        ('emergency', 'Emergency'),
+    ]
+
+    patient = models.ForeignKey(Patient, on_delete=models.CASCADE, related_name='appointments')
+    doctor = models.ForeignKey(User, on_delete=models.CASCADE, related_name='doctor_appointments',
+                               help_text='Assigned doctor')
+    hospital = models.ForeignKey(Hospital, on_delete=models.CASCADE, related_name='appointments')
+    department = models.ForeignKey(Department, on_delete=models.SET_NULL, null=True, blank=True,
+                                    related_name='appointments')
+
+    scheduled_at = models.DateTimeField(help_text='Appointment date and time')
+    duration_minutes = models.PositiveIntegerField(default=30)
+
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='scheduled')
+    priority = models.CharField(max_length=10, choices=PRIORITY_CHOICES, default='normal')
+
+    reason = models.TextField(blank=True, help_text='Chief complaint / reason for visit')
+    notes = models.TextField(blank=True, help_text='Receptionist/staff notes')
+
+    created_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True,
+                                    related_name='created_appointments')
+    checked_in_at = models.DateTimeField(null=True, blank=True)
+    checked_in_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True,
+                                       related_name='checked_in_appointments')
+    started_at = models.DateTimeField(null=True, blank=True, help_text='When doctor started consultation')
+    completed_at = models.DateTimeField(null=True, blank=True)
+    cancelled_at = models.DateTimeField(null=True, blank=True)
+    cancellation_reason = models.TextField(blank=True)
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['scheduled_at']
+        indexes = [
+            models.Index(fields=['hospital', 'scheduled_at']),
+            models.Index(fields=['doctor', 'status']),
+            models.Index(fields=['patient', '-scheduled_at']),
+            models.Index(fields=['status', 'scheduled_at']),
+        ]
+
+    def __str__(self):
+        return f"{self.patient.full_name} with {self.doctor.full_name} on {self.scheduled_at:%Y-%m-%d %H:%M}"
+
+
 # ═══════════════════════════════════════════════════════════════
 # IN-APP MESSAGING SYSTEM
 # ═══════════════════════════════════════════════════════════════

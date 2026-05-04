@@ -162,7 +162,7 @@ function DistrictManagement() {
           <label className="form-label">District Name *</label>
           <input type="text" className="form-control" value={formData.name}
             onChange={(e) => setFormData({ ...formData, name: e.target.value })} required
-            placeholder="e.g. Kumasi Metropolitan" />
+            placeholder="e.g. Western Area Urban" />
         </div>
         {formData.name && (
           <div className="col-md-12">
