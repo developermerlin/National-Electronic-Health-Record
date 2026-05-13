@@ -55,9 +55,6 @@ const initialFormData = {
   allergies: '',
   chronic_conditions: '',
   disabilities: '',
-  insurance_provider: '',
-  insurance_number: '',
-  insurance_expiry: '',
   emergency_contact_name: '',
   emergency_contact_phone: '',
   emergency_contact_relationship: '',
@@ -86,15 +83,27 @@ function calculateAge(dob) {
   return `${days} day${days !== 1 ? 's' : ''}`;
 }
 
+const DRAFT_KEY = 'nehr_patient_register_draft';
+
 function PatientRegister() {
   const { apiCall } = useAuth();
   const navigate = useNavigate();
-  const [formData, setFormData] = useState(initialFormData);
+  const [formData, setFormData] = useState(() => {
+    try {
+      const saved = localStorage.getItem(DRAFT_KEY);
+      return saved ? { ...initialFormData, ...JSON.parse(saved) } : initialFormData;
+    } catch { return initialFormData; }
+  });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [step, setStep] = useState(1);
   const computedAge = calculateAge(formData.date_of_birth);
+
+  // Auto-save draft to localStorage on every formData change
+  useEffect(() => {
+    localStorage.setItem(DRAFT_KEY, JSON.stringify(formData));
+  }, [formData]);
 
   // Camera / photo capture
   const [photoPreview, setPhotoPreview] = useState(null);
@@ -276,6 +285,7 @@ function PatientRegister() {
       });
       const data = await response.json();
       if (response.ok) {
+        localStorage.removeItem(DRAFT_KEY);
         setSuccess(`Patient ${data.patient.full_name} registered successfully! ID: ${data.patient.patient_id}`);
         setFormData(initialFormData);
         setStep(1);
@@ -322,7 +332,7 @@ function PatientRegister() {
             {[
               { num: 1, label: 'Personal Info', icon: 'fas fa-user' },
               { num: 2, label: 'Contact & Address', icon: 'fas fa-map-marker-alt' },
-              { num: 3, label: 'Medical & Insurance', icon: 'fas fa-heartbeat' },
+              { num: 3, label: 'Medical & Emergency', icon: 'fas fa-heartbeat' },
             ].map((s, i) => (
               <div key={s.num} className="text-center" style={{flex: 1, position: 'relative'}}>
                 <div
@@ -366,7 +376,7 @@ function PatientRegister() {
         </div>
       )}
 
-      <form onSubmit={handleSubmit}>
+      <form>
         {/* Step 1: Personal Info */}
         {step === 1 && (
           <div className="dash-card">
@@ -578,11 +588,11 @@ function PatientRegister() {
           </div>
         )}
 
-        {/* Step 3: Medical & Insurance */}
+        {/* Step 3: Medical & Emergency */}
         {step === 3 && (
           <div className="dash-card">
             <div className="dash-card-header">
-              <h6><i className="fas fa-heartbeat me-2"></i>Medical & Insurance Information</h6>
+              <h6><i className="fas fa-heartbeat me-2"></i>Medical & Emergency Information</h6>
             </div>
             <div className="dash-card-body">
               <div className="row g-3">
@@ -613,27 +623,6 @@ function PatientRegister() {
                 </div>
 
                 <hr className="mt-4" />
-                <h6 className="mb-0"><i className="fas fa-shield-alt me-2 text-success"></i>Insurance Details</h6>
-                <div className="col-md-4">
-                  <label className="form-label">Insurance Provider</label>
-                  <select className="form-select" name="insurance_provider" value={formData.insurance_provider} onChange={handleChange}>
-                    <option value="">No Insurance</option>
-                    <option value="SLeSHI">SLeSHI (Sierra Leone Social Health Insurance)</option>
-                    <option value="Private">Private Insurance</option>
-                    <option value="Company">Company Insurance</option>
-                    <option value="Other">Other</option>
-                  </select>
-                </div>
-                <div className="col-md-4">
-                  <label className="form-label">Insurance Number</label>
-                  <input type="text" className="form-control" name="insurance_number" value={formData.insurance_number} onChange={handleChange} />
-                </div>
-                <div className="col-md-4">
-                  <label className="form-label">Expiry Date</label>
-                  <input type="date" className="form-control" name="insurance_expiry" value={formData.insurance_expiry} onChange={handleChange} />
-                </div>
-
-                <hr className="mt-4" />
                 <h6 className="mb-0"><i className="fas fa-phone-alt me-2 text-danger"></i>Emergency Contact</h6>
                 <div className="col-md-4">
                   <label className="form-label">Full Name</label>
@@ -661,29 +650,30 @@ function PatientRegister() {
           </div>
         )}
 
-        {/* Navigation Buttons */}
-        <div className="d-flex justify-content-between mt-4">
-          {step > 1 ? (
-            <button type="button" className="btn btn-outline-secondary" onClick={prevStep}>
-              <i className="fas fa-arrow-left me-1"></i>Previous
-            </button>
-          ) : <div></div>}
-
-          {step < 3 ? (
-            <button type="button" className="btn btn-primary" onClick={nextStep}>
-              Next <i className="fas fa-arrow-right ms-1"></i>
-            </button>
-          ) : (
-            <button type="submit" className="btn btn-success" disabled={saving}>
-              {saving ? (
-                <><span className="spinner-border spinner-border-sm me-1"></span>Registering...</>
-              ) : (
-                <><i className="fas fa-check-circle me-1"></i>Register Patient</>
-              )}
-            </button>
-          )}
-        </div>
       </form>
+
+      {/* Navigation Buttons — outside <form> to prevent any accidental submission */}
+      <div className="d-flex justify-content-between mt-4">
+        {step > 1 ? (
+          <button type="button" className="btn btn-outline-secondary" onClick={prevStep}>
+            <i className="fas fa-arrow-left me-1"></i>Previous
+          </button>
+        ) : <div></div>}
+
+        {step < 3 ? (
+          <button type="button" className="btn btn-primary" onClick={nextStep}>
+            Next <i className="fas fa-arrow-right ms-1"></i>
+          </button>
+        ) : (
+          <button type="button" className="btn btn-success" onClick={handleSubmit} disabled={saving}>
+            {saving ? (
+              <><span className="spinner-border spinner-border-sm me-1"></span>Registering...</>
+            ) : (
+              <><i className="fas fa-check-circle me-1"></i>Register Patient</>
+            )}
+          </button>
+        )}
+      </div>
     </DashboardLayout>
   );
 }

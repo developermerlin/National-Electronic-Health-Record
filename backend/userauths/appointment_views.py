@@ -185,7 +185,7 @@ class AppointmentViewSet(viewsets.ModelViewSet):
             )
 
         appointment.status = 'in_consultation'
-        appointment.started_at = timezone.now()
+        appointment.consultation_started_at = timezone.now()
         appointment.save()
 
         serializer = AppointmentSerializer(appointment)
@@ -410,12 +410,17 @@ class AppointmentViewSet(viewsets.ModelViewSet):
         this_week_start = today - timedelta(days=today.weekday())
         this_month_start = today.replace(day=1)
 
+        today_qs = base_query.filter(scheduled_at__date=today)
+
         stats = {
             'today': {
-                'total': base_query.filter(scheduled_at__date=today).count(),
-                'completed': base_query.filter(scheduled_at__date=today, status='completed').count(),
-                'no_show': base_query.filter(scheduled_at__date=today, status='no_show').count(),
-                'cancelled': base_query.filter(scheduled_at__date=today, status='cancelled').count(),
+                'total':           today_qs.count(),
+                'scheduled':       today_qs.filter(status='scheduled').count(),
+                'checked_in':      today_qs.filter(status='checked_in').count(),
+                'in_consultation': today_qs.filter(status='in_consultation').count(),
+                'completed':       today_qs.filter(status='completed').count(),
+                'no_show':         today_qs.filter(status='no_show').count(),
+                'cancelled':       today_qs.filter(status='cancelled').count(),
             },
             'this_week': {
                 'total': base_query.filter(scheduled_at__date__gte=this_week_start).count(),

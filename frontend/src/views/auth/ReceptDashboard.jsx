@@ -75,7 +75,7 @@ function ReceptDashboard() {
               <i className="fas fa-calendar-alt"></i>
             </div>
             <div className="stat-label">Today's Appointments</div>
-            <div className="stat-value">{stats?.today?.total || 0}</div>
+            <div className="stat-value">{stats?.today?.total ?? 0}</div>
             <div className="stat-change positive">
               <i className="fas fa-calendar-day"></i> Overall today
             </div>
@@ -87,7 +87,7 @@ function ReceptDashboard() {
               <i className="fas fa-check-circle"></i>
             </div>
             <div className="stat-label">Checked In</div>
-            <div className="stat-value">{stats?.by_status?.checked_in || 0}</div>
+            <div className="stat-value">{stats?.today?.checked_in ?? 0}</div>
             <div className="stat-change positive">
               <i className="fas fa-users"></i> Currently waiting
             </div>
@@ -99,7 +99,7 @@ function ReceptDashboard() {
               <i className="fas fa-user-md"></i>
             </div>
             <div className="stat-label">In Consultation</div>
-            <div className="stat-value">{stats?.by_status?.in_consultation || 0}</div>
+            <div className="stat-value">{stats?.today?.in_consultation ?? 0}</div>
             <div className="stat-change positive">
               <i className="fas fa-stethoscope"></i> With doctors
             </div>
@@ -111,7 +111,7 @@ function ReceptDashboard() {
               <i className="fas fa-check-double"></i>
             </div>
             <div className="stat-label">Completed Today</div>
-            <div className="stat-value">{stats?.today?.completed || 0}</div>
+            <div className="stat-value">{stats?.today?.completed ?? 0}</div>
             <div className="stat-change positive">
               <i className="fas fa-smile"></i> Successful visits
             </div>

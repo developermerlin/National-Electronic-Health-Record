@@ -22,6 +22,11 @@ import PatientRegister from './views/receptionist/PatientRegister';
 import ReceptionistAppointments from './views/receptionist/ReceptionistAppointments';
 import DoctorQueue from './views/doctor/DoctorQueue';
 import DoctorDashboard from './views/doctor/DoctorDashboard';
+import DoctorAppointmentRequests from './views/doctor/DoctorAppointmentRequests';
+import DoctorAvailability from './views/doctor/DoctorAvailability';
+import DoctorCompletedAppointments from './views/doctor/DoctorCompletedAppointments';
+import PatientPortalDashboard from './views/patient/PatientPortalDashboard';
+import PatientBookAppointment from './views/patient/PatientBookAppointment';
 import MessagesPage from './views/messages/MessagesPage';
 import LiveChatPage from './views/messages/LiveChatPage';
 import { AuthProvider, useAuth } from './context/AuthContext';
@@ -158,15 +163,42 @@ function AppContent() {
           </ProtectedRoute>
         } />
 
+        {/* Patient Portal Routes */}
+        <Route path="/patient/dashboard" element={
+          <ProtectedRoute allowedRoles={['patient']}>
+            <PatientPortalDashboard />
+          </ProtectedRoute>
+        } />
+        <Route path="/patient/book" element={
+          <ProtectedRoute allowedRoles={['patient']}>
+            <PatientBookAppointment />
+          </ProtectedRoute>
+        } />
+
         {/* Doctor Routes */}
         <Route path="/doctor/dashboard" element={
           <ProtectedRoute allowedRoles={['doctor', 'admin', 'hospital_admin']}>
             <DoctorDashboard />
           </ProtectedRoute>
         } />
+        <Route path="/doctor/appointment-requests" element={
+          <ProtectedRoute allowedRoles={['doctor', 'admin', 'hospital_admin']}>
+            <DoctorAppointmentRequests />
+          </ProtectedRoute>
+        } />
+        <Route path="/doctor/availability" element={
+          <ProtectedRoute allowedRoles={['doctor', 'admin', 'hospital_admin']}>
+            <DoctorAvailability />
+          </ProtectedRoute>
+        } />
         <Route path="/doctor/queue" element={
           <ProtectedRoute allowedRoles={['doctor', 'admin', 'hospital_admin']}>
             <DoctorQueue />
+          </ProtectedRoute>
+        } />
+        <Route path="/doctor/completed-appointments" element={
+          <ProtectedRoute allowedRoles={['doctor', 'admin', 'hospital_admin']}>
+            <DoctorCompletedAppointments />
           </ProtectedRoute>
         } />
       </Routes>

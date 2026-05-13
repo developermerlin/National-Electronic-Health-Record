@@ -14,6 +14,10 @@ function DoctorQueue() {
     in_consultation: 0,
     scheduled: 0
   });
+  const [currentTime, setCurrentTime] = useState(new Date());
+  const [warningShown, setWarningShown] = useState(new Set()); // Track which appointments we've warned about
+  const [searchQuery, setSearchQuery] = useState('');
+  const [filterStatus, setFilterStatus] = useState('all');
 
   const roleColors = {
     admin: '#4361ee', ministry_admin: '#7c3aed', district_admin: '#059669',
@@ -45,9 +49,108 @@ function DoctorQueue() {
   useEffect(() => {
     fetchQueue();
     // Auto-refresh every 30 seconds
-    const interval = setInterval(fetchQueue, 30000);
-    return () => clearInterval(interval);
+    const queueInterval = setInterval(fetchQueue, 30000);
+    return () => clearInterval(queueInterval);
   }, [fetchQueue]);
+
+  // Update current time every second for countdown timer
+  useEffect(() => {
+    const timerInterval = setInterval(() => {
+      setCurrentTime(new Date());
+    }, 1000);
+    return () => clearInterval(timerInterval);
+  }, []);
+
+  // Calculate remaining time for consultation
+  const getRemainingTime = useCallback((appointment) => {
+    // Debug log
+    if (appointment.status === 'in_consultation') {
+      console.log('Consultation appointment:', {
+        id: appointment.id,
+        consultation_started_at: appointment.consultation_started_at,
+        duration_minutes: appointment.duration_minutes
+      });
+    }
+    
+    if (appointment.status !== 'in_consultation') {
+      return null;
+    }
+    
+    // If consultation_started_at is missing, use current time as fallback
+    const startTime = appointment.consultation_started_at 
+      ? new Date(appointment.consultation_started_at)
+      : new Date(); // Fallback to now if timestamp is missing
+    
+    const durationMs = (appointment.duration_minutes || 30) * 60 * 1000;
+    const endTime = new Date(startTime.getTime() + durationMs);
+    const remainingMs = endTime - currentTime;
+    
+    if (remainingMs <= 0) {
+      return { expired: true, minutes: 0, seconds: 0 };
+    }
+    
+    const minutes = Math.floor(remainingMs / 60000);
+    const seconds = Math.floor((remainingMs % 60000) / 1000);
+    
+    return { expired: false, minutes, seconds };
+  }, [currentTime]);
+
+  // Check if we should show warning (1 minute remaining)
+  const shouldShowWarning = useCallback((appointment) => {
+    const remaining = getRemainingTime(appointment);
+    if (!remaining || remaining.expired) return false;
+    return remaining.minutes === 0 && remaining.seconds <= 60 && !warningShown.has(appointment.id);
+  }, [getRemainingTime, warningShown]);
+
+  // Show warning notification
+  useEffect(() => {
+    appointments.forEach(apt => {
+      if (shouldShowWarning(apt)) {
+        // Visual warning
+        showToast.warning(`⏰ 1 minute remaining for ${apt.patient?.full_name}`);
+        
+        // Audio warning (using browser audio API)
+        try {
+          const audio = new Audio('data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQoGAACBhYqFbF1fdJivrJBhNjVgodDbq2EcBj+a2/LDciUFLIHO8tiJNwgZaLvt559NEAxQp+PwtmMcBjiR1/LMeSwFJHfH8N2QQAoUXrTp66hVFApGn+DyvmwhBiuBzvLZiTYIG2m98OScTgwOUarm7blmGgU7k9n1unEiBC13yO/eizEIHWq+8+OWT');
+          audio.play().catch(() => {}); // Ignore autoplay restrictions
+        } catch {/* Ignore audio autoplay restrictions */}
+        
+        setWarningShown(prev => new Set([...prev, apt.id]));
+      }
+    });
+  }, [appointments, currentTime, warningShown, shouldShowWarning]);
+
+  // Auto-complete appointment when time expires
+  useEffect(() => {
+    const checkAndComplete = async () => {
+      for (const apt of appointments) {
+        const remaining = getRemainingTime(apt);
+        if (remaining && remaining.expired && apt.status === 'in_consultation') {
+          try {
+            await apiCall(`/appointments/${apt.id}/complete/`, {
+              method: 'POST'
+            });
+            showToast.success(`⏰ Appointment with ${apt.patient?.full_name} auto-completed`);
+            fetchQueue(); // Refresh the queue
+          } catch (error) {
+            console.error('Failed to auto-complete appointment:', error);
+          }
+        }
+      }
+    };
+    
+    checkAndComplete();
+  }, [currentTime, appointments, apiCall, fetchQueue, getRemainingTime]);
+
+  // Format countdown display
+  const formatCountdown = (remaining) => {
+    if (!remaining) return null;
+    if (remaining.expired) return "Time's up!";
+    
+    const min = String(remaining.minutes).padStart(2, '0');
+    const sec = String(remaining.seconds).padStart(2, '0');
+    return `${min}:${sec}`;
+  };
 
   const handleStartConsultation = async (appointmentId) => {
     try {
@@ -125,6 +228,17 @@ function DoctorQueue() {
     return cards[status] || cards.scheduled;
   };
 
+  const filteredAppointments = appointments.filter(apt => {
+    const matchesSearch = 
+      apt.patient?.full_name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      apt.patient?.patient_id?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      apt.reason?.toLowerCase().includes(searchQuery.toLowerCase());
+    
+    const matchesStatus = filterStatus === 'all' || apt.status === filterStatus;
+    
+    return matchesSearch && matchesStatus;
+  });
+
   return (
     <DashboardLayout navItems={getNavForUser(user)} brandTitle={getBrandForUser(user)} roleBadge={getRoleBadge(user)}>
       <div className="container-fluid py-4">
@@ -134,14 +248,37 @@ function DoctorQueue() {
             <div className="d-flex justify-content-between align-items-center">
               <div>
                 <h1 className="h3 mb-0">
-                  <i className="fas fa-user-md me-2" style={{ color: roleColors[user?.role] || '#4361ee' }}></i>
-                  My Queue
+                  <i className="fas fa-users-viewfinder me-2" style={{ color: roleColors[user?.role] || '#4361ee' }}></i>
+                  Live Patient Queue
                 </h1>
-                <p className="text-muted mb-0 small">Manage your daily patient consultations</p>
+                <p className="text-muted mb-0 small">Real-time patient flow management</p>
               </div>
               <div className="d-flex gap-2">
-                <button className="btn btn-outline-secondary" onClick={fetchQueue} disabled={loading}>
-                  <i className={`fas fa-sync-alt me-2 ${loading ? 'fa-spin' : ''}`}></i>Refresh
+                <div className="input-group input-group-sm" style={{ width: '250px' }}>
+                  <span className="input-group-text bg-white border-end-0">
+                    <i className="fas fa-search text-muted"></i>
+                  </span>
+                  <input 
+                    type="text" 
+                    className="form-control border-start-0" 
+                    placeholder="Search patients..." 
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                  />
+                </div>
+                <select 
+                  className="form-select form-select-sm" 
+                  style={{ width: '150px' }}
+                  value={filterStatus}
+                  onChange={(e) => setFilterStatus(e.target.value)}
+                >
+                  <option value="all">All Status</option>
+                  <option value="scheduled">Scheduled</option>
+                  <option value="checked_in">Waiting</option>
+                  <option value="in_consultation">In Progress</option>
+                </select>
+                <button className="btn btn-sm btn-outline-secondary" onClick={fetchQueue} disabled={loading}>
+                  <i className={`fas fa-sync-alt ${loading ? 'fa-spin' : ''}`}></i>
                 </button>
               </div>
             </div>
@@ -208,9 +345,9 @@ function DoctorQueue() {
         {loading ? (
           <div className="text-center py-5">
             <div className="spinner-border text-primary"></div>
-            <p className="text-muted mt-2">Loading queue...</p>
+            <p className="text-muted mt-2">Updating live queue...</p>
           </div>
-        ) : appointments.length === 0 ? (
+        ) : filteredAppointments.length === 0 ? (
           <div className="text-center py-5">
             <div className="mb-4">
               <div style={{
@@ -221,14 +358,15 @@ function DoctorQueue() {
                 <i className="fas fa-clipboard-check fa-3x text-muted"></i>
               </div>
             </div>
-            <h4 className="text-muted">No Appointments Today</h4>
-            <p className="text-muted">Your queue is empty. Patients will appear here when they check in.</p>
+            <h4 className="text-muted">{searchQuery ? 'No matching patients' : 'No Appointments Today'}</h4>
+            <p className="text-muted">{searchQuery ? 'Try a different search term' : 'Your queue is empty. Patients will appear here when they check in.'}</p>
           </div>
         ) : (
           <div className="row g-3">
-            {appointments.map((apt, index) => {
+            {filteredAppointments.map((apt, index) => {
               const statusCard = getStatusCard(apt.status);
               const waitTime = apt.status === 'checked_in' ? getWaitTime(apt.checked_in_at) : null;
+              const remainingTime = getRemainingTime(apt);
               
               return (
                 <div key={apt.id} className="col-md-6 col-lg-4">
@@ -253,6 +391,12 @@ function DoctorQueue() {
                           {waitTime && (
                             <div className="small" style={{ color: '#92400e' }}>
                               <i className="fas fa-clock me-1"></i>Waiting: {waitTime}
+                            </div>
+                          )}
+                          {remainingTime && (
+                            <div className={`small ${remainingTime.expired ? 'text-danger' : remainingTime.minutes === 0 ? 'text-warning' : 'text-success'}`}>
+                              <i className={`fas ${remainingTime.expired ? 'fa-stop-circle' : remainingTime.minutes === 0 ? 'fa-exclamation-triangle' : 'fa-hourglass-half'} me-1`}></i>
+                              {remainingTime.expired ? 'Time expired' : `Time left: ${formatCountdown(remainingTime)}`}
                             </div>
                           )}
                         </div>
@@ -336,9 +480,28 @@ function DoctorQueue() {
                           </>
                         )}
                         {apt.status === 'in_consultation' && (
-                          <button className="btn btn-success w-100" onClick={() => handleComplete(apt.id)}>
-                            <i className="fas fa-check-double me-2"></i>Complete
-                          </button>
+                          <>
+                            {/* Always show timer for in_consultation appointments */}
+                            <div className={`alert py-2 mb-2 text-center ${remainingTime?.expired ? 'alert-danger' : remainingTime?.minutes === 0 ? 'alert-warning' : 'alert-info'}`} style={{ fontSize: '14px', fontWeight: 'bold' }}>
+                              <div className="d-flex align-items-center justify-content-center">
+                                <i className={`fas ${remainingTime?.expired ? 'fa-stop-circle' : remainingTime?.minutes === 0 ? 'fa-exclamation-triangle' : 'fa-stopwatch'} me-2`}></i>
+                                <span>Session Timer: {formatCountdown(remainingTime || { expired: false, minutes: 0, seconds: 0 })}</span>
+                              </div>
+                              {remainingTime?.expired && (
+                                <div className="small mt-1">
+                                  <i className="fas fa-info-circle me-1"></i>Auto-completing...
+                                </div>
+                              )}
+                              {!remainingTime && (
+                                <div className="small mt-1 text-muted">
+                                  <i className="fas fa-info-circle me-1"></i>Initializing timer...
+                                </div>
+                              )}
+                            </div>
+                            <button className="btn btn-success w-100" onClick={() => handleComplete(apt.id)}>
+                              <i className="fas fa-check-double me-2"></i>Complete Now
+                            </button>
+                          </>
                         )}
                       </div>
                     </div>

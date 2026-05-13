@@ -6,6 +6,10 @@ from userauths import patient_views
 from userauths import social_auth_views
 from userauths import message_views
 from userauths import appointment_views
+from userauths import visit_views
+from userauths import patient_portal_views
+from userauths import doctor_appointment_views
+from userauths import doctor_availability_views
 
 # from store import views as store_views
 # from customer import views as customer_views
@@ -25,6 +29,7 @@ router.register(r'admin/chiefdoms', admin_views.ChiefdomViewSet, basename='chief
 router.register(r'admin/towns', admin_views.TownViewSet, basename='town-management')
 router.register(r'patients', patient_views.PatientViewSet, basename='patient-management')
 router.register(r'appointments', appointment_views.AppointmentViewSet, basename='appointment-management')
+router.register(r'visits', visit_views.PatientVisitViewSet, basename='visit-management')
 
 urlpatterns = [
     # Include router URLs
@@ -50,6 +55,9 @@ urlpatterns = [
     path('auth/facebook/', social_auth_views.facebook_login, name='facebook-login'),
 
     # Messaging endpoints
+    # Patient visit history
+    path('visits/patient_history/<int:patient_id>/', visit_views.PatientVisitViewSet.as_view({'get': 'patient_history'}), name='patient-visit-history'),
+
     path('messages/inbox/', message_views.inbox, name='messages-inbox'),
     path('messages/sent/', message_views.sent, name='messages-sent'),
     path('messages/unread-count/', message_views.unread_count, name='messages-unread-count'),
@@ -61,6 +69,38 @@ urlpatterns = [
     path('messages/<int:message_id>/', message_views.message_detail, name='messages-detail'),
     path('messages/<int:message_id>/delete/', message_views.delete_message, name='messages-delete'),
     path('messages/<int:message_id>/read/', message_views.mark_read, name='messages-read'),
+
+    # Patient Portal (self-service)
+    path('portal/register/', patient_portal_views.patient_self_register, name='patient-self-register'),
+    path('portal/hospitals/', patient_portal_views.list_hospitals_public, name='portal-hospitals'),
+    path('portal/profile/', patient_portal_views.patient_own_profile, name='portal-profile'),
+    path('portal/appointments/', patient_portal_views.patient_own_appointments, name='portal-appointments'),
+    path('portal/appointments/book/', patient_portal_views.patient_book_appointment, name='portal-book-appointment'),
+    path('portal/appointments/<int:appointment_id>/cancel/', patient_portal_views.patient_cancel_appointment, name='portal-cancel-appointment'),
+    path('portal/doctors/', patient_portal_views.list_available_doctors, name='portal-doctors'),
+    path('portal/notifications/', patient_portal_views.patient_notifications, name='portal-notifications'),
+    path('portal/notifications/read-all/', patient_portal_views.mark_all_notifications_read, name='portal-notifications-read-all'),
+    path('portal/notifications/<int:notif_id>/read/', patient_portal_views.mark_notification_read, name='portal-notification-read'),
+
+    # Doctor dashboard
+    path('doctor/dashboard/', doctor_appointment_views.doctor_dashboard, name='doctor-dashboard'),
+
+    # Doctor appointment request management
+    path('doctor/appointment-requests/', doctor_appointment_views.doctor_appointment_requests, name='doctor-appt-requests'),
+    path('doctor/appointment-requests/all/', doctor_appointment_views.doctor_all_requests, name='doctor-appt-all'),
+    path('doctor/appointment-requests/<int:appointment_id>/schedule/', doctor_appointment_views.doctor_schedule_appointment, name='doctor-appt-schedule'),
+    path('doctor/appointment-requests/<int:appointment_id>/decline/', doctor_appointment_views.doctor_decline_appointment, name='doctor-appt-decline'),
+    path('doctor/available-slots/', doctor_appointment_views.doctor_available_slots, name='doctor-available-slots'),
+    path('doctor/notifications/', doctor_appointment_views.doctor_notifications, name='doctor-notifications'),
+    path('doctor/notifications/read-all/', doctor_appointment_views.doctor_mark_all_read, name='doctor-notifications-read-all'),
+    path('doctor/notifications/<int:notif_id>/read/', doctor_appointment_views.doctor_mark_notification_read, name='doctor-notification-read'),
+
+    # Doctor availability / schedule management
+    path('doctor/availability/', doctor_availability_views.doctor_availability, name='doctor-availability'),
+    path('doctor/availability/<int:day_of_week>/', doctor_availability_views.doctor_availability_day, name='doctor-availability-day'),
+    path('doctor/unavailable-dates/', doctor_availability_views.doctor_unavailable_dates, name='doctor-unavailable-dates'),
+    path('doctor/unavailable-dates/<int:date_id>/delete/', doctor_availability_views.doctor_unavailable_date_delete, name='doctor-unavailable-date-delete'),
+    path('doctor/<int:doctor_id>/schedule/', doctor_availability_views.public_doctor_schedule, name='public-doctor-schedule'),
 
     # store endpoint
     # path('category/', store_views.CategoryListAPIView.as_view()),

@@ -1247,6 +1247,8 @@
   height: 200px;
   background: rgba(255,255,255,0.08);
   border-radius: 50%;
+  pointer-events: none;
+  z-index: 0;
 }
 
 .dash-welcome-banner::before {
@@ -1258,6 +1260,13 @@
   height: 150px;
   background: rgba(255,255,255,0.05);
   border-radius: 50%;
+  pointer-events: none;
+  z-index: 0;
+}
+
+.dash-welcome-banner > * {
+  position: relative;
+  z-index: 1;
 }
 
 .dash-welcome-banner h3 {
@@ -1691,4 +1700,128 @@
 
 .dashboard-wrapper.dark-mode a:not(.btn):not(.nav-link):not(.dash-nav-item a) {
   color: var(--dash-primary);
+}
+
+/* ============================================
+   Professional Form Controls — System-wide
+   Removes Bootstrap's blue glow and replaces
+   with a clean, minimal focus style
+   ============================================ */
+
+.dashboard-wrapper .form-control,
+.dashboard-wrapper .form-select {
+  border: 1.5px solid #d1d5db;
+  border-radius: 8px;
+  padding: 0.5rem 0.75rem;
+  font-size: 14px;
+  color: #1a1a2e;
+  background-color: #ffffff;
+  transition: border-color 0.18s ease, background-color 0.18s ease;
+  box-shadow: none !important;
+}
+
+.dashboard-wrapper .form-control:focus,
+.dashboard-wrapper .form-select:focus {
+  border-color: #4361ee;
+  background-color: #fafbff;
+  box-shadow: none !important;
+  outline: none;
+  color: #1a1a2e;
+}
+
+.dashboard-wrapper .form-control:hover:not(:focus),
+.dashboard-wrapper .form-select:hover:not(:focus) {
+  border-color: #9ca3af;
+}
+
+.dashboard-wrapper .form-control::placeholder {
+  color: #9ca3af;
+  font-size: 13px;
+}
+
+.dashboard-wrapper .form-control:disabled,
+.dashboard-wrapper .form-select:disabled {
+  background-color: #f3f4f6;
+  border-color: #e5e7eb;
+  color: #9ca3af;
+  cursor: not-allowed;
+}
+
+.dashboard-wrapper .form-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: #374151;
+  margin-bottom: 5px;
+}
+
+.dashboard-wrapper textarea.form-control {
+  resize: vertical;
+  min-height: 72px;
+}
+
+/* Modal inputs — same override applies inside modals */
+.modal .form-control,
+.modal .form-select {
+  border: 1.5px solid #d1d5db;
+  border-radius: 8px;
+  font-size: 14px;
+  color: #1a1a2e;
+  box-shadow: none !important;
+  transition: border-color 0.18s ease;
+}
+
+.modal .form-control:focus,
+.modal .form-select:focus {
+  border-color: #4361ee;
+  box-shadow: none !important;
+  outline: none;
+  background-color: #fafbff;
+}
+
+/* ============================================
+   Date Input & Table Click Fixes
+   ============================================ */
+
+/* Ensure date inputs are clickable */
+input[type="date"] {
+  position: relative;
+  z-index: 10;
+  cursor: pointer;
+}
+
+input[type="date"]::-webkit-calendar-picker-indicator {
+  cursor: pointer;
+  opacity: 0.6;
+}
+
+input[type="date"]::-webkit-calendar-picker-indicator:hover {
+  opacity: 1;
+}
+
+/* Ensure table cells are clickable */
+.dash-card .table tbody tr {
+  cursor: default;
+}
+
+.dash-card .table tbody tr:hover {
+  background-color: rgba(67, 97, 238, 0.05);
+}
+
+.dash-card .table td,
+.dash-card .table th {
+  position: relative;
+  z-index: 1;
+}
+
+/* Ensure links and buttons in tables are clickable */
+.dash-card .table a,
+.dash-card .table button {
+  position: relative;
+  z-index: 2;
+}
+
+/* Fix for banner content to ensure it's above pseudo-elements */
+.dash-welcome-banner .row {
+  position: relative;
+  z-index: 2;
 }

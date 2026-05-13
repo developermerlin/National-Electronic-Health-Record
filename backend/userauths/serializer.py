@@ -1,4 +1,4 @@
-from userauths.models import Profile, User, Role, Permission, RolePermission, Region, District, Chiefdom, Town, Hospital, Department, Patient, Message, Appointment
+from userauths.models import Profile, User, Role, Permission, RolePermission, Region, District, Chiefdom, Town, Hospital, Department, Patient, Message, Appointment, PatientVisit, VitalSigns, ClinicalNote, Notification, DoctorAvailability, DoctorUnavailableDate
 
 # ===import jwt serializers for token===
 from django.contrib.auth.password_validation import validate_password
@@ -413,6 +413,10 @@ class PatientSerializer(serializers.ModelSerializer):
     district_name = serializers.CharField(source='district.name', read_only=True, default=None)
     chiefdom_name = serializers.CharField(source='chiefdom.name', read_only=True, default=None)
     town_name = serializers.CharField(source='town.name', read_only=True, default=None)
+    has_portal_account = serializers.SerializerMethodField()
+
+    def get_has_portal_account(self, obj):
+        return obj.user_id is not None
 
     class Meta:
         model = Patient
@@ -552,15 +556,21 @@ class AppointmentSerializer(serializers.ModelSerializer):
     hospital = serializers.StringRelatedField(read_only=True)
     department = serializers.StringRelatedField(read_only=True)
 
+    status_display = serializers.CharField(source='get_status_display', read_only=True)
+    doctor_name = serializers.CharField(source='doctor.full_name', read_only=True)
+    patient_name = serializers.CharField(source='patient.full_name', read_only=True)
+
     class Meta:
         model = Appointment
         fields = [
             'id', 'patient', 'doctor', 'hospital', 'department',
-            'scheduled_at', 'duration_minutes', 'status', 'priority',
+            'scheduled_at', 'duration_minutes', 'consultation_started_at', 'status', 'status_display', 'priority',
             'reason', 'notes',
+            'preferred_date', 'preferred_time_note', 'decline_reason',
+            'doctor_name', 'patient_name',
             'created_by', 'created_at',
             'checked_in_at', 'checked_in_by',
-            'started_at', 'completed_at',
+            'consultation_started_at', 'completed_at',
             'cancelled_at', 'cancellation_reason',
             'updated_at',
         ]
@@ -645,10 +655,147 @@ class AppointmentStatusUpdateSerializer(serializers.ModelSerializer):
             instance.checked_in_at = timezone.now()
             instance.checked_in_by = user
         elif new_status == 'in_consultation' and instance.status != 'in_consultation':
-            instance.started_at = timezone.now()
+            instance.consultation_started_at = timezone.now()
         elif new_status == 'completed' and instance.status != 'completed':
             instance.completed_at = timezone.now()
         elif new_status == 'cancelled' and instance.status != 'cancelled':
             instance.cancelled_at = timezone.now()
 
         return super().update(instance, validated_data)
+
+
+# ═══════════════════════════════════════════════════════════
+# PATIENT VISIT / ENCOUNTER SERIALIZERS
+# ═══════════════════════════════════════════════════════════
+
+class VitalSignsSerializer(serializers.ModelSerializer):
+    bmi            = serializers.ReadOnlyField()
+    blood_pressure = serializers.ReadOnlyField()
+    recorded_by_name = serializers.SerializerMethodField()
+
+    class Meta:
+        model  = VitalSigns
+        fields = '__all__'
+        read_only_fields = ['recorded_at']
+
+    def get_recorded_by_name(self, obj):
+        return obj.recorded_by.full_name if obj.recorded_by else None
+
+
+class ClinicalNoteSerializer(serializers.ModelSerializer):
+    doctor_name = serializers.SerializerMethodField()
+
+    class Meta:
+        model  = ClinicalNote
+        fields = '__all__'
+        read_only_fields = ['created_at', 'updated_at']
+
+    def get_doctor_name(self, obj):
+        return obj.doctor.full_name if obj.doctor else None
+
+
+class PatientVisitListSerializer(serializers.ModelSerializer):
+    """Lightweight serializer for list/timeline views."""
+    hospital_name    = serializers.SerializerMethodField()
+    department_name  = serializers.SerializerMethodField()
+    doctor_name      = serializers.SerializerMethodField()
+    registered_by_name = serializers.SerializerMethodField()
+    visit_type_display = serializers.CharField(source='get_visit_type_display', read_only=True)
+    status_display     = serializers.CharField(source='get_status_display',     read_only=True)
+    has_vitals        = serializers.SerializerMethodField()
+    has_clinical_note = serializers.SerializerMethodField()
+    diagnosis         = serializers.SerializerMethodField()
+
+    class Meta:
+        model  = PatientVisit
+        fields = [
+            'id', 'visit_date', 'visit_type', 'visit_type_display',
+            'chief_complaint', 'status', 'status_display',
+            'hospital_name', 'department_name', 'doctor_name', 'registered_by_name',
+            'discharge_date', 'referred_to_doctor',
+            'has_vitals', 'has_clinical_note', 'diagnosis',
+            'created_at',
+        ]
+
+    def get_hospital_name(self, obj):    return obj.hospital.name if obj.hospital else None
+    def get_department_name(self, obj):  return obj.department.get_name_display() if obj.department else None
+    def get_doctor_name(self, obj):      return obj.doctor.full_name if obj.doctor else None
+    def get_registered_by_name(self, obj): return obj.registered_by.full_name if obj.registered_by else None
+    def get_has_vitals(self, obj):       return hasattr(obj, 'vitals')
+    def get_has_clinical_note(self, obj): return hasattr(obj, 'clinical_note')
+    def get_diagnosis(self, obj):
+        if hasattr(obj, 'clinical_note'):
+            return obj.clinical_note.diagnosis
+        return None
+
+
+class PatientVisitDetailSerializer(serializers.ModelSerializer):
+    """Full serializer including nested vitals and clinical note."""
+    hospital_name      = serializers.SerializerMethodField()
+    department_name    = serializers.SerializerMethodField()
+    doctor_name        = serializers.SerializerMethodField()
+    registered_by_name = serializers.SerializerMethodField()
+    visit_type_display = serializers.CharField(source='get_visit_type_display', read_only=True)
+    status_display     = serializers.CharField(source='get_status_display',     read_only=True)
+    vitals             = VitalSignsSerializer(read_only=True)
+    clinical_note      = ClinicalNoteSerializer(read_only=True)
+    referred_hospital_name = serializers.SerializerMethodField()
+
+    class Meta:
+        model  = PatientVisit
+        fields = '__all__'
+
+    def get_hospital_name(self, obj):        return obj.hospital.name if obj.hospital else None
+    def get_department_name(self, obj):      return obj.department.get_name_display() if obj.department else None
+    def get_doctor_name(self, obj):          return obj.doctor.full_name if obj.doctor else None
+    def get_registered_by_name(self, obj):   return obj.registered_by.full_name if obj.registered_by else None
+    def get_referred_hospital_name(self, obj): return obj.referred_to_hospital.name if obj.referred_to_hospital else None
+
+
+class PatientVisitCreateSerializer(serializers.ModelSerializer):
+    """Serializer for creating a new visit record."""
+    class Meta:
+        model  = PatientVisit
+        fields = [
+            'patient', 'appointment', 'hospital', 'department', 'doctor',
+            'visit_type', 'chief_complaint', 'visit_date', 'status',
+        ]
+
+    def create(self, validated_data):
+        request = self.context.get('request')
+        validated_data['registered_by'] = request.user if request else None
+        return super().create(validated_data)
+
+
+class NotificationSerializer(serializers.ModelSerializer):
+    """Serializer for in-app notifications."""
+    appointment_id = serializers.IntegerField(source='appointment.id', read_only=True, allow_null=True)
+    scheduled_at   = serializers.DateTimeField(source='appointment.scheduled_at', read_only=True, allow_null=True)
+    doctor_name    = serializers.CharField(source='appointment.doctor.full_name', read_only=True, allow_null=True)
+
+    class Meta:
+        model  = Notification
+        fields = [
+            'id', 'type', 'title', 'message', 'is_read', 'created_at',
+            'appointment_id', 'scheduled_at', 'doctor_name',
+        ]
+
+
+class DoctorAvailabilitySerializer(serializers.ModelSerializer):
+    """Serializer for a doctor's weekly recurring schedule."""
+    day_of_week_display = serializers.CharField(source='get_day_of_week_display', read_only=True)
+
+    class Meta:
+        model  = DoctorAvailability
+        fields = [
+            'id', 'day_of_week', 'day_of_week_display',
+            'start_time', 'end_time', 'slot_duration', 'is_active',
+        ]
+
+
+class DoctorUnavailableDateSerializer(serializers.ModelSerializer):
+    """Serializer for specific blocked dates."""
+
+    class Meta:
+        model  = DoctorUnavailableDate
+        fields = ['id', 'date', 'reason', 'created_at']

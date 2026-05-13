@@ -6,7 +6,10 @@ from django.db.models import Q, Count
 from django.utils import timezone
 from datetime import timedelta
 
-from userauths.models import Patient
+from django.contrib.auth.password_validation import validate_password
+from django.core.exceptions import ValidationError as DjangoValidationError
+
+from userauths.models import Patient, User, Role
 from userauths.serializer import PatientSerializer, PatientCreateSerializer, PatientUpdateSerializer
 
 
@@ -29,11 +32,18 @@ class PatientViewSet(viewsets.ModelViewSet):
     def get_queryset(self):
         user = self.request.user
         role = user.role.name if user.role else None
+        
+        # Get search query first
+        search = self.request.query_params.get('search', None)
 
-        # Admins and ministry see all patients
+        # Base access control
+        # Admins and ministry see all patients by default
         if role in ['admin', 'ministry_admin']:
             queryset = Patient.objects.all()
-        # Hospital-level staff see only their hospital's patients
+        # If there's a search, allow hospital staff (Doctor/Nurse/Receptionist) to find any patient across the NEHR
+        elif search and role in ['receptionist', 'doctor', 'nurse', 'hospital_admin']:
+            queryset = Patient.objects.all()
+        # Hospital-level staff see only their hospital's patients for regular browsing
         elif user.hospital:
             queryset = Patient.objects.filter(hospital=user.hospital)
         # District admins see patients across their district's hospitals
@@ -42,8 +52,7 @@ class PatientViewSet(viewsets.ModelViewSet):
         else:
             queryset = Patient.objects.none()
 
-        # Search
-        search = self.request.query_params.get('search', None)
+        # Apply Search filtering
         if search:
             queryset = queryset.filter(
                 Q(first_name__icontains=search) |
@@ -198,3 +207,78 @@ class PatientViewSet(viewsets.ModelViewSet):
             'insurance_distribution': insurance_dist,
             'monthly_trend': monthly_trend,
         })
+
+    @action(detail=True, methods=['post'], url_path='create_portal_account')
+    def create_portal_account(self, request, pk=None):
+        """
+        Receptionist creates a patient portal (login) account for a registered patient.
+        Required body: { "password": "...", "password2": "..." }
+        """
+        actor = request.user
+        allowed_roles = ('admin', 'receptionist', 'hospital_admin')
+        if not actor.role or actor.role.name not in allowed_roles:
+            return Response({'error': 'Only receptionists can create patient portal accounts.'}, status=status.HTTP_403_FORBIDDEN)
+
+        patient = self.get_object()
+
+        if patient.user:
+            return Response({'error': 'This patient already has a portal account.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        if not patient.email:
+            return Response({'error': 'Patient must have an email address to create a portal account.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        password  = request.data.get('password', '')
+        password2 = request.data.get('password2', '')
+
+        if not password or not password2:
+            return Response({'error': 'Password and confirmation are required.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        if password != password2:
+            return Response({'error': 'Passwords do not match.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            validate_password(password)
+        except DjangoValidationError as e:
+            return Response({'error': ' '.join(e.messages)}, status=status.HTTP_400_BAD_REQUEST)
+
+        if User.objects.filter(email=patient.email).exists():
+            return Response({'error': f'A user account with the email {patient.email} already exists.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        patient_role, _ = Role.objects.get_or_create(name='patient')
+
+        user = User.objects.create(
+            email=patient.email,
+            full_name=patient.full_name,
+            phone=patient.phone,
+            role=patient_role,
+            hospital=patient.hospital,
+        )
+        user.set_password(password)
+        user.save()
+
+        patient.user = user
+        patient.save(update_fields=['user'])
+
+        return Response({
+            'message': f'Portal account created for {patient.full_name}.',
+            'email': patient.email,
+        }, status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=['delete'], url_path='revoke_portal_account')
+    def revoke_portal_account(self, request, pk=None):
+        """Receptionist removes a patient's portal access."""
+        actor = request.user
+        allowed_roles = ('admin', 'receptionist', 'hospital_admin')
+        if not actor.role or actor.role.name not in allowed_roles:
+            return Response({'error': 'Not authorized.'}, status=status.HTTP_403_FORBIDDEN)
+
+        patient = self.get_object()
+        if not patient.user:
+            return Response({'error': 'This patient has no portal account.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        old_user = patient.user
+        patient.user = None
+        patient.save(update_fields=['user'])
+        old_user.delete()
+
+        return Response({'message': 'Portal account revoked.'}, status=status.HTTP_200_OK)

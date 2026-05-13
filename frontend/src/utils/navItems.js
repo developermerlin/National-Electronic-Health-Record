@@ -116,6 +116,13 @@ const doctorNav = [
     ],
   },
   {
+    label: 'Appointments',
+    items: [
+      { path: '/doctor/appointment-requests', icon: 'fas fa-calendar-plus', text: 'Appointment Requests' },
+      { path: '/doctor/availability',         icon: 'fas fa-clock',         text: 'My Availability' },
+    ],
+  },
+  {
     label: 'Patients',
     items: [
       { path: '/doctor/queue', icon: 'fas fa-list-ol', text: 'My Queue' },
@@ -137,11 +144,28 @@ const doctorNav = [
   },
 ];
 
+const patientNav = [
+  {
+    label: 'My Health',
+    items: [
+      { path: '/patient/dashboard', icon: 'fas fa-heartbeat', text: 'Dashboard' },
+      { path: '/patient/book', icon: 'fas fa-calendar-plus', text: 'Book Appointment' },
+    ],
+  },
+  {
+    label: 'Account',
+    items: [
+      { path: '/admin/profile', icon: 'fas fa-user-circle', text: 'My Profile' },
+    ],
+  },
+];
+
 export function getNavForUser(user) {
   const role = user?.role;
   if (role === 'ministry_admin') return ministryNav;
   if (role === 'receptionist') return receptionistNav;
   if (role === 'doctor') return doctorNav;
+  if (role === 'patient') return patientNav;
   return adminNav;
 }
 
@@ -150,6 +174,7 @@ export function getBrandForUser(user) {
   if (role === 'ministry_admin') return 'NEHR Ministry';
   if (role === 'receptionist') return 'NEHR System';
   if (role === 'doctor') return 'NEHR Clinic';
+  if (role === 'patient') return 'Patient Portal';
   return 'NEHR Admin';
 }
 
@@ -162,7 +187,8 @@ export function getRoleBadge(user) {
   if (role === 'district_admin') return 'District Admin';
   if (role === 'doctor') return 'Doctor';
   if (role === 'nurse') return 'Nurse';
+  if (role === 'patient') return 'Patient';
   return 'User';
 }
 
-export { ministryNav, adminNav, receptionistNav, doctorNav };
+export { ministryNav, adminNav, receptionistNav, doctorNav, patientNav };

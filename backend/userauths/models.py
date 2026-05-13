@@ -586,6 +586,9 @@ class Patient(models.Model):
     hospital = models.ForeignKey(Hospital, on_delete=models.CASCADE, related_name='patients')
     registered_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='registered_patients')
 
+    # Self-service portal account link
+    user = models.OneToOneField(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='patient_record', help_text='Linked user account for patient self-service portal')
+
     # Status
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='active')
     is_active = models.BooleanField(default=True)
@@ -643,12 +646,14 @@ class Appointment(models.Model):
     """A scheduled appointment between a patient and a doctor at a hospital."""
 
     STATUS_CHOICES = [
-        ('scheduled', 'Scheduled'),
-        ('checked_in', 'Checked In'),
-        ('in_consultation', 'In Consultation'),
-        ('completed', 'Completed'),
-        ('cancelled', 'Cancelled'),
-        ('no_show', 'No Show'),
+        ('pending',          'Pending Doctor Review'),
+        ('scheduled',        'Scheduled'),
+        ('declined',         'Declined'),
+        ('checked_in',       'Checked In'),
+        ('in_consultation',  'In Consultation'),
+        ('completed',        'Completed'),
+        ('cancelled',        'Cancelled'),
+        ('no_show',          'No Show'),
     ]
 
     PRIORITY_CHOICES = [
@@ -664,8 +669,13 @@ class Appointment(models.Model):
     department = models.ForeignKey(Department, on_delete=models.SET_NULL, null=True, blank=True,
                                     related_name='appointments')
 
-    scheduled_at = models.DateTimeField(help_text='Appointment date and time')
+    scheduled_at = models.DateTimeField(null=True, blank=True, help_text='Confirmed appointment date and time (set by doctor)')
     duration_minutes = models.PositiveIntegerField(default=30)
+    consultation_started_at = models.DateTimeField(null=True, blank=True, help_text='Timestamp when consultation was started')
+
+    preferred_date      = models.DateField(null=True, blank=True, help_text="Patient's preferred date")
+    preferred_time_note = models.CharField(max_length=100, blank=True, help_text="Patient's preferred time note (e.g. morning)")
+    decline_reason      = models.TextField(blank=True, help_text='Reason doctor declined the request')
 
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='scheduled')
     priority = models.CharField(max_length=10, choices=PRIORITY_CHOICES, default='normal')
@@ -696,7 +706,227 @@ class Appointment(models.Model):
         ]
 
     def __str__(self):
-        return f"{self.patient.full_name} with {self.doctor.full_name} on {self.scheduled_at:%Y-%m-%d %H:%M}"
+        ts = self.scheduled_at.strftime('%Y-%m-%d %H:%M') if self.scheduled_at else 'TBD'
+        return f"{self.patient.full_name} with {self.doctor.full_name} on {ts}"
+
+
+# ═══════════════════════════════════════════════════════════════
+# IN-APP NOTIFICATIONS
+# ═══════════════════════════════════════════════════════════════
+
+class Notification(models.Model):
+    """In-app notification for any user — driven by appointment events."""
+
+    TYPE_CHOICES = [
+        ('appointment_confirmed', 'Appointment Confirmed'),
+        ('appointment_declined',  'Appointment Declined'),
+        ('appointment_cancelled', 'Appointment Cancelled'),
+        ('appointment_request',   'New Appointment Request'),
+        ('general',               'General'),
+    ]
+
+    user        = models.ForeignKey(User, on_delete=models.CASCADE, related_name='notifications')
+    type        = models.CharField(max_length=50, choices=TYPE_CHOICES, default='general')
+    title       = models.CharField(max_length=200)
+    message     = models.TextField()
+    appointment = models.ForeignKey(
+        'Appointment', on_delete=models.SET_NULL, null=True, blank=True, related_name='notifications'
+    )
+    is_read     = models.BooleanField(default=False)
+    created_at  = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f"[{self.type}] {self.title} → {self.user.email}"
+
+
+
+# ═══════════════════════════════════════════════════════════════
+# DOCTOR AVAILABILITY / SCHEDULE
+# ═══════════════════════════════════════════════════════════════
+
+class DoctorAvailability(models.Model):
+    """Weekly recurring availability schedule for a doctor."""
+
+    DAY_CHOICES = [
+        (0, 'Monday'),
+        (1, 'Tuesday'),
+        (2, 'Wednesday'),
+        (3, 'Thursday'),
+        (4, 'Friday'),
+        (5, 'Saturday'),
+        (6, 'Sunday'),
+    ]
+
+    doctor         = models.ForeignKey(User, on_delete=models.CASCADE, related_name='availability_schedule')
+    day_of_week    = models.IntegerField(choices=DAY_CHOICES)
+    start_time     = models.TimeField(help_text='Start of working hours')
+    end_time       = models.TimeField(help_text='End of working hours')
+    slot_duration  = models.IntegerField(default=30, help_text='Duration of each appointment slot in minutes')
+    is_active      = models.BooleanField(default=True, help_text='Whether the doctor accepts appointments on this day')
+    created_at     = models.DateTimeField(auto_now_add=True)
+    updated_at     = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        unique_together = ['doctor', 'day_of_week']
+        ordering = ['day_of_week']
+
+    def __str__(self):
+        day = dict(self.DAY_CHOICES).get(self.day_of_week, '?')
+        status = 'ON' if self.is_active else 'OFF'
+        return f"Dr. {self.doctor.full_name} — {day} {self.start_time:%H:%M}–{self.end_time:%H:%M} [{status}]"
+
+
+class DoctorUnavailableDate(models.Model):
+    """Specific dates a doctor is unavailable (holidays, leave, etc.)."""
+
+    doctor     = models.ForeignKey(User, on_delete=models.CASCADE, related_name='unavailable_dates')
+    date       = models.DateField()
+    reason     = models.CharField(max_length=200, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = ['doctor', 'date']
+        ordering = ['date']
+
+    def __str__(self):
+        return f"Dr. {self.doctor.full_name} unavailable on {self.date}"
+
+
+# ═══════════════════════════════════════════════════════════════
+# PATIENT VISITS / ENCOUNTERS
+# ═══════════════════════════════════════════════════════════════
+
+class PatientVisit(models.Model):
+    """One clinical encounter — created when a patient arrives at a facility."""
+
+    VISIT_TYPE_CHOICES = [
+        ('outpatient',  'Outpatient (OPD)'),
+        ('inpatient',   'Inpatient (IPD)'),
+        ('emergency',   'Emergency'),
+        ('follow_up',   'Follow-up'),
+        ('referral',    'Referral'),
+        ('routine_checkup', 'Routine Check-up'),
+    ]
+
+    STATUS_CHOICES = [
+        ('registered',     'Registered'),
+        ('triaged',        'Triaged'),
+        ('waiting',        'Waiting for Doctor'),
+        ('in_progress',    'In Consultation'),
+        ('completed',      'Completed'),
+        ('cancelled',      'Cancelled'),
+        ('referred_out',   'Referred Out'),
+    ]
+
+    # Core relations
+    patient       = models.ForeignKey(Patient,     on_delete=models.CASCADE,    related_name='visits')
+    appointment   = models.ForeignKey(Appointment, on_delete=models.SET_NULL,   null=True, blank=True, related_name='visit')
+    hospital      = models.ForeignKey(Hospital,    on_delete=models.CASCADE,    related_name='visits')
+    department    = models.ForeignKey(Department,  on_delete=models.SET_NULL,   null=True, blank=True, related_name='visits')
+    doctor        = models.ForeignKey(User,        on_delete=models.SET_NULL,   null=True, blank=True, related_name='doctor_visits')
+    registered_by = models.ForeignKey(User,        on_delete=models.SET_NULL,   null=True, blank=True, related_name='registered_visits')
+
+    # Visit details
+    visit_type      = models.CharField(max_length=20, choices=VISIT_TYPE_CHOICES, default='outpatient')
+    chief_complaint = models.TextField(help_text='Primary reason for this visit')
+    visit_date      = models.DateTimeField(help_text='Date and time of visit')
+    status          = models.CharField(max_length=20, choices=STATUS_CHOICES, default='registered')
+
+    # Discharge / referral
+    discharge_date       = models.DateTimeField(null=True, blank=True)
+    discharge_notes      = models.TextField(blank=True)
+    referred_to_hospital = models.ForeignKey(Hospital, on_delete=models.SET_NULL, null=True, blank=True,
+                                              related_name='referred_visits', help_text='If patient referred elsewhere')
+    referred_to_doctor   = models.CharField(max_length=300, blank=True)
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-visit_date']
+        indexes = [
+            models.Index(fields=['patient', '-visit_date']),
+            models.Index(fields=['hospital', '-visit_date']),
+            models.Index(fields=['doctor', 'status']),
+        ]
+
+    def __str__(self):
+        return f"Visit: {self.patient.full_name} @ {self.hospital.name} on {self.visit_date:%Y-%m-%d}"
+
+
+class VitalSigns(models.Model):
+    """Vitals recorded by nurse/doctor at the start of each visit."""
+
+    visit = models.OneToOneField(PatientVisit, on_delete=models.CASCADE, related_name='vitals')
+
+    blood_pressure_systolic  = models.PositiveIntegerField(null=True, blank=True, help_text='mmHg')
+    blood_pressure_diastolic = models.PositiveIntegerField(null=True, blank=True, help_text='mmHg')
+    heart_rate               = models.PositiveIntegerField(null=True, blank=True, help_text='bpm')
+    respiratory_rate         = models.PositiveIntegerField(null=True, blank=True, help_text='breaths/min')
+    temperature_celsius      = models.DecimalField(max_digits=4, decimal_places=1, null=True, blank=True, help_text='°C')
+    weight_kg                = models.DecimalField(max_digits=5, decimal_places=1, null=True, blank=True)
+    height_cm                = models.DecimalField(max_digits=5, decimal_places=1, null=True, blank=True)
+    oxygen_saturation        = models.DecimalField(max_digits=4, decimal_places=1, null=True, blank=True, help_text='SpO2 %')
+    blood_glucose            = models.DecimalField(max_digits=5, decimal_places=1, null=True, blank=True, help_text='mmol/L')
+    notes                    = models.TextField(blank=True)
+
+    recorded_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='recorded_vitals')
+    recorded_at = models.DateTimeField(auto_now_add=True)
+
+    @property
+    def bmi(self):
+        if self.weight_kg and self.height_cm and self.height_cm > 0:
+            h_m = float(self.height_cm) / 100
+            return round(float(self.weight_kg) / (h_m ** 2), 1)
+        return None
+
+    @property
+    def blood_pressure(self):
+        if self.blood_pressure_systolic and self.blood_pressure_diastolic:
+            return f"{self.blood_pressure_systolic}/{self.blood_pressure_diastolic} mmHg"
+        return None
+
+    def __str__(self):
+        return f"Vitals for {self.visit}"
+
+
+class ClinicalNote(models.Model):
+    """Doctor's clinical findings and treatment plan for a visit."""
+
+    visit  = models.OneToOneField(PatientVisit, on_delete=models.CASCADE, related_name='clinical_note')
+    doctor = models.ForeignKey(User,            on_delete=models.SET_NULL, null=True, blank=True, related_name='clinical_notes')
+
+    # Subjective
+    history_of_presenting_illness = models.TextField(blank=True, help_text='HPI — patient narrative')
+
+    # Objective / Assessment
+    diagnosis             = models.TextField(help_text='Primary diagnosis')
+    secondary_diagnoses   = models.TextField(blank=True, help_text='Additional / differential diagnoses')
+    clinical_findings     = models.TextField(blank=True, help_text='Physical examination findings')
+    investigations_ordered = models.TextField(blank=True, help_text='Lab tests, imaging, etc. ordered')
+    investigation_results  = models.TextField(blank=True, help_text='Results if available at visit')
+
+    # Plan
+    treatment_plan    = models.TextField(blank=True)
+    prescriptions     = models.TextField(blank=True, help_text='Drugs prescribed — name, dose, frequency, duration')
+    procedures_done   = models.TextField(blank=True, help_text='Minor procedures performed during visit')
+    patient_education = models.TextField(blank=True, help_text='Advice/education given to patient')
+
+    # Follow-up
+    follow_up_date         = models.DateField(null=True, blank=True)
+    follow_up_instructions = models.TextField(blank=True)
+
+    # Flags
+    is_confidential = models.BooleanField(default=False, help_text='Restrict to authorised staff only')
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return f"Note: {self.visit.patient.full_name} — {self.visit.visit_date:%Y-%m-%d}"
 
 
 # ═══════════════════════════════════════════════════════════════
