@@ -683,6 +683,8 @@ class Appointment(models.Model):
     reason = models.TextField(blank=True, help_text='Chief complaint / reason for visit')
     notes = models.TextField(blank=True, help_text='Receptionist/staff notes')
 
+    is_referral = models.BooleanField(default=False, help_text='True if this is a cross-hospital referral appointment')
+
     created_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True,
                                     related_name='created_appointments')
     checked_in_at = models.DateTimeField(null=True, blank=True)

@@ -19,6 +19,7 @@ export default function PatientBookAppointment() {
   const navigate = useNavigate();
 
   const [doctors,      setDoctors]      = useState([]);
+  const [ownHospitalName, setOwnHospitalName] = useState('');
   const [loading,      setLoading]      = useState(true);
   const [saving,       setSaving]       = useState(false);
   const [error,        setError]        = useState('');
@@ -28,23 +29,81 @@ export default function PatientBookAppointment() {
   const [docSchedule,  setDocSchedule]  = useState(null);
   const [schedLoading, setSchedLoading] = useState(false);
 
+  // Referral state
+  const [bookingType,   setBookingType]   = useState('own');  // 'own' | 'referral'
+  const [hospitals,     setHospitals]     = useState([]);
+  const [refHospitalId, setRefHospitalId] = useState('');
+  const [refHospitalName, setRefHospitalName] = useState('');
+  const [refLoading,    setRefLoading]    = useState(false);
+
   const [form, setForm] = useState({
     doctor_id:           '',
     preferred_date:      '',
     preferred_time_note: 'No preference',
     priority:            'normal',
     reason:              '',
+    is_referral:         false,
   });
   const [selectedDoctor, setSelectedDoctor] = useState(null);
 
   const DAY_NAMES = ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'];
 
   useEffect(() => {
+    // Fetch own hospital doctors
     apiCall('/portal/doctors/')
       .then(r => r.json())
-      .then(data => { setDoctors(Array.isArray(data) ? data : []); setLoading(false); })
+      .then(data => {
+        const list = data.doctors || (Array.isArray(data) ? data : []);
+        setDoctors(list);
+        setOwnHospitalName(data.hospital_name || '');
+        setLoading(false);
+      })
       .catch(() => setLoading(false));
+    // Fetch all hospitals for referral dropdown
+    apiCall('/portal/hospitals/')
+      .then(r => r.json())
+      .then(data => setHospitals(Array.isArray(data) ? data : []))
+      .catch(() => {});
   }, [apiCall]);
+
+  const switchBookingType = (type) => {
+    setBookingType(type);
+    setDoctors([]);
+    setSelectedDoctor(null);
+    setSearch('');
+    setRefHospitalId('');
+    setRefHospitalName('');
+    setForm(f => ({ ...f, doctor_id: '', is_referral: type === 'referral' }));
+    if (type === 'own') {
+      setLoading(true);
+      apiCall('/portal/doctors/')
+        .then(r => r.json())
+        .then(data => {
+          const list = data.doctors || (Array.isArray(data) ? data : []);
+          setDoctors(list);
+          setOwnHospitalName(data.hospital_name || '');
+          setLoading(false);
+        })
+        .catch(() => setLoading(false));
+    }
+  };
+
+  const loadReferralDoctors = async (hospitalId) => {
+    if (!hospitalId) return;
+    setRefHospitalId(hospitalId);
+    const h = hospitals.find(x => String(x.id) === String(hospitalId));
+    setRefHospitalName(h?.name || '');
+    setRefLoading(true);
+    setDoctors([]);
+    setSelectedDoctor(null);
+    setSearch('');
+    try {
+      const res  = await apiCall(`/portal/doctors/?hospital_id=${hospitalId}`);
+      const data = await res.json();
+      setDoctors(data.doctors || []);
+    } catch { /* silent */ }
+    setRefLoading(false);
+  };
 
   const set = (field) => (e) => setForm(f => ({ ...f, [field]: e.target.value }));
 
@@ -235,6 +294,47 @@ export default function PatientBookAppointment() {
               </div>
               <div className="dash-card-body">
 
+                {/* ── Booking Type Toggle ── */}
+                <div style={{ display:'flex', gap:'8px', marginBottom:'20px', padding:'4px', background:'#f1f5f9', borderRadius:'12px' }}>
+                  {[{ key:'own', icon:'fas fa-hospital', label:'My Hospital' + (ownHospitalName ? ` — ${ownHospitalName}` : '') },
+                    { key:'referral', icon:'fas fa-share-square', label:'Referral — Another Hospital' }]
+                    .map(({ key, icon, label }) => (
+                    <button key={key} type="button" onClick={() => switchBookingType(key)}
+                      style={{
+                        flex:1, padding:'10px 16px', borderRadius:'9px', border:'none', cursor:'pointer',
+                        fontWeight: bookingType === key ? 700 : 500, fontSize:'13px',
+                        background: bookingType === key ? '#fff' : 'transparent',
+                        color: bookingType === key ? '#4361ee' : '#64748b',
+                        boxShadow: bookingType === key ? '0 1px 4px rgba(0,0,0,0.1)' : 'none',
+                        transition:'all 0.15s',
+                      }}>
+                      <i className={icon} style={{ marginRight:'8px' }}></i>{label}
+                    </button>
+                  ))}
+                </div>
+
+                {/* ── Referral Hospital Selector ── */}
+                {bookingType === 'referral' && (
+                  <div style={{ marginBottom:'20px' }}>
+                    <label className="form-label" style={{ fontWeight:600, fontSize:'13px' }}>
+                      <i className="fas fa-hospital me-2 text-primary"></i>Select Hospital for Referral
+                    </label>
+                    <select className="form-select" value={refHospitalId}
+                      onChange={e => loadReferralDoctors(e.target.value)}>
+                      <option value="">— Choose a hospital —</option>
+                      {hospitals.map(h => (
+                        <option key={h.id} value={h.id}>{h.name}{h.town_city ? ` — ${h.town_city}` : ''}</option>
+                      ))}
+                    </select>
+                    {refHospitalId && (
+                      <div style={{ marginTop:'6px', fontSize:'12px', color:'#e63946', display:'flex', alignItems:'center', gap:'6px' }}>
+                        <i className="fas fa-info-circle"></i>
+                        This is a referral appointment at <strong>{refHospitalName}</strong>. The doctor will be notified.
+                      </div>
+                    )}
+                  </div>
+                )}
+
                 {/* Search */}
                 <div style={{ position:'relative', marginBottom:'20px' }}>
                   <i className="fas fa-search" style={{ position:'absolute', left:'14px', top:'50%', transform:'translateY(-50%)', color:'#adb5bd', fontSize:'13px' }}></i>
@@ -247,10 +347,16 @@ export default function PatientBookAppointment() {
                   />
                 </div>
 
-                {loading ? (
+                {(loading || refLoading) ? (
                   <div style={{ textAlign:'center', padding:'60px 0', color:'#6c757d' }}>
                     <div className="spinner-border text-primary mb-3" style={{ width:'40px', height:'40px' }}></div>
-                    <div style={{ fontSize:'14px' }}>Loading available doctors…</div>
+                    <div style={{ fontSize:'14px' }}>{refLoading ? 'Loading doctors at selected hospital…' : 'Loading available doctors…'}</div>
+                  </div>
+                ) : bookingType === 'referral' && !refHospitalId ? (
+                  <div style={{ textAlign:'center', padding:'60px 0', color:'#adb5bd' }}>
+                    <i className="fas fa-share-square" style={{ fontSize:'48px', display:'block', marginBottom:'16px', opacity:0.4 }}></i>
+                    <div style={{ fontWeight:600, color:'#6c757d' }}>Select a hospital above</div>
+                    <div style={{ fontSize:'13px', marginTop:'4px' }}>Choose the referral hospital to see its doctors</div>
                   </div>
                 ) : filteredDoc.length === 0 ? (
                   <div style={{ textAlign:'center', padding:'60px 0', color:'#adb5bd' }}>
@@ -426,6 +532,11 @@ export default function PatientBookAppointment() {
                         <div style={{ flex:1 }}>
                           <div style={{ fontWeight:700, color:'#1a1a2e', fontSize:'14px' }}>Dr. {selectedDoctor.full_name}</div>
                           <div style={{ fontSize:'12px', color:'#6c757d', marginTop:'3px' }}>{selectedDoctor.department__name || 'General Practice'}</div>
+                          {form.is_referral && (
+                            <span style={{ display:'inline-flex', alignItems:'center', gap:'4px', fontSize:'11px', fontWeight:700, color:'#e63946', background:'#fff1f2', border:'1px solid #fecdd3', borderRadius:'5px', padding:'2px 7px', marginTop:'4px' }}>
+                              <i className="fas fa-share-square" style={{ fontSize:'9px' }}></i>Referral — {refHospitalName}
+                            </span>
+                          )}
                         </div>
                         <button onClick={() => { setStep(1); setError(''); }} style={{ background:'none', border:'none', color:'#4361ee', cursor:'pointer', fontSize:'12px', fontWeight:700 }}>Change</button>
                       </div>
@@ -540,7 +651,8 @@ export default function PatientBookAppointment() {
                         { icon:'fas fa-calendar', label:'Preferred Date', value: form.preferred_date ? fmtDate(form.preferred_date) : 'No preference', color:'#7c3aed', bg:'#fdf4ff' },
                         { icon:'fas fa-clock',    label:'Preferred Time', value: form.preferred_time_note,  color:'#0891b2', bg:'#f0f9ff' },
                         { icon:'fas fa-building', label:'Department',     value: selectedDoctor.department__name || 'General Practice', color:'#059669', bg:'#f0fdf4' },
-                      ].map(({ icon, label, value, color, bg }) => (
+                        form.is_referral ? { icon:'fas fa-share-square', label:'Referral Hospital', value: refHospitalName, color:'#e63946', bg:'#fff1f2' } : null,
+                      ].filter(Boolean).map(({ icon, label, value, color, bg }) => (
                         <div key={label} className="col-6">
                           <div style={{ background: bg, borderRadius:'12px', padding:'14px 16px' }}>
                             <div style={{ display:'flex', alignItems:'center', gap:'8px', marginBottom:'5px' }}>

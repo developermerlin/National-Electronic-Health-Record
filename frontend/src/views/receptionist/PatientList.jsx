@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import DashboardLayout from '../../layout/DashboardLayout';
 
@@ -37,6 +37,7 @@ const genderColors = { male: '#4361ee', female: '#e63946', other: '#7c3aed' };
 
 function PatientList() {
   const { apiCall } = useAuth();
+  const navigate = useNavigate();
   const [patients, setPatients] = useState([]);
   const [stats, setStats] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -410,7 +411,7 @@ function PatientList() {
                           className="dash-header-btn"
                           style={{width: '32px', height: '32px', fontSize: '12px'}}
                           title="View Details"
-                          onClick={() => openViewModal(p)}
+                          onClick={() => navigate(`/receptionist/patients/${p.id}`)}
                         >
                           <i className="fas fa-eye"></i>
                         </button>

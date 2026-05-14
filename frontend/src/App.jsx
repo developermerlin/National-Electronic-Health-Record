@@ -19,6 +19,7 @@ import ProfilePage from './views/admin/ProfilePage';
 import ReceptDashboard from './views/auth/ReceptDashboard';
 import PatientList from './views/receptionist/PatientList';
 import PatientRegister from './views/receptionist/PatientRegister';
+import PatientDetail from './views/receptionist/PatientDetail';
 import ReceptionistAppointments from './views/receptionist/ReceptionistAppointments';
 import DoctorQueue from './views/doctor/DoctorQueue';
 import DoctorDashboard from './views/doctor/DoctorDashboard';
@@ -155,6 +156,11 @@ function AppContent() {
         <Route path="/receptionist/patients/register" element={
           <ProtectedRoute allowedRoles={['admin', 'receptionist', 'hospital_admin']}>
             <PatientRegister />
+          </ProtectedRoute>
+        } />
+        <Route path="/receptionist/patients/:id" element={
+          <ProtectedRoute allowedRoles={['admin', 'receptionist', 'hospital_admin', 'doctor', 'nurse']}>
+            <PatientDetail />
           </ProtectedRoute>
         } />
         <Route path="/receptionist/appointments" element={

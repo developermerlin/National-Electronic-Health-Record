@@ -160,16 +160,24 @@ def patient_book_appointment(request):
     except User.DoesNotExist:
         return Response({'error': 'Doctor not found.'}, status=status.HTTP_400_BAD_REQUEST)
 
+    # Determine hospital: use doctor's hospital for referral, patient's hospital otherwise
+    is_referral = data.get('is_referral', False)
+    if is_referral:
+        appointment_hospital = doctor.hospital
+    else:
+        appointment_hospital = patient.hospital
+
     appointment = Appointment.objects.create(
         patient=patient,
         doctor=doctor,
-        hospital=patient.hospital,
+        hospital=appointment_hospital,
         department=doctor.department,
         preferred_date=preferred_date,
         preferred_time_note=preferred_time_note,
         reason=reason,
         priority=priority,
         status='pending',
+        is_referral=bool(is_referral),
         created_by=request.user,
     )
 
@@ -245,17 +253,30 @@ def mark_all_notifications_read(request):
 
 
 # ─────────────────────────────────────────────
-# PATIENT: List available doctors at own hospital
+# PATIENT: List available doctors
+#   GET /portal/doctors/           → own hospital
+#   GET /portal/doctors/?hospital_id=X → specific hospital (referral)
 # ─────────────────────────────────────────────
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def list_available_doctors(request):
     if not _is_patient(request.user):
         return Response({'error': 'Not authorized.'}, status=status.HTTP_403_FORBIDDEN)
-    try:
-        hospital = request.user.patient_record.hospital
-    except Patient.DoesNotExist:
-        return Response([])
+
+    hospital_id = request.query_params.get('hospital_id')
+
+    if hospital_id:
+        # Referral: fetch doctors at a specific hospital
+        try:
+            hospital = Hospital.objects.get(id=hospital_id, is_active=True)
+        except Hospital.DoesNotExist:
+            return Response({'error': 'Hospital not found.'}, status=status.HTTP_404_NOT_FOUND)
+    else:
+        # Default: own registered hospital
+        try:
+            hospital = request.user.patient_record.hospital
+        except Patient.DoesNotExist:
+            return Response([])
 
     doctors = (
         User.objects
@@ -264,4 +285,8 @@ def list_available_doctors(request):
         .values('id', 'full_name', 'department__name', 'department__id')
         .order_by('full_name')
     )
-    return Response(list(doctors))
+    return Response({
+        'hospital_id': hospital.id,
+        'hospital_name': hospital.name,
+        'doctors': list(doctors),
+    })

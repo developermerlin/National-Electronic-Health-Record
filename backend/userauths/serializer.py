@@ -568,6 +568,7 @@ class AppointmentSerializer(serializers.ModelSerializer):
             'reason', 'notes',
             'preferred_date', 'preferred_time_note', 'decline_reason',
             'doctor_name', 'patient_name',
+            'is_referral',
             'created_by', 'created_at',
             'checked_in_at', 'checked_in_by',
             'consultation_started_at', 'completed_at',
