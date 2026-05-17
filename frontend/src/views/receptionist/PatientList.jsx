@@ -1,42 +1,13 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import DashboardLayout from '../../layout/DashboardLayout';
-
-const navItems = [
-  {
-    label: 'Main',
-    items: [
-      { path: '/receptionist/dashboard', icon: 'fas fa-tachometer-alt', text: 'Dashboard' },
-      { path: '/receptionist/patients', icon: 'fas fa-user-injured', text: 'Patients' },
-      { path: '/receptionist/patients/register', icon: 'fas fa-user-plus', text: 'Register Patient' },
-    ]
-  },
-  {
-    label: 'Management',
-    items: [
-      { path: '/receptionist/appointments', icon: 'fas fa-calendar-check', text: 'Appointments' },
-      { path: '/receptionist/queue', icon: 'fas fa-list-ol', text: 'Patient Queue' },
-    ]
-  },
-  {
-    label: 'Communication',
-    items: [
-      { path: '/messages', icon: 'fas fa-envelope', text: 'Messages' },
-    ]
-  },
-  {
-    label: 'Account',
-    items: [
-      { path: '/admin/profile', icon: 'fas fa-user-circle', text: 'My Profile' },
-    ]
-  }
-];
+import { getNavForUser, getBrandForUser, getRoleBadge } from '../../utils/navItems';
 
 const genderColors = { male: '#4361ee', female: '#e63946', other: '#7c3aed' };
 
 function PatientList() {
-  const { apiCall } = useAuth();
+  const { apiCall, user } = useAuth();
   const navigate = useNavigate();
   const [patients, setPatients] = useState([]);
   const [stats, setStats] = useState(null);
@@ -44,6 +15,7 @@ function PatientList() {
   const [search, setSearch] = useState('');
   const [genderFilter, setGenderFilter] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
+  const [incompleteFilter, setIncompleteFilter] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
   const [editPatient, setEditPatient] = useState(null);
   const [showEditModal, setShowEditModal] = useState(false);
@@ -70,10 +42,72 @@ function PatientList() {
   const [showPwd, setShowPwd]                     = useState(false);
   const [showPwd2, setShowPwd2]                   = useState(false);
 
+  // Geographic state for edit modal
+  const [editRegions,          setEditRegions]          = useState([]);
+  const [editDistricts,        setEditDistricts]        = useState([]);
+  const [editChiefdoms,        setEditChiefdoms]        = useState([]);
+  const [editTowns,            setEditTowns]            = useState([]);
+  const [editSelectedRegionId, setEditSelectedRegionId] = useState('');
+
+  // Photo state for edit modal
+  const [editPhotoFile,    setEditPhotoFile]    = useState(null);
+  const [editPhotoPreview, setEditPhotoPreview] = useState(null);
+  const editFileInputRef = useRef(null);
+
+  // Load regions once on mount
+  const fetchEditRegions = useCallback(async () => {
+    try {
+      const res = await apiCall('/admin/regions/');
+      if (res.ok) {
+        const data = await res.json();
+        setEditRegions(Array.isArray(data) ? data : data.results || []);
+      }
+    } catch {}
+  }, [apiCall]);
+
+  const fetchEditDistricts = useCallback(async (regionId) => {
+    if (!regionId) { setEditDistricts([]); setEditChiefdoms([]); setEditTowns([]); return; }
+    try {
+      const res = await apiCall(`/admin/districts/?region=${regionId}`);
+      if (res.ok) {
+        const data = await res.json();
+        setEditDistricts(Array.isArray(data) ? data : data.results || []);
+      }
+    } catch {}
+    setEditChiefdoms([]);
+    setEditTowns([]);
+  }, [apiCall]);
+
+  const fetchEditChiefdoms = useCallback(async (districtId) => {
+    if (!districtId) { setEditChiefdoms([]); setEditTowns([]); return; }
+    try {
+      const res = await apiCall(`/admin/chiefdoms/?district=${districtId}`);
+      if (res.ok) {
+        const data = await res.json();
+        setEditChiefdoms(Array.isArray(data) ? data : data.results || []);
+      }
+    } catch {}
+    setEditTowns([]);
+  }, [apiCall]);
+
+  const fetchEditTowns = useCallback(async (districtId, chiefdomId) => {
+    if (!districtId) { setEditTowns([]); return; }
+    try {
+      let url = `/admin/towns/?district=${districtId}`;
+      if (chiefdomId) url += `&chiefdom=${chiefdomId}`;
+      const res = await apiCall(url);
+      if (res.ok) {
+        const data = await res.json();
+        setEditTowns(Array.isArray(data) ? data : data.results || []);
+      }
+    } catch {}
+  }, [apiCall]);
+
   useEffect(() => {
     fetchPatients();
     fetchStats();
-  }, [search, genderFilter, statusFilter]);
+    fetchEditRegions();
+  }, [search, genderFilter, statusFilter, incompleteFilter]);
 
   const fetchPatients = async () => {
     try {
@@ -82,6 +116,7 @@ function PatientList() {
       if (search) url += `search=${encodeURIComponent(search)}&`;
       if (genderFilter) url += `gender=${genderFilter}&`;
       if (statusFilter) url += `status=${statusFilter}&`;
+      if (incompleteFilter) url += `incomplete=true&`;
       const response = await apiCall(url);
       const data = await response.json();
       if (response.ok) {
@@ -202,37 +237,79 @@ function PatientList() {
   const openEditModal = (patient) => {
     setEditPatient(patient);
     setEditForm({
-      first_name: patient.first_name || '',
-      last_name: patient.last_name || '',
-      other_names: patient.other_names || '',
-      phone: patient.phone || '',
-      alt_phone: patient.alt_phone || '',
-      email: patient.email || '',
-      address: patient.address || '',
-      city: patient.city || '',
-      region: patient.region || '',
-      blood_type: patient.blood_type || 'unknown',
-      allergies: patient.allergies || '',
+      first_name:   patient.first_name   || '',
+      last_name:    patient.last_name    || '',
+      other_names:  patient.other_names  || '',
+      date_of_birth: patient.date_of_birth || '',
+      gender:       patient.gender       || '',
+      marital_status: patient.marital_status || '',
+      nationality:  patient.nationality  || '',
+      national_id:  patient.national_id  || '',
+      phone:        patient.phone        || '',
+      alt_phone:    patient.alt_phone    || '',
+      email:        patient.email        || '',
+      address:      patient.address      || '',
+      city:         patient.city         || '',
+      region:       patient.region       || '',
+      district:     patient.district     || '',
+      chiefdom:     patient.chiefdom     || '',
+      town:         patient.town         || '',
+      blood_type:   patient.blood_type   || 'unknown',
+      allergies:    patient.allergies    || '',
       chronic_conditions: patient.chronic_conditions || '',
-      emergency_contact_name: patient.emergency_contact_name || '',
-      emergency_contact_phone: patient.emergency_contact_phone || '',
+      disabilities: patient.disabilities || '',
+      emergency_contact_name:         patient.emergency_contact_name         || '',
+      emergency_contact_phone:        patient.emergency_contact_phone        || '',
       emergency_contact_relationship: patient.emergency_contact_relationship || '',
       status: patient.status || 'active',
     });
+    setEditPhotoFile(null);
+    setEditPhotoPreview(patient.photo || null);
     setShowEditModal(true);
+    // Pre-load geographic dropdowns based on existing patient location
+    const matchingRegion = editRegions.find(r => r.name === patient.region);
+    if (matchingRegion) {
+      setEditSelectedRegionId(String(matchingRegion.id));
+      fetchEditDistricts(matchingRegion.id);
+    } else {
+      setEditDistricts([]);
+    }
+    if (patient.district) {
+      fetchEditChiefdoms(patient.district);
+      fetchEditTowns(patient.district, patient.chiefdom || '');
+    } else {
+      setEditChiefdoms([]);
+      setEditTowns([]);
+    }
   };
 
   const handleEditSave = async () => {
     if (!editPatient) return;
     try {
       setSaving(true);
-      const response = await apiCall(`/patients/${editPatient.id}/`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(editForm),
-      });
+      let response;
+      if (editPhotoFile) {
+        const fd = new FormData();
+        Object.entries(editForm).forEach(([key, val]) => {
+          if (val !== '' && val !== null && val !== undefined) fd.append(key, val);
+        });
+        fd.append('photo', editPhotoFile);
+        response = await apiCall(`/patients/${editPatient.id}/`, {
+          method: 'PATCH',
+          body: fd,
+          isFormData: true,
+        });
+      } else {
+        response = await apiCall(`/patients/${editPatient.id}/`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(editForm),
+        });
+      }
       if (response.ok) {
         setShowEditModal(false);
+        setEditPhotoFile(null);
+        setEditPhotoPreview(null);
         fetchPatients();
         fetchStats();
       }
@@ -248,7 +325,7 @@ function PatientList() {
   const paginatedPatients = patients.slice((currentPage - 1) * perPage, currentPage * perPage);
 
   return (
-    <DashboardLayout navItems={navItems} brandTitle="NEHR System" roleBadge="Receptionist">
+    <DashboardLayout navItems={getNavForUser(user)} brandTitle={getBrandForUser(user)} roleBadge={getRoleBadge(user)}>
       {/* Header */}
       <div className="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-2">
         <div>
@@ -262,6 +339,7 @@ function PatientList() {
 
       {/* Stat Cards */}
       {stats && (
+        <>
         <div className="row g-3 mb-4">
           <div className="col-xl-3 col-md-6">
             <div className="dash-stat-card">
@@ -296,6 +374,38 @@ function PatientList() {
             </div>
           </div>
         </div>
+
+        {/* Incomplete Profiles Banner */}
+        {stats.incomplete_profiles > 0 && (
+          <div
+            className="d-flex align-items-center justify-content-between mb-4 px-4 py-3"
+            style={{ background: incompleteFilter ? '#fef3c7' : '#fff7ed', border: `1px solid ${incompleteFilter ? '#f59e0b' : '#fed7aa'}`, borderRadius: 12, cursor: 'pointer' }}
+            onClick={() => { setIncompleteFilter(f => !f); setCurrentPage(1); }}
+          >
+            <div className="d-flex align-items-center gap-3">
+              <div style={{ width: 40, height: 40, borderRadius: 10, background: '#f97316', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <i className="fas fa-exclamation-triangle" style={{ color: '#fff', fontSize: 16 }}></i>
+              </div>
+              <div>
+                <div style={{ fontWeight: 700, color: '#92400e', fontSize: 14 }}>
+                  {stats.incomplete_profiles} Incomplete Profile{stats.incomplete_profiles !== 1 ? 's' : ''}
+                </div>
+                <div style={{ fontSize: 12, color: '#b45309' }}>
+                  Patients registered by a nurse — missing National ID and other details
+                </div>
+              </div>
+            </div>
+            <div className="d-flex align-items-center gap-2">
+              <span
+                className="badge"
+                style={{ background: incompleteFilter ? '#f59e0b' : '#fed7aa', color: incompleteFilter ? '#fff' : '#92400e', fontSize: 12, padding: '5px 12px', borderRadius: 20 }}
+              >
+                {incompleteFilter ? <><i className="fas fa-times me-1"></i>Clear filter</> : <><i className="fas fa-filter me-1"></i>Show only</>}
+              </span>
+            </div>
+          </div>
+        )}
+        </>
       )}
 
       {/* Search & Filters */}
@@ -333,7 +443,16 @@ function PatientList() {
                 <option value="deceased">Deceased</option>
               </select>
             </div>
-            <div className="col-md-3 text-end">
+            <div className="col-md-3 text-end d-flex align-items-end justify-content-end gap-2">
+              {incompleteFilter && (
+                <button
+                  className="btn btn-sm btn-warning"
+                  onClick={() => { setIncompleteFilter(false); setCurrentPage(1); }}
+                  style={{ fontSize: 12, borderRadius: 8 }}
+                >
+                  <i className="fas fa-times me-1"></i>Clear incomplete filter
+                </button>
+              )}
               <span className="text-muted" style={{fontSize: '13px'}}>{patients.length} patient{patients.length !== 1 ? 's' : ''} found</span>
             </div>
           </div>
@@ -1007,73 +1126,237 @@ function PatientList() {
         </div>
       )}
 
-      {/* Edit Modal */}
+      {/* ── Full Edit Modal ── */}
       {showEditModal && editPatient && (
-        <div className="modal d-block" style={{backgroundColor: 'rgba(0,0,0,0.5)'}}>
-          <div className="modal-dialog modal-lg modal-dialog-scrollable">
-            <div className="modal-content">
-              <div className="modal-header">
-                <h5 className="modal-title">
-                  <i className="fas fa-edit me-2"></i>Edit Patient — {editPatient.patient_id}
-                </h5>
-                <button type="button" className="btn-close" onClick={() => setShowEditModal(false)}></button>
+        <div className="modal d-block" style={{backgroundColor:'rgba(0,0,0,0.6)', zIndex:1060}}
+          onClick={() => setShowEditModal(false)}>
+          <div className="modal-dialog modal-xl modal-dialog-scrollable" onClick={e => e.stopPropagation()}
+            style={{maxWidth:'960px', margin:'16px auto'}}>
+            <div className="modal-content" style={{borderRadius:'16px', border:'none', overflow:'hidden'}}>
+
+              {/* Header */}
+              <div style={{background:'linear-gradient(135deg,#4361ee,#7c3aed)', padding:'22px 28px'}}>
+                <div className="d-flex align-items-center justify-content-between">
+                  <div className="d-flex align-items-center gap-3">
+                    <div style={{width:44, height:44, borderRadius:12, background:'rgba(255,255,255,0.2)',
+                      display:'flex', alignItems:'center', justifyContent:'center'}}>
+                      <i className="fas fa-user-edit" style={{color:'#fff', fontSize:18}}></i>
+                    </div>
+                    <div>
+                      <h5 style={{color:'#fff', fontWeight:700, margin:0}}>Complete Patient Profile</h5>
+                      <div style={{color:'rgba(255,255,255,0.75)', fontSize:13}}>
+                        {editPatient.full_name} &nbsp;·&nbsp; <span style={{fontFamily:'monospace'}}>{editPatient.patient_id}</span>
+                      </div>
+                    </div>
+                  </div>
+                  <button type="button" className="btn-close btn-close-white" onClick={() => setShowEditModal(false)}></button>
+                </div>
               </div>
-              <div className="modal-body">
-                <div className="row g-3">
+
+              <div className="modal-body" style={{padding:'28px 32px', background:'#fff'}}>
+
+                {/* ── SECTION 1: Personal Information ── */}
+                <div className="d-flex align-items-center gap-2 mb-3">
+                  <div style={{width:28,height:28,borderRadius:8,background:'#4361ee',display:'flex',alignItems:'center',justifyContent:'center'}}>
+                    <i className="fas fa-user" style={{color:'#fff',fontSize:12}}></i>
+                  </div>
+                  <span style={{fontWeight:700, fontSize:14}}>Personal Information</span>
+                  <div style={{flex:1,height:1,background:'#e9ecef',marginLeft:6}}></div>
+                </div>
+                <div className="row g-3 mb-4">
                   <div className="col-md-4">
-                    <label className="form-label">First Name</label>
+                    <label className="form-label">First Name <span className="text-danger">*</span></label>
                     <input type="text" className="form-control" value={editForm.first_name}
-                      onChange={(e) => setEditForm({...editForm, first_name: e.target.value})} />
+                      onChange={e => setEditForm({...editForm, first_name: e.target.value})} />
                   </div>
                   <div className="col-md-4">
                     <label className="form-label">Other Names</label>
                     <input type="text" className="form-control" value={editForm.other_names}
-                      onChange={(e) => setEditForm({...editForm, other_names: e.target.value})} />
+                      onChange={e => setEditForm({...editForm, other_names: e.target.value})} />
                   </div>
                   <div className="col-md-4">
-                    <label className="form-label">Last Name</label>
+                    <label className="form-label">Last Name <span className="text-danger">*</span></label>
                     <input type="text" className="form-control" value={editForm.last_name}
-                      onChange={(e) => setEditForm({...editForm, last_name: e.target.value})} />
+                      onChange={e => setEditForm({...editForm, last_name: e.target.value})} />
+                  </div>
+                  <div className="col-md-3">
+                    <label className="form-label">Date of Birth <span className="text-danger">*</span></label>
+                    <input type="date" className="form-control" value={editForm.date_of_birth}
+                      max={new Date().toISOString().split('T')[0]}
+                      onChange={e => setEditForm({...editForm, date_of_birth: e.target.value})} />
+                  </div>
+                  <div className="col-md-3">
+                    <label className="form-label">Gender <span className="text-danger">*</span></label>
+                    <select className="form-select" value={editForm.gender}
+                      onChange={e => setEditForm({...editForm, gender: e.target.value})}>
+                      <option value="">Select</option>
+                      <option value="male">Male</option>
+                      <option value="female">Female</option>
+                      <option value="other">Other</option>
+                    </select>
+                  </div>
+                  <div className="col-md-3">
+                    <label className="form-label">Marital Status</label>
+                    <select className="form-select" value={editForm.marital_status}
+                      onChange={e => setEditForm({...editForm, marital_status: e.target.value})}>
+                      <option value="">Select</option>
+                      <option value="single">Single</option>
+                      <option value="married">Married</option>
+                      <option value="divorced">Divorced</option>
+                      <option value="widowed">Widowed</option>
+                    </select>
+                  </div>
+                  <div className="col-md-3">
+                    <label className="form-label">Nationality</label>
+                    <input type="text" className="form-control" value={editForm.nationality}
+                      onChange={e => setEditForm({...editForm, nationality: e.target.value})} />
+                  </div>
+                  <div className="col-md-4">
+                    <label className="form-label">National ID (NIN)</label>
+                    <input type="text" className="form-control" value={editForm.national_id}
+                      onChange={e => setEditForm({...editForm, national_id: e.target.value})}
+                      placeholder="e.g. 1234567890" />
+                  </div>
+                  <div className="col-md-4">
+                    <label className="form-label">Phone <span className="text-danger">*</span></label>
+                    <input type="tel" className="form-control" value={editForm.phone}
+                      onChange={e => setEditForm({...editForm, phone: e.target.value})} />
+                  </div>
+                  <div className="col-md-4">
+                    <label className="form-label">Status</label>
+                    <select className="form-select" value={editForm.status}
+                      onChange={e => setEditForm({...editForm, status: e.target.value})}>
+                      <option value="active">Active</option>
+                      <option value="inactive">Inactive</option>
+                      <option value="deceased">Deceased</option>
+                    </select>
                   </div>
 
-                  <div className="col-md-4">
-                    <label className="form-label">Phone</label>
-                    <input type="text" className="form-control" value={editForm.phone}
-                      onChange={(e) => setEditForm({...editForm, phone: e.target.value})} />
+                  {/* Photo upload */}
+                  <div className="col-12">
+                    <label className="form-label">Patient Photo</label>
+                    <div className="d-flex align-items-center gap-3 flex-wrap">
+                      <div style={{width:80, height:80, borderRadius:12, overflow:'hidden', border:'2px solid #e9ecef',
+                        background:'#f8fafc', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0}}>
+                        {editPhotoPreview
+                          ? <img src={editPhotoPreview} alt="" style={{width:'100%',height:'100%',objectFit:'cover'}} />
+                          : <i className="fas fa-user-circle" style={{fontSize:36, color:'#cbd5e1'}}></i>}
+                      </div>
+                      <div className="d-flex gap-2 flex-wrap">
+                        <label className="btn btn-sm btn-outline-primary mb-0" style={{cursor:'pointer'}}>
+                          <i className="fas fa-upload me-1"></i>Upload Photo
+                          <input ref={editFileInputRef} type="file" accept="image/*" hidden
+                            onChange={e => {
+                              const f = e.target.files[0];
+                              if (f) { setEditPhotoFile(f); setEditPhotoPreview(URL.createObjectURL(f)); }
+                            }} />
+                        </label>
+                        {editPhotoPreview && (
+                          <button type="button" className="btn btn-sm btn-outline-danger"
+                            onClick={() => { setEditPhotoFile(null); setEditPhotoPreview(null); if (editFileInputRef.current) editFileInputRef.current.value = ''; }}>
+                            <i className="fas fa-trash me-1"></i>Remove
+                          </button>
+                        )}
+                      </div>
+                    </div>
                   </div>
+                </div>
+
+                {/* ── SECTION 2: Contact & Address ── */}
+                <div className="d-flex align-items-center gap-2 mb-3">
+                  <div style={{width:28,height:28,borderRadius:8,background:'#0891b2',display:'flex',alignItems:'center',justifyContent:'center'}}>
+                    <i className="fas fa-map-marker-alt" style={{color:'#fff',fontSize:12}}></i>
+                  </div>
+                  <span style={{fontWeight:700, fontSize:14}}>Contact & Address</span>
+                  <div style={{flex:1,height:1,background:'#e9ecef',marginLeft:6}}></div>
+                </div>
+                <div className="row g-3 mb-4">
                   <div className="col-md-4">
                     <label className="form-label">Alt Phone</label>
-                    <input type="text" className="form-control" value={editForm.alt_phone}
-                      onChange={(e) => setEditForm({...editForm, alt_phone: e.target.value})} />
+                    <input type="tel" className="form-control" value={editForm.alt_phone}
+                      onChange={e => setEditForm({...editForm, alt_phone: e.target.value})} />
                   </div>
                   <div className="col-md-4">
                     <label className="form-label">Email</label>
                     <input type="email" className="form-control" value={editForm.email}
-                      onChange={(e) => setEditForm({...editForm, email: e.target.value})} />
+                      onChange={e => setEditForm({...editForm, email: e.target.value})} />
                   </div>
-
+                  <div className="col-md-12">
+                    <label className="form-label">Residential Address</label>
+                    <textarea className="form-control" rows={2} value={editForm.address}
+                      placeholder="House number, street, landmark"
+                      onChange={e => setEditForm({...editForm, address: e.target.value})} />
+                  </div>
+                  {/* Region cascade */}
                   <div className="col-md-6">
-                    <label className="form-label">Address</label>
-                    <input type="text" className="form-control" value={editForm.address}
-                      onChange={(e) => setEditForm({...editForm, address: e.target.value})} />
-                  </div>
-                  <div className="col-md-3">
-                    <label className="form-label">City</label>
-                    <input type="text" className="form-control" value={editForm.city}
-                      onChange={(e) => setEditForm({...editForm, city: e.target.value})} />
-                  </div>
-                  <div className="col-md-3">
                     <label className="form-label">Region</label>
-                    <input type="text" className="form-control" value={editForm.region}
-                      onChange={(e) => setEditForm({...editForm, region: e.target.value})} />
+                    <select className="form-select"
+                      value={editSelectedRegionId}
+                      onChange={e => {
+                        const regionId = e.target.value;
+                        const regionObj = editRegions.find(r => String(r.id) === regionId);
+                        setEditSelectedRegionId(regionId);
+                        setEditForm({...editForm, region: regionObj ? regionObj.name : '', district:'', chiefdom:'', town:''});
+                        fetchEditDistricts(regionId);
+                      }}>
+                      <option value="">Select Region</option>
+                      {editRegions.map(r => <option key={r.id} value={r.id}>{r.name}</option>)}
+                    </select>
                   </div>
+                  <div className="col-md-6">
+                    <label className="form-label">District</label>
+                    <select className="form-select" value={editForm.district} disabled={editDistricts.length === 0}
+                      onChange={e => {
+                        const districtId = e.target.value;
+                        setEditForm({...editForm, district: districtId, chiefdom:'', town:''});
+                        fetchEditChiefdoms(districtId);
+                        fetchEditTowns(districtId, '');
+                      }}>
+                      <option value="">{editDistricts.length === 0 ? 'Select Region first' : 'Select District'}</option>
+                      {editDistricts.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
+                    </select>
+                  </div>
+                  <div className="col-md-6">
+                    <label className="form-label">Chiefdom</label>
+                    <select className="form-select" value={editForm.chiefdom} disabled={editChiefdoms.length === 0}
+                      onChange={e => {
+                        const chiefdomId = e.target.value;
+                        setEditForm({...editForm, chiefdom: chiefdomId, town:''});
+                        fetchEditTowns(editForm.district, chiefdomId);
+                      }}>
+                      <option value="">{editChiefdoms.length === 0 ? 'Select District first' : 'Select Chiefdom'}</option>
+                      {editChiefdoms.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                    </select>
+                  </div>
+                  <div className="col-md-6">
+                    <label className="form-label">Town</label>
+                    <select className="form-select" value={editForm.town} disabled={editTowns.length === 0}
+                      onChange={e => setEditForm({...editForm, town: e.target.value})}>
+                      <option value="">{editTowns.length === 0 ? 'Select District first' : 'Select Town'}</option>
+                      {editTowns.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+                    </select>
+                  </div>
+                  <div className="col-md-6">
+                    <label className="form-label">City / Town (text)</label>
+                    <input type="text" className="form-control" value={editForm.city}
+                      placeholder="Optional: type if not in dropdown"
+                      onChange={e => setEditForm({...editForm, city: e.target.value})} />
+                  </div>
+                </div>
 
-                  <hr />
-                  <h6><i className="fas fa-heartbeat me-2 text-danger"></i>Medical Info</h6>
+                {/* ── SECTION 3: Medical Information ── */}
+                <div className="d-flex align-items-center gap-2 mb-3">
+                  <div style={{width:28,height:28,borderRadius:8,background:'#dc2626',display:'flex',alignItems:'center',justifyContent:'center'}}>
+                    <i className="fas fa-heartbeat" style={{color:'#fff',fontSize:12}}></i>
+                  </div>
+                  <span style={{fontWeight:700, fontSize:14}}>Medical Information</span>
+                  <div style={{flex:1,height:1,background:'#e9ecef',marginLeft:6}}></div>
+                </div>
+                <div className="row g-3 mb-4">
                   <div className="col-md-3">
                     <label className="form-label">Blood Type</label>
                     <select className="form-select" value={editForm.blood_type}
-                      onChange={(e) => setEditForm({...editForm, blood_type: e.target.value})}>
+                      onChange={e => setEditForm({...editForm, blood_type: e.target.value})}>
                       <option value="unknown">Unknown</option>
                       <option value="A+">A+</option><option value="A-">A-</option>
                       <option value="B+">B+</option><option value="B-">B-</option>
@@ -1081,44 +1364,49 @@ function PatientList() {
                       <option value="O+">O+</option><option value="O-">O-</option>
                     </select>
                   </div>
-                  <div className="col-md-3">
-                    <label className="form-label">Status</label>
-                    <select className="form-select" value={editForm.status}
-                      onChange={(e) => setEditForm({...editForm, status: e.target.value})}>
-                      <option value="active">Active</option>
-                      <option value="inactive">Inactive</option>
-                      <option value="deceased">Deceased</option>
-                    </select>
+                  <div className="col-md-9">
+                    <label className="form-label">Known Allergies</label>
+                    <input type="text" className="form-control" value={editForm.allergies}
+                      placeholder="e.g. Penicillin, Peanuts, Latex"
+                      onChange={e => setEditForm({...editForm, allergies: e.target.value})} />
                   </div>
                   <div className="col-md-6">
-                    <label className="form-label">Allergies</label>
-                    <input type="text" className="form-control" value={editForm.allergies}
-                      onChange={(e) => setEditForm({...editForm, allergies: e.target.value})}
-                      placeholder="e.g. Penicillin, Peanuts" />
-                  </div>
-                  <div className="col-md-12">
                     <label className="form-label">Chronic Conditions</label>
                     <input type="text" className="form-control" value={editForm.chronic_conditions}
-                      onChange={(e) => setEditForm({...editForm, chronic_conditions: e.target.value})}
-                      placeholder="e.g. Diabetes, Hypertension" />
+                      placeholder="e.g. Diabetes, Hypertension"
+                      onChange={e => setEditForm({...editForm, chronic_conditions: e.target.value})} />
                   </div>
+                  <div className="col-md-6">
+                    <label className="form-label">Disabilities</label>
+                    <input type="text" className="form-control" value={editForm.disabilities}
+                      placeholder="e.g. Visual impairment, Mobility issues"
+                      onChange={e => setEditForm({...editForm, disabilities: e.target.value})} />
+                  </div>
+                </div>
 
-                  <hr />
-                  <h6><i className="fas fa-phone-alt me-2 text-danger"></i>Emergency Contact</h6>
+                {/* ── SECTION 4: Emergency Contact ── */}
+                <div className="d-flex align-items-center gap-2 mb-3">
+                  <div style={{width:28,height:28,borderRadius:8,background:'#d97706',display:'flex',alignItems:'center',justifyContent:'center'}}>
+                    <i className="fas fa-phone-alt" style={{color:'#fff',fontSize:12}}></i>
+                  </div>
+                  <span style={{fontWeight:700, fontSize:14}}>Emergency Contact</span>
+                  <div style={{flex:1,height:1,background:'#e9ecef',marginLeft:6}}></div>
+                </div>
+                <div className="row g-3">
                   <div className="col-md-4">
                     <label className="form-label">Full Name</label>
                     <input type="text" className="form-control" value={editForm.emergency_contact_name}
-                      onChange={(e) => setEditForm({...editForm, emergency_contact_name: e.target.value})} />
+                      onChange={e => setEditForm({...editForm, emergency_contact_name: e.target.value})} />
                   </div>
                   <div className="col-md-4">
                     <label className="form-label">Phone Number</label>
-                    <input type="text" className="form-control" value={editForm.emergency_contact_phone}
-                      onChange={(e) => setEditForm({...editForm, emergency_contact_phone: e.target.value})} />
+                    <input type="tel" className="form-control" value={editForm.emergency_contact_phone}
+                      onChange={e => setEditForm({...editForm, emergency_contact_phone: e.target.value})} />
                   </div>
                   <div className="col-md-4">
                     <label className="form-label">Relationship</label>
                     <select className="form-select" value={editForm.emergency_contact_relationship}
-                      onChange={(e) => setEditForm({...editForm, emergency_contact_relationship: e.target.value})}>
+                      onChange={e => setEditForm({...editForm, emergency_contact_relationship: e.target.value})}>
                       <option value="">Select</option>
                       <option value="Spouse">Spouse</option>
                       <option value="Parent">Parent</option>
@@ -1130,13 +1418,28 @@ function PatientList() {
                     </select>
                   </div>
                 </div>
+
               </div>
-              <div className="modal-footer">
-                <button className="btn btn-secondary" onClick={() => setShowEditModal(false)}>Cancel</button>
-                <button className="btn btn-primary" onClick={handleEditSave} disabled={saving}>
-                  {saving ? <><span className="spinner-border spinner-border-sm me-1"></span>Saving...</> : <><i className="fas fa-save me-1"></i>Save Changes</>}
-                </button>
+
+              {/* Footer */}
+              <div style={{background:'#f8fafc', padding:'16px 32px', borderTop:'1px solid #e9ecef',
+                display:'flex', justifyContent:'space-between', alignItems:'center'}}>
+                <span style={{fontSize:12, color:'#8a94a6'}}>
+                  <i className="fas fa-shield-alt me-1" style={{color:'#4361ee'}}></i>
+                  Changes are saved to the NEHR record permanently
+                </span>
+                <div className="d-flex gap-2">
+                  <button className="btn btn-outline-secondary px-4" style={{borderRadius:8}}
+                    onClick={() => setShowEditModal(false)}>Cancel</button>
+                  <button className="btn btn-primary px-4" style={{borderRadius:8, fontWeight:600}}
+                    onClick={handleEditSave} disabled={saving}>
+                    {saving
+                      ? <><span className="spinner-border spinner-border-sm me-2"></span>Saving...</>
+                      : <><i className="fas fa-save me-1"></i>Save All Changes</>}
+                  </button>
+                </div>
               </div>
+
             </div>
           </div>
         </div>

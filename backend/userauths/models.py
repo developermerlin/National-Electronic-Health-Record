@@ -977,6 +977,74 @@ class Message(models.Model):
             self.save(update_fields=['is_read', 'read_at'])
 
 
+# ═══════════════════════════════════════════════════════════════
+# AUDIT LOG — Patient Record Access Tracking
+# ═══════════════════════════════════════════════════════════════
+
+class AuditLog(models.Model):
+    """Immutable log of every patient record access across the NEHR."""
+
+    ACTION_CHOICES = [
+        ('view',        'Viewed Patient Record'),
+        ('edit',        'Edited Patient Record'),
+        ('create',      'Created Patient Record'),
+        ('delete',      'Deleted Patient Record'),
+        ('emergency',   'Emergency Override Access'),
+        ('print',       'Printed Patient Record'),
+        ('export',      'Exported Patient Data'),
+    ]
+
+    ACCESS_CHOICES = [
+        ('same_hospital',     'Same Hospital'),
+        ('cross_hospital',    'Cross Hospital'),
+        ('emergency_override', 'Emergency Override'),
+        ('admin',             'Admin Override'),
+    ]
+
+    OUTCOME_CHOICES = [
+        ('allowed',  'Allowed'),
+        ('denied',   'Denied'),
+        ('override', 'Override'),
+    ]
+
+    user           = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='audit_logs')
+    user_name      = models.CharField(max_length=500, blank=True, help_text='Snapshot of user name at time of access')
+    user_role      = models.CharField(max_length=100, blank=True, help_text='Snapshot of user role at time of access')
+    user_hospital  = models.ForeignKey(Hospital, on_delete=models.SET_NULL, null=True, blank=True, related_name='audit_logs_as_user_hospital')
+
+    patient        = models.ForeignKey(Patient, on_delete=models.SET_NULL, null=True, blank=True, related_name='audit_logs')
+    patient_name   = models.CharField(max_length=500, blank=True, help_text='Snapshot of patient name at time of access')
+    patient_hospital = models.ForeignKey(Hospital, on_delete=models.SET_NULL, null=True, blank=True, related_name='audit_logs_as_patient_hospital')
+
+    action         = models.CharField(max_length=20, choices=ACTION_CHOICES)
+    access_type    = models.CharField(max_length=20, choices=ACCESS_CHOICES)
+    outcome        = models.CharField(max_length=10, choices=OUTCOME_CHOICES)
+
+    # Emergency override justification
+    justification  = models.TextField(blank=True, help_text='Free-text reason for emergency override')
+    override_approved = models.BooleanField(null=True, blank=True, help_text='Whether the override was pre-approved')
+
+    # Request context
+    ip_address     = models.GenericIPAddressField(null=True, blank=True)
+    user_agent     = models.TextField(blank=True)
+    endpoint       = models.CharField(max_length=500, blank=True)
+
+    created_at     = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['patient', '-created_at']),
+            models.Index(fields=['user', '-created_at']),
+            models.Index(fields=['access_type', '-created_at']),
+            models.Index(fields=['outcome', '-created_at']),
+            models.Index(fields=['created_at']),
+        ]
+
+    def __str__(self):
+        return f"{self.user_name or 'System'} {self.action} {self.patient_name or 'Patient'} — {self.outcome}"
+
+
 # =====this is use to create a profile when a user is created=====
 def create_user_profile(sender, instance, created, **kwargs):
 	if created:

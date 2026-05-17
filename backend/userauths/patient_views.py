@@ -11,6 +11,7 @@ from django.core.exceptions import ValidationError as DjangoValidationError
 
 from userauths.models import Patient, User, Role
 from userauths.serializer import PatientSerializer, PatientCreateSerializer, PatientUpdateSerializer
+from userauths.permissions import PatientAccessControl
 
 
 class PatientViewSet(viewsets.ModelViewSet):
@@ -32,6 +33,7 @@ class PatientViewSet(viewsets.ModelViewSet):
     def get_queryset(self):
         user = self.request.user
         role = user.role.name if user.role else None
+        action = self.action
         
         # Get search query first
         search = self.request.query_params.get('search', None)
@@ -40,7 +42,11 @@ class PatientViewSet(viewsets.ModelViewSet):
         # Admins and ministry see all patients by default
         if role in ['admin', 'ministry_admin']:
             queryset = Patient.objects.all()
-        # If there's a search, allow hospital staff (Doctor/Nurse/Receptionist) to find any patient across the NEHR
+        # For retrieve/detail view, return all patients so access control
+        # logic can properly evaluate cross-hospital access (403, not 404)
+        elif action == 'retrieve':
+            queryset = Patient.objects.all()
+        # If there's a search, allow hospital staff to find any patient across the NEHR
         elif search and role in ['receptionist', 'doctor', 'nurse', 'hospital_admin']:
             queryset = Patient.objects.all()
         # Hospital-level staff see only their hospital's patients for regular browsing
@@ -85,22 +91,93 @@ class PatientViewSet(viewsets.ModelViewSet):
         if insurance:
             queryset = queryset.filter(insurance_provider__icontains=insurance)
 
+        # Filter incomplete profiles (missing national_id — nurse quick-registered)
+        incomplete = self.request.query_params.get('incomplete', None)
+        if incomplete == 'true':
+            queryset = queryset.filter(
+                Q(national_id__isnull=True) | Q(national_id='')
+            )
+
         return queryset.select_related('hospital', 'registered_by')
+
+    def retrieve(self, request, *args, **kwargs):
+        """Retrieve a single patient with access control and audit logging."""
+        instance = self.get_object()
+        user = request.user
+        role = user.role.name if user.role else None
+
+        # Admins bypass access control (already handled by get_object)
+        if role in ('admin', 'ministry_admin'):
+            PatientAccessControl._log(user, instance, 'view', 'admin', 'allowed', request)
+            serializer = self.get_serializer(instance)
+            return Response(serializer.data)
+
+        # Check access control for non-admins
+        result = PatientAccessControl.can_access_patient(
+            user, instance, action='view', request=request
+        )
+
+        if result['allowed']:
+            serializer = self.get_serializer(instance)
+            return Response(serializer.data)
+        else:
+            return Response(
+                {'error': result['message']},
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+    def get_object(self):
+        """Default object lookup — used by update/delete."""
+        return super().get_object()
+
+    @action(detail=True, methods=['post'], url_path='emergency_access')
+    def emergency_access(self, request, pk=None):
+        """
+        Break-the-glass emergency access to a patient record.
+        POST body: { "justification": "Patient in cardiac arrest..." }
+        """
+        user = request.user
+        justification = request.data.get('justification', '').strip()
+
+        if not justification or len(justification) < 10:
+            return Response(
+                {'error': 'A detailed justification (at least 10 characters) is required for emergency access.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        patient = self.get_object()
+        result = PatientAccessControl.can_access_patient(
+            user, patient, action='emergency', request=request, justification=justification
+        )
+
+        if result['allowed']:
+            serializer = self.get_serializer(patient)
+            return Response({
+                'allowed': True,
+                'access_type': result['access_type'],
+                'message': 'Emergency access granted. This action has been logged and will be reviewed.',
+                'patient': serializer.data,
+            })
+        else:
+            return Response(
+                {'error': result['message']},
+                status=status.HTTP_403_FORBIDDEN
+            )
 
     def create(self, request, *args, **kwargs):
         user = request.user
         role = user.role.name if user.role else None
 
-        # Only receptionists, hospital_admin, and admin can register patients
-        allowed_roles = ['receptionist', 'hospital_admin', 'admin', 'ministry_admin']
+        # Receptionists, nurses, hospital_admin, and admin can register patients
+        allowed_roles = ['receptionist', 'nurse', 'hospital_admin', 'admin', 'ministry_admin']
         if role not in allowed_roles:
             return Response(
                 {'error': 'You do not have permission to register patients.'},
                 status=status.HTTP_403_FORBIDDEN
             )
 
-        # Receptionist must be assigned to a hospital
-        if role == 'receptionist' and not user.hospital:
+        # Receptionist / nurse must be assigned to a hospital
+        if role in ['receptionist', 'nurse'] and not user.hospital:
             return Response(
                 {'error': 'You are not assigned to any hospital. Contact your administrator.'},
                 status=status.HTTP_400_BAD_REQUEST
@@ -195,6 +272,11 @@ class PatientViewSet(viewsets.ModelViewSet):
                 'count': count
             })
 
+        # Incomplete profiles: patients registered without a national ID (quick-registered by nurse)
+        incomplete_count = queryset.filter(
+            Q(national_id__isnull=True) | Q(national_id='')
+        ).count()
+
         return Response({
             'total_patients': total,
             'active_patients': active,
@@ -202,6 +284,7 @@ class PatientViewSet(viewsets.ModelViewSet):
             'registered_today': today_count,
             'registered_this_week': week_count,
             'registered_this_month': month_count,
+            'incomplete_profiles': incomplete_count,
             'gender_distribution': gender_dist,
             'blood_type_distribution': blood_dist,
             'insurance_distribution': insurance_dist,

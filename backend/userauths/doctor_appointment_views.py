@@ -2,10 +2,11 @@ from rest_framework import status
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
+from django.db.models import Q
 from django.utils import timezone
 from datetime import datetime, timedelta
 
-from userauths.models import Appointment, Notification, Patient, DoctorAvailability, DoctorUnavailableDate
+from userauths.models import Appointment, Notification, Patient, DoctorAvailability, DoctorUnavailableDate, PatientVisit
 from userauths.serializer import AppointmentSerializer, NotificationSerializer
 
 
@@ -324,17 +325,40 @@ def doctor_dashboard(request):
             today = timezone.now().date()
     else:
         today = timezone.now().date()
-    
+
     doctor = request.user
 
-    # DEBUG: Log all appointments for this doctor
-    all_appointments = Appointment.objects.filter(doctor=doctor)
-    print(f"[DEBUG] Dr. {doctor.full_name} (ID: {doctor.id}) - Total appointments: {all_appointments.count()}")
-    for apt in all_appointments[:5]:  # Show first 5 for debugging
-        print(f"[DEBUG]   - Apt {apt.id}: status={apt.status}, scheduled_at={apt.scheduled_at}, patient={apt.patient}")
+    # Repair orphaned triaged visits (no linked appointment) for this doctor today
+    orphaned_visits = PatientVisit.objects.filter(
+        doctor=doctor,
+        visit_date__date=today,
+        status='triaged',
+        appointment__isnull=True,
+    ).select_related('patient', 'hospital', 'department', 'registered_by')
+    for visit in orphaned_visits:
+        try:
+            appt = Appointment.objects.create(
+                patient=visit.patient,
+                doctor=visit.doctor,
+                hospital=visit.hospital,
+                department=visit.department,
+                scheduled_at=visit.visit_date,
+                status='checked_in',
+                checked_in_at=visit.visit_date,
+                checked_in_by=visit.registered_by,
+                reason=visit.chief_complaint or 'Walk-in visit',
+                priority='normal',
+                created_by=visit.registered_by,
+            )
+            visit.appointment = appt
+            visit.save(update_fields=['appointment'])
+        except Exception:
+            pass
 
-    # Today's appointments
-    today_qs = Appointment.objects.filter(doctor=doctor, scheduled_at__date=today)
+    # Today's appointments — OR filter so walk-in and early check-ins are included
+    today_qs = Appointment.objects.filter(doctor=doctor).filter(
+        Q(scheduled_at__date=today) | Q(checked_in_at__date=today)
+    )
     
     # Upcoming appointments (future dates, not today)
     upcoming_qs = Appointment.objects.filter(
@@ -424,6 +448,5 @@ def doctor_dashboard(request):
             'doctor_id': doctor.id,
             'doctor_name': doctor.full_name,
             'today_date': str(today),
-            'total_appointments_in_db': all_appointments.count(),
         }
     })

@@ -26,8 +26,11 @@ import DoctorDashboard from './views/doctor/DoctorDashboard';
 import DoctorAppointmentRequests from './views/doctor/DoctorAppointmentRequests';
 import DoctorAvailability from './views/doctor/DoctorAvailability';
 import DoctorCompletedAppointments from './views/doctor/DoctorCompletedAppointments';
+import DoctorPatients from './views/doctor/DoctorPatients';
 import PatientPortalDashboard from './views/patient/PatientPortalDashboard';
 import PatientBookAppointment from './views/patient/PatientBookAppointment';
+import NurseDashboard from './views/nurse/NurseDashboard';
+import NurseTriage from './views/nurse/NurseTriage';
 import MessagesPage from './views/messages/MessagesPage';
 import LiveChatPage from './views/messages/LiveChatPage';
 import { AuthProvider, useAuth } from './context/AuthContext';
@@ -149,12 +152,12 @@ function AppContent() {
           </ProtectedRoute>
         } />
         <Route path="/receptionist/patients" element={
-          <ProtectedRoute allowedRoles={['admin', 'receptionist', 'hospital_admin']}>
+          <ProtectedRoute allowedRoles={['admin', 'receptionist', 'hospital_admin', 'nurse']}>
             <PatientList />
           </ProtectedRoute>
         } />
         <Route path="/receptionist/patients/register" element={
-          <ProtectedRoute allowedRoles={['admin', 'receptionist', 'hospital_admin']}>
+          <ProtectedRoute allowedRoles={['admin', 'receptionist', 'hospital_admin', 'nurse']}>
             <PatientRegister />
           </ProtectedRoute>
         } />
@@ -178,6 +181,23 @@ function AppContent() {
         <Route path="/patient/book" element={
           <ProtectedRoute allowedRoles={['patient']}>
             <PatientBookAppointment />
+          </ProtectedRoute>
+        } />
+
+        {/* Nurse Routes */}
+        <Route path="/nurse/dashboard" element={
+          <ProtectedRoute allowedRoles={['nurse', 'admin', 'hospital_admin']}>
+            <NurseDashboard />
+          </ProtectedRoute>
+        } />
+        <Route path="/nurse/triage" element={
+          <ProtectedRoute allowedRoles={['nurse', 'admin', 'hospital_admin']}>
+            <NurseDashboard />
+          </ProtectedRoute>
+        } />
+        <Route path="/nurse/walkin" element={
+          <ProtectedRoute allowedRoles={['nurse', 'admin', 'hospital_admin']}>
+            <NurseTriage />
           </ProtectedRoute>
         } />
 
@@ -205,6 +225,11 @@ function AppContent() {
         <Route path="/doctor/completed-appointments" element={
           <ProtectedRoute allowedRoles={['doctor', 'admin', 'hospital_admin']}>
             <DoctorCompletedAppointments />
+          </ProtectedRoute>
+        } />
+        <Route path="/doctor/patients" element={
+          <ProtectedRoute allowedRoles={['doctor', 'admin', 'hospital_admin']}>
+            <DoctorPatients />
           </ProtectedRoute>
         } />
       </Routes>

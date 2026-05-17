@@ -18,6 +18,12 @@ function DoctorQueue() {
   const [warningShown, setWarningShown] = useState(new Set()); // Track which appointments we've warned about
   const [searchQuery, setSearchQuery] = useState('');
   const [filterStatus, setFilterStatus] = useState('all');
+  const [viewMode, setViewMode] = useState(() => localStorage.getItem('doctorQueueView') || 'card');
+
+  const setView = (mode) => {
+    setViewMode(mode);
+    localStorage.setItem('doctorQueueView', mode);
+  };
 
   const roleColors = {
     admin: '#4361ee', ministry_admin: '#7c3aed', district_admin: '#059669',
@@ -253,8 +259,8 @@ function DoctorQueue() {
                 </h1>
                 <p className="text-muted mb-0 small">Real-time patient flow management</p>
               </div>
-              <div className="d-flex gap-2">
-                <div className="input-group input-group-sm" style={{ width: '250px' }}>
+              <div className="d-flex gap-2 align-items-center flex-wrap">
+                <div className="input-group input-group-sm" style={{ width: '220px' }}>
                   <span className="input-group-text bg-white border-end-0">
                     <i className="fas fa-search text-muted"></i>
                   </span>
@@ -268,7 +274,7 @@ function DoctorQueue() {
                 </div>
                 <select 
                   className="form-select form-select-sm" 
-                  style={{ width: '150px' }}
+                  style={{ width: '140px' }}
                   value={filterStatus}
                   onChange={(e) => setFilterStatus(e.target.value)}
                 >
@@ -277,6 +283,23 @@ function DoctorQueue() {
                   <option value="checked_in">Waiting</option>
                   <option value="in_consultation">In Progress</option>
                 </select>
+                {/* View toggle */}
+                <div className="btn-group btn-group-sm" role="group">
+                  <button
+                    className={`btn ${viewMode === 'card' ? 'btn-primary' : 'btn-outline-secondary'}`}
+                    onClick={() => setView('card')}
+                    title="Card view"
+                  >
+                    <i className="fas fa-th-large"></i>
+                  </button>
+                  <button
+                    className={`btn ${viewMode === 'list' ? 'btn-primary' : 'btn-outline-secondary'}`}
+                    onClick={() => setView('list')}
+                    title="List view"
+                  >
+                    <i className="fas fa-list"></i>
+                  </button>
+                </div>
                 <button className="btn btn-sm btn-outline-secondary" onClick={fetchQueue} disabled={loading}>
                   <i className={`fas fa-sync-alt ${loading ? 'fa-spin' : ''}`}></i>
                 </button>
@@ -361,7 +384,7 @@ function DoctorQueue() {
             <h4 className="text-muted">{searchQuery ? 'No matching patients' : 'No Appointments Today'}</h4>
             <p className="text-muted">{searchQuery ? 'Try a different search term' : 'Your queue is empty. Patients will appear here when they check in.'}</p>
           </div>
-        ) : (
+        ) : viewMode === 'card' ? (
           <div className="row g-3">
             {filteredAppointments.map((apt, index) => {
               const statusCard = getStatusCard(apt.status);
@@ -509,6 +532,129 @@ function DoctorQueue() {
                 </div>
               );
             })}
+          </div>
+        ) : (
+          /* ── List / table view ── */
+          <div className="card border-0 shadow-sm">
+            <div className="table-responsive">
+              <table className="table table-hover align-middle mb-0">
+                <thead style={{ background: '#f8fafc' }}>
+                  <tr>
+                    <th className="ps-4 py-3 fw-semibold text-muted small">#</th>
+                    <th className="py-3 fw-semibold text-muted small">Patient</th>
+                    <th className="py-3 fw-semibold text-muted small">Status</th>
+                    <th className="py-3 fw-semibold text-muted small">Time</th>
+                    <th className="py-3 fw-semibold text-muted small">Wait / Timer</th>
+                    <th className="py-3 fw-semibold text-muted small">Department</th>
+                    <th className="py-3 fw-semibold text-muted small">Reason</th>
+                    <th className="py-3 fw-semibold text-muted small">Priority</th>
+                    <th className="pe-4 py-3 fw-semibold text-muted small">Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredAppointments.map((apt, index) => {
+                    const sc = getStatusCard(apt.status);
+                    const waitTime = apt.status === 'checked_in' ? getWaitTime(apt.checked_in_at) : null;
+                    const remainingTime = getRemainingTime(apt);
+                    return (
+                      <tr key={apt.id} style={{ borderLeft: `3px solid ${sc.border}` }}>
+                        <td className="ps-4 py-3">
+                          <span className="badge rounded-circle d-inline-flex align-items-center justify-content-center"
+                            style={{ width: 28, height: 28, background: sc.border, color: '#fff', fontSize: 12 }}>
+                            {index + 1}
+                          </span>
+                        </td>
+                        <td className="py-3">
+                          <div className="d-flex align-items-center gap-2">
+                            <div style={{
+                              width: 36, height: 36, borderRadius: '50%',
+                              background: 'linear-gradient(135deg, #667eea, #764ba2)',
+                              color: '#fff', display: 'flex', alignItems: 'center',
+                              justifyContent: 'center', fontSize: 13, fontWeight: 700, flexShrink: 0,
+                            }}>
+                              {apt.patient?.full_name?.split(' ').map(n => n[0]).join('').toUpperCase() || '?'}
+                            </div>
+                            <div>
+                              <div className="fw-semibold small">{apt.patient?.full_name || 'Unknown'}</div>
+                              <div className="text-muted" style={{ fontSize: 11 }}>
+                                {apt.patient?.patient_id} · {apt.patient?.phone}
+                              </div>
+                            </div>
+                          </div>
+                        </td>
+                        <td className="py-3">
+                          <span className="badge rounded-pill" style={{
+                            fontSize: 11, padding: '3px 9px',
+                            background: sc.bg, color: sc.border, border: `1px solid ${sc.border}`,
+                          }}>
+                            <i className={`fas ${sc.icon} me-1`}></i>{sc.label}
+                          </span>
+                        </td>
+                        <td className="py-3 small text-muted fw-semibold">
+                          {formatTime(apt.scheduled_at)}
+                        </td>
+                        <td className="py-3 small">
+                          {waitTime && (
+                            <span className="text-warning">
+                              <i className="fas fa-clock me-1"></i>{waitTime}
+                            </span>
+                          )}
+                          {remainingTime && (
+                            <span className={remainingTime.expired ? 'text-danger' : remainingTime.minutes === 0 ? 'text-warning' : 'text-success'}>
+                              <i className={`fas ${remainingTime.expired ? 'fa-stop-circle' : 'fa-stopwatch'} me-1`}></i>
+                              {remainingTime.expired ? "Time's up" : formatCountdown(remainingTime)}
+                            </span>
+                          )}
+                          {!waitTime && !remainingTime && <span className="text-muted">—</span>}
+                        </td>
+                        <td className="py-3 small text-muted">{apt.department || '—'}</td>
+                        <td className="py-3 small text-muted" style={{ maxWidth: 160 }}>
+                          <span className="text-truncate d-block" title={apt.reason}>{apt.reason || '—'}</span>
+                        </td>
+                        <td className="py-3">
+                          {apt.priority && apt.priority !== 'normal' ? (
+                            <span className={`badge bg-${apt.priority === 'emergency' ? 'danger' : 'warning'} text-uppercase`} style={{ fontSize: 10 }}>
+                              {apt.priority}
+                            </span>
+                          ) : (
+                            <span className="text-muted small">Normal</span>
+                          )}
+                        </td>
+                        <td className="pe-4 py-3">
+                          <div className="d-flex gap-1">
+                            {apt.status === 'scheduled' && (
+                              <>
+                                <button className="btn btn-sm btn-success" onClick={() => handleStartConsultation(apt.id)} title="Start">
+                                  <i className="fas fa-play"></i>
+                                </button>
+                                <button className="btn btn-sm btn-outline-danger" onClick={() => handleCancel(apt.id)} title="Cancel">
+                                  <i className="fas fa-times"></i>
+                                </button>
+                              </>
+                            )}
+                            {apt.status === 'checked_in' && (
+                              <>
+                                <button className="btn btn-sm btn-warning text-white" onClick={() => handleStartConsultation(apt.id)} title="See Patient">
+                                  <i className="fas fa-user-md"></i>
+                                </button>
+                                <button className="btn btn-sm btn-outline-danger" onClick={() => handleCancel(apt.id)} title="Cancel">
+                                  <i className="fas fa-times"></i>
+                                </button>
+                              </>
+                            )}
+                            {apt.status === 'in_consultation' && (
+                              <button className="btn btn-sm btn-success" onClick={() => handleComplete(apt.id)} title="Complete">
+                                <i className="fas fa-check-double"></i>
+                              </button>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
           </div>
         )}
       </div>

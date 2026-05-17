@@ -1,4 +1,4 @@
-from userauths.models import Profile, User, Role, Permission, RolePermission, Region, District, Chiefdom, Town, Hospital, Department, Patient, Message, Appointment, PatientVisit, VitalSigns, ClinicalNote, Notification, DoctorAvailability, DoctorUnavailableDate
+from userauths.models import Profile, User, Role, Permission, RolePermission, Region, District, Chiefdom, Town, Hospital, Department, Patient, Message, Appointment, PatientVisit, VitalSigns, ClinicalNote, Notification, DoctorAvailability, DoctorUnavailableDate, AuditLog
 
 # ===import jwt serializers for token===
 from django.contrib.auth.password_validation import validate_password
@@ -706,6 +706,14 @@ class PatientVisitListSerializer(serializers.ModelSerializer):
     has_vitals        = serializers.SerializerMethodField()
     has_clinical_note = serializers.SerializerMethodField()
     diagnosis         = serializers.SerializerMethodField()
+    patient_name      = serializers.SerializerMethodField()
+    patient_id_code   = serializers.SerializerMethodField()
+    patient_phone     = serializers.SerializerMethodField()
+    patient_gender    = serializers.SerializerMethodField()
+    patient_pk        = serializers.SerializerMethodField()
+    vitals_summary    = serializers.SerializerMethodField()
+    vitals            = VitalSignsSerializer(read_only=True)
+    clinical_note     = ClinicalNoteSerializer(read_only=True)
 
     class Meta:
         model  = PatientVisit
@@ -715,6 +723,8 @@ class PatientVisitListSerializer(serializers.ModelSerializer):
             'hospital_name', 'department_name', 'doctor_name', 'registered_by_name',
             'discharge_date', 'referred_to_doctor',
             'has_vitals', 'has_clinical_note', 'diagnosis',
+            'patient_name', 'patient_id_code', 'patient_phone', 'patient_gender', 'patient_pk',
+            'vitals_summary', 'vitals', 'clinical_note',
             'created_at',
         ]
 
@@ -724,9 +734,24 @@ class PatientVisitListSerializer(serializers.ModelSerializer):
     def get_registered_by_name(self, obj): return obj.registered_by.full_name if obj.registered_by else None
     def get_has_vitals(self, obj):       return hasattr(obj, 'vitals')
     def get_has_clinical_note(self, obj): return hasattr(obj, 'clinical_note')
+    def get_patient_name(self, obj):     return obj.patient.full_name if obj.patient else None
+    def get_patient_id_code(self, obj):  return obj.patient.patient_id if obj.patient else None
+    def get_patient_phone(self, obj):    return obj.patient.phone if obj.patient else None
+    def get_patient_gender(self, obj):   return obj.patient.gender if obj.patient else None
+    def get_patient_pk(self, obj):       return obj.patient.id if obj.patient else None
     def get_diagnosis(self, obj):
         if hasattr(obj, 'clinical_note'):
             return obj.clinical_note.diagnosis
+        return None
+    def get_vitals_summary(self, obj):
+        if hasattr(obj, 'vitals'):
+            v = obj.vitals
+            return {
+                'bp': f"{v.blood_pressure_systolic}/{v.blood_pressure_diastolic}" if v.blood_pressure_systolic else None,
+                'hr': v.heart_rate,
+                'temp': str(v.temperature_celsius) if v.temperature_celsius else None,
+                'o2': str(v.oxygen_saturation) if v.oxygen_saturation else None,
+            }
         return None
 
 
@@ -741,6 +766,11 @@ class PatientVisitDetailSerializer(serializers.ModelSerializer):
     vitals             = VitalSignsSerializer(read_only=True)
     clinical_note      = ClinicalNoteSerializer(read_only=True)
     referred_hospital_name = serializers.SerializerMethodField()
+    patient_name       = serializers.SerializerMethodField()
+    patient_id_code    = serializers.SerializerMethodField()
+    patient_phone      = serializers.SerializerMethodField()
+    patient_gender     = serializers.SerializerMethodField()
+    patient_pk         = serializers.SerializerMethodField()
 
     class Meta:
         model  = PatientVisit
@@ -751,6 +781,11 @@ class PatientVisitDetailSerializer(serializers.ModelSerializer):
     def get_doctor_name(self, obj):          return obj.doctor.full_name if obj.doctor else None
     def get_registered_by_name(self, obj):   return obj.registered_by.full_name if obj.registered_by else None
     def get_referred_hospital_name(self, obj): return obj.referred_to_hospital.name if obj.referred_to_hospital else None
+    def get_patient_name(self, obj):         return obj.patient.full_name if obj.patient else None
+    def get_patient_id_code(self, obj):      return obj.patient.patient_id if obj.patient else None
+    def get_patient_phone(self, obj):        return obj.patient.phone if obj.patient else None
+    def get_patient_gender(self, obj):       return obj.patient.gender if obj.patient else None
+    def get_patient_pk(self, obj):           return obj.patient.id if obj.patient else None
 
 
 class PatientVisitCreateSerializer(serializers.ModelSerializer):
@@ -761,10 +796,16 @@ class PatientVisitCreateSerializer(serializers.ModelSerializer):
             'patient', 'appointment', 'hospital', 'department', 'doctor',
             'visit_type', 'chief_complaint', 'visit_date', 'status',
         ]
+        extra_kwargs = {
+            'hospital': {'required': False},
+            'appointment': {'required': False},
+        }
 
     def create(self, validated_data):
         request = self.context.get('request')
         validated_data['registered_by'] = request.user if request else None
+        if not validated_data.get('hospital') and request and request.user and request.user.hospital:
+            validated_data['hospital'] = request.user.hospital
         return super().create(validated_data)
 
 
@@ -800,3 +841,32 @@ class DoctorUnavailableDateSerializer(serializers.ModelSerializer):
     class Meta:
         model  = DoctorUnavailableDate
         fields = ['id', 'date', 'reason', 'created_at']
+
+
+# ═══════════════════════════════════════════════════════════════
+# AUDIT LOG SERIALIZERS
+# ═══════════════════════════════════════════════════════════════
+
+class AuditLogSerializer(serializers.ModelSerializer):
+    user_name = serializers.CharField(read_only=True)
+    user_role = serializers.CharField(read_only=True)
+    patient_name = serializers.CharField(read_only=True)
+    action_display = serializers.CharField(source='get_action_display', read_only=True)
+    access_type_display = serializers.CharField(source='get_access_type_display', read_only=True)
+    outcome_display = serializers.CharField(source='get_outcome_display', read_only=True)
+    user_hospital_name = serializers.CharField(source='user_hospital.name', read_only=True, default=None)
+    patient_hospital_name = serializers.CharField(source='patient_hospital.name', read_only=True, default=None)
+
+    class Meta:
+        model = AuditLog
+        fields = [
+            'id', 'user_name', 'user_role', 'user_hospital_name',
+            'patient_name', 'patient_hospital_name',
+            'action', 'action_display',
+            'access_type', 'access_type_display',
+            'outcome', 'outcome_display',
+            'justification', 'override_approved',
+            'ip_address', 'endpoint',
+            'created_at',
+        ]
+        read_only_fields = fields

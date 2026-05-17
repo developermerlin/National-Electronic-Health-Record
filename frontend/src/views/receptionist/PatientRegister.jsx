@@ -2,36 +2,7 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import DashboardLayout from '../../layout/DashboardLayout';
-
-const navItems = [
-  {
-    label: 'Main',
-    items: [
-      { path: '/receptionist/dashboard', icon: 'fas fa-tachometer-alt', text: 'Dashboard' },
-      { path: '/receptionist/patients', icon: 'fas fa-user-injured', text: 'Patients' },
-      { path: '/receptionist/patients/register', icon: 'fas fa-user-plus', text: 'Register Patient' },
-    ]
-  },
-  {
-    label: 'Management',
-    items: [
-      { path: '/receptionist/appointments', icon: 'fas fa-calendar-check', text: 'Appointments' },
-      { path: '/receptionist/queue', icon: 'fas fa-list-ol', text: 'Patient Queue' },
-    ]
-  },
-  {
-    label: 'Communication',
-    items: [
-      { path: '/messages', icon: 'fas fa-envelope', text: 'Messages' },
-    ]
-  },
-  {
-    label: 'Account',
-    items: [
-      { path: '/admin/profile', icon: 'fas fa-user-circle', text: 'My Profile' },
-    ]
-  }
-];
+import { getNavForUser, getBrandForUser, getRoleBadge } from '../../utils/navItems';
 
 const initialFormData = {
   first_name: '',
@@ -86,7 +57,7 @@ function calculateAge(dob) {
 const DRAFT_KEY = 'nehr_patient_register_draft';
 
 function PatientRegister() {
-  const { apiCall } = useAuth();
+  const { apiCall, user } = useAuth();
   const navigate = useNavigate();
   const [formData, setFormData] = useState(() => {
     try {
@@ -314,7 +285,7 @@ function PatientRegister() {
   const prevStep = () => setStep(s => Math.max(s - 1, 1));
 
   return (
-    <DashboardLayout navItems={navItems} brandTitle="NEHR System" roleBadge="Receptionist">
+    <DashboardLayout navItems={getNavForUser(user)} brandTitle={getBrandForUser(user)} roleBadge={getRoleBadge(user)}>
       <div className="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-2">
         <div>
           <h4 className="mb-1"><i className="fas fa-user-plus me-2 text-primary"></i>Register New Patient</h4>

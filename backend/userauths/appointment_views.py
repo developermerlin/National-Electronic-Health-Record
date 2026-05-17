@@ -14,7 +14,7 @@ from django.db.models import Q
 from django.utils import timezone
 from datetime import datetime, timedelta
 
-from userauths.models import Appointment, User, Patient, Hospital, Department
+from userauths.models import Appointment, User, Patient, Hospital, Department, PatientVisit
 from userauths.serializer import (
     AppointmentSerializer, AppointmentCreateSerializer, AppointmentStatusUpdateSerializer
 )
@@ -188,6 +188,9 @@ class AppointmentViewSet(viewsets.ModelViewSet):
         appointment.consultation_started_at = timezone.now()
         appointment.save()
 
+        # Mark the linked PatientVisit as in-progress so the triage record stays in sync
+        PatientVisit.objects.filter(appointment=appointment).update(status='in_progress')
+
         serializer = AppointmentSerializer(appointment)
         return Response(serializer.data)
 
@@ -215,6 +218,9 @@ class AppointmentViewSet(viewsets.ModelViewSet):
         appointment.status = 'completed'
         appointment.completed_at = timezone.now()
         appointment.save()
+
+        # Mark the linked PatientVisit as completed so the triage record stays in sync
+        PatientVisit.objects.filter(appointment=appointment).update(status='completed')
 
         serializer = AppointmentSerializer(appointment)
         return Response(serializer.data)
@@ -301,22 +307,54 @@ class AppointmentViewSet(viewsets.ModelViewSet):
             )
 
         today = timezone.now().date()
-        
-        # Get appointments for today
-        queryset = Appointment.objects.filter(
-            doctor=user,
-            scheduled_at__date=today,
-            status__in=['checked_in', 'in_consultation', 'scheduled']
-        ).select_related('patient', 'hospital', 'department').order_by('scheduled_at')
+        target_doctor_id = user.id
 
         # Admin can see any doctor's queue if doctor_id provided
-        doctor_id = request.query_params.get('doctor_id')
-        if role in ['admin', 'ministry_admin'] and doctor_id:
-            queryset = Appointment.objects.filter(
-                doctor_id=doctor_id,
-                scheduled_at__date=today,
-                status__in=['checked_in', 'in_consultation', 'scheduled']
-            ).select_related('patient', 'hospital', 'department').order_by('scheduled_at')
+        doctor_id_param = request.query_params.get('doctor_id')
+        if role in ['admin', 'ministry_admin'] and doctor_id_param:
+            target_doctor_id = doctor_id_param
+
+        # ── Repair orphaned triaged visits (no linked appointment) ────────────
+        # Covers PatientVisit records created before the triage endpoint was
+        # updated to auto-create appointments, and any edge cases.
+        orphaned_visits = PatientVisit.objects.filter(
+            doctor_id=target_doctor_id,
+            visit_date__date=today,
+            status='triaged',
+            appointment__isnull=True,
+        ).select_related('patient', 'hospital', 'department', 'registered_by')
+
+        for visit in orphaned_visits:
+            try:
+                appt = Appointment.objects.create(
+                    patient=visit.patient,
+                    doctor=visit.doctor,
+                    hospital=visit.hospital,
+                    department=visit.department,
+                    scheduled_at=visit.visit_date,
+                    status='checked_in',
+                    checked_in_at=visit.visit_date,
+                    checked_in_by=visit.registered_by,
+                    reason=visit.chief_complaint or 'Walk-in visit',
+                    priority='normal',
+                    created_by=visit.registered_by,
+                )
+                visit.appointment = appt
+                visit.save(update_fields=['appointment'])
+            except Exception:
+                pass  # Do not block the queue load on repair errors
+
+        # ── Main queue query ──────────────────────────────────────────────────
+        # Use OR so that walk-in appointments (scheduled_at=now) AND
+        # early check-ins (scheduled_at=future but checked in today) both appear.
+        queryset = Appointment.objects.filter(
+            doctor_id=target_doctor_id,
+            status__in=['checked_in', 'in_consultation', 'scheduled'],
+        ).filter(
+            Q(scheduled_at__date=today) | Q(checked_in_at__date=today)
+        ).select_related('patient', 'hospital', 'department').order_by(
+            'scheduled_at', 'checked_in_at'
+        ).distinct()
 
         serializer = AppointmentSerializer(queryset, many=True)
         return Response({
