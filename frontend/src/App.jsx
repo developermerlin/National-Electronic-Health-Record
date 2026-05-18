@@ -21,6 +21,7 @@ import PatientList from './views/receptionist/PatientList';
 import PatientRegister from './views/receptionist/PatientRegister';
 import PatientDetail from './views/receptionist/PatientDetail';
 import ReceptionistAppointments from './views/receptionist/ReceptionistAppointments';
+import Referrals from './views/receptionist/Referrals';
 import DoctorQueue from './views/doctor/DoctorQueue';
 import DoctorDashboard from './views/doctor/DoctorDashboard';
 import DoctorAppointmentRequests from './views/doctor/DoctorAppointmentRequests';
@@ -31,6 +32,8 @@ import PatientPortalDashboard from './views/patient/PatientPortalDashboard';
 import PatientBookAppointment from './views/patient/PatientBookAppointment';
 import NurseDashboard from './views/nurse/NurseDashboard';
 import NurseTriage from './views/nurse/NurseTriage';
+import TriageDashboard from './views/triage/TriageDashboard';
+import HospitalAdminDashboard from './views/hospital_admin/HospitalAdminDashboard';
 import MessagesPage from './views/messages/MessagesPage';
 import LiveChatPage from './views/messages/LiveChatPage';
 import { AuthProvider, useAuth } from './context/AuthContext';
@@ -69,6 +72,13 @@ function AppContent() {
         <Route path="/logout" element={<Logout />} />
         <Route path="/forgot-password" element={<ForgotPassword />} />
         <Route path="/create-new-password" element={<CreateNewPassword />} />
+
+        {/* Hospital Admin Routes */}
+        <Route path="/hospital-admin/dashboard" element={
+          <ProtectedRoute allowedRoles={['hospital_admin', 'admin']}>
+            <HospitalAdminDashboard />
+          </ProtectedRoute>
+        } />
 
         {/* Admin Routes */}
         <Route path="/admin/dashboard" element={
@@ -152,23 +162,28 @@ function AppContent() {
           </ProtectedRoute>
         } />
         <Route path="/receptionist/patients" element={
-          <ProtectedRoute allowedRoles={['admin', 'receptionist', 'hospital_admin', 'nurse']}>
+          <ProtectedRoute allowedRoles={['admin', 'receptionist', 'hospital_admin', 'nurse', 'triage']}>
             <PatientList />
           </ProtectedRoute>
         } />
         <Route path="/receptionist/patients/register" element={
-          <ProtectedRoute allowedRoles={['admin', 'receptionist', 'hospital_admin', 'nurse']}>
+          <ProtectedRoute allowedRoles={['admin', 'receptionist', 'hospital_admin', 'nurse', 'triage']}>
             <PatientRegister />
           </ProtectedRoute>
         } />
         <Route path="/receptionist/patients/:id" element={
-          <ProtectedRoute allowedRoles={['admin', 'receptionist', 'hospital_admin', 'doctor', 'nurse']}>
+          <ProtectedRoute allowedRoles={['admin', 'receptionist', 'hospital_admin', 'doctor', 'nurse', 'triage']}>
             <PatientDetail />
           </ProtectedRoute>
         } />
         <Route path="/receptionist/appointments" element={
           <ProtectedRoute allowedRoles={['admin', 'receptionist', 'hospital_admin']}>
             <ReceptionistAppointments />
+          </ProtectedRoute>
+        } />
+        <Route path="/receptionist/referrals" element={
+          <ProtectedRoute allowedRoles={['admin', 'receptionist', 'hospital_admin', 'doctor', 'nurse']}>
+            <Referrals />
           </ProtectedRoute>
         } />
 
@@ -196,8 +211,13 @@ function AppContent() {
           </ProtectedRoute>
         } />
         <Route path="/nurse/walkin" element={
-          <ProtectedRoute allowedRoles={['nurse', 'admin', 'hospital_admin']}>
+          <ProtectedRoute allowedRoles={['nurse', 'triage', 'admin', 'hospital_admin']}>
             <NurseTriage />
+          </ProtectedRoute>
+        } />
+        <Route path="/triage" element={
+          <ProtectedRoute allowedRoles={['nurse', 'receptionist', 'triage', 'admin', 'hospital_admin']}>
+            <TriageDashboard />
           </ProtectedRoute>
         } />
 
@@ -244,7 +264,7 @@ function App() {
         <AppContent />
         <ToastContainer
           position="top-right"
-          autoClose={3000}
+          autoClose={3500}
           hideProgressBar={false}
           newestOnTop
           closeOnClick
@@ -252,7 +272,9 @@ function App() {
           pauseOnFocusLoss
           draggable
           pauseOnHover
-          theme="colored"
+          theme="light"
+          toastStyle={{ padding: 0, background: 'transparent', boxShadow: 'none' }}
+          bodyStyle={{ padding: 0, margin: 0 }}
         />
       </AuthProvider>
     </GoogleOAuthProvider>

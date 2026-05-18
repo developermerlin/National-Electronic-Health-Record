@@ -45,14 +45,32 @@ class PatientAccessControl:
             PatientAccessControl._log(user, patient, action, access_type, outcome, request)
             return {'allowed': True, 'access_type': access_type, 'outcome': outcome}
 
-        # ── Rule 2: Patient has an active visit at user's hospital ──
+        # ── Rule 2: Patient has an active REFERRAL at user's hospital
+        #            AND the user is assigned to that referral (care-team scoping)
         if user_hospital and patient:
-            has_active_visit = PatientVisit.objects.filter(
+            from datetime import timedelta
+            recent_threshold = timezone.now() - timedelta(days=30)
+
+            # Check if user is assigned to an active referral visit
+            is_assigned_to_referral_visit = PatientVisit.objects.filter(
                 patient=patient,
                 hospital=user_hospital,
+                visit_type='referral',
                 status__in=['registered', 'waiting', 'triaged', 'in_progress'],
+                visit_date__gte=recent_threshold,
+            ).filter(
+                Q(doctor=user) | Q(registered_by=user)
             ).exists()
-            if has_active_visit:
+
+            # Check if user is the assigned doctor for a referral appointment
+            is_assigned_to_referral_appointment = patient.appointments.filter(
+                hospital=user_hospital,
+                is_referral=True,
+                status__in=['pending', 'scheduled', 'checked_in', 'in_consultation'],
+                doctor=user,
+            ).exists()
+
+            if is_assigned_to_referral_visit or is_assigned_to_referral_appointment:
                 access_type = 'cross_hospital'
                 outcome = 'allowed'
                 PatientAccessControl._log(user, patient, action, access_type, outcome, request)

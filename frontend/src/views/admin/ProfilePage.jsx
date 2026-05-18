@@ -4,7 +4,7 @@ import DashboardLayout from '../../layout/DashboardLayout';
 import { getNavForUser, getBrandForUser, getRoleBadge } from '../../utils/navItems';
 
 function ProfilePage() {
-  const { apiCall, user } = useAuth();
+  const { apiCall, user, refreshUser } = useAuth();
   const [profileData, setProfileData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -33,6 +33,10 @@ function ProfilePage() {
     sms_notifications_enabled: false,
     email_notifications_enabled: true,
   });
+
+  const [photoFile, setPhotoFile] = useState(null);
+  const [photoPreview, setPhotoPreview] = useState(null);
+  const photoInputRef = React.useRef(null);
 
   useEffect(() => {
     fetchProfile();
@@ -73,13 +77,18 @@ function ProfilePage() {
     setSuccessMsg('');
     setErrorMsg('');
     try {
+      const fd = new FormData();
+      Object.entries(formData).forEach(([k, v]) => { if (v !== '' && v !== null && v !== undefined) fd.append(k, v); });
+      if (photoFile) fd.append('profile_photo', photoFile);
       const response = await apiCall('/user/my-profile/', {
         method: 'PUT',
-        body: JSON.stringify(formData),
+        body: fd,
       });
       if (response.ok) {
         setSuccessMsg('Profile updated successfully!');
+        setPhotoFile(null);
         fetchProfile();
+        if (photoFile) refreshUser();
         setTimeout(() => setSuccessMsg(''), 3000);
       } else {
         const data = await response.json();
@@ -132,6 +141,11 @@ function ProfilePage() {
 
   const displayName = profileData?.user?.full_name || user?.full_name || 'User';
   const initials = displayName.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2);
+  const API_BASE = 'http://localhost:8000';
+  const currentPhoto = photoPreview ||
+    (profileData?.profile?.image
+      ? (profileData.profile.image.startsWith('http') ? profileData.profile.image : `${API_BASE}${profileData.profile.image}`)
+      : null);
 
   if (loading) {
     return (
@@ -172,14 +186,52 @@ function ProfilePage() {
           }}></div>
           <div className="card-body" style={{ marginTop: '-50px', position: 'relative' }}>
             <div className="d-flex flex-wrap align-items-end gap-4">
-              <div style={{
-                width: '100px', height: '100px', borderRadius: '50%',
-                background: 'linear-gradient(135deg, #667eea, #764ba2)',
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                color: '#fff', fontWeight: 700, fontSize: '36px',
-                border: '4px solid #fff', boxShadow: '0 4px 15px rgba(0,0,0,0.15)',
-              }}>
-                {initials}
+              <div style={{ position: 'relative', flexShrink: 0 }}>
+                {currentPhoto ? (
+                  <img src={currentPhoto} alt={displayName} style={{
+                    width: '100px', height: '100px', borderRadius: '50%',
+                    objectFit: 'cover', border: '4px solid #fff',
+                    boxShadow: '0 4px 15px rgba(0,0,0,0.15)',
+                  }} />
+                ) : (
+                  <div style={{
+                    width: '100px', height: '100px', borderRadius: '50%',
+                    background: 'linear-gradient(135deg, #667eea, #764ba2)',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    color: '#fff', fontWeight: 700, fontSize: '36px',
+                    border: '4px solid #fff', boxShadow: '0 4px 15px rgba(0,0,0,0.15)',
+                  }}>
+                    {initials}
+                  </div>
+                )}
+                <button
+                  type="button"
+                  onClick={() => photoInputRef.current?.click()}
+                  style={{
+                    position: 'absolute', bottom: 2, right: 2,
+                    width: 28, height: 28, borderRadius: '50%',
+                    background: '#4361ee', border: '2px solid #fff',
+                    color: '#fff', cursor: 'pointer',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    boxShadow: '0 2px 6px rgba(0,0,0,0.2)',
+                  }}
+                  title="Change photo"
+                >
+                  <i className="fas fa-camera" style={{ fontSize: 11 }}></i>
+                </button>
+                <input
+                  ref={photoInputRef}
+                  type="file"
+                  accept="image/*"
+                  style={{ display: 'none' }}
+                  onChange={e => {
+                    const f = e.target.files[0];
+                    if (f) {
+                      setPhotoFile(f);
+                      setPhotoPreview(URL.createObjectURL(f));
+                    }
+                  }}
+                />
               </div>
               <div className="flex-grow-1">
                 <h3 className="mb-1">{userData.full_name}</h3>

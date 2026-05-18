@@ -1,4 +1,4 @@
-import React, { createContext, useState, useEffect, useContext } from 'react';
+import React, { createContext, useState, useEffect, useContext, useCallback } from 'react'; // useCallback already imported
 import { jwtDecode } from 'jwt-decode';
 
 const AuthContext = createContext();
@@ -134,7 +134,7 @@ export const AuthProvider = ({ children }) => {
         };
     };
 
-    const apiCall = async (endpoint, options = {}) => {
+    const apiCall = useCallback(async (endpoint, options = {}) => {
         const url = `${API_BASE_URL}${endpoint}`;
         const isFormData = options.body instanceof FormData || options.isFormData;
 
@@ -164,7 +164,17 @@ export const AuthProvider = ({ children }) => {
         } catch (error) {
             throw error;
         }
-    };
+    }, [authTokens]); // re-create only when tokens change
+
+    const refreshUser = useCallback(async () => {
+        const refreshed = await refreshToken();
+        if (refreshed && authTokens?.access) {
+            try {
+                const decoded = jwtDecode(authTokens.access);
+                setUser(decoded);
+            } catch (_e) { /* ignore decode errors */ }
+        }
+    }, [authTokens, refreshToken]);
 
     const hasPermission = (permission) => {
         return user?.permissions?.includes(permission) || false;
@@ -187,6 +197,7 @@ export const AuthProvider = ({ children }) => {
         logout,
         refreshToken,
         apiCall,
+        refreshUser,
         hasPermission,
         hasRole,
         isAdmin,

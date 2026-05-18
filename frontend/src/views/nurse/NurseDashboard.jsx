@@ -362,10 +362,7 @@ export default function NurseDashboard() {
                             </td>
                             <td style={{ padding:'12px 16px', color:'#6c757d', whiteSpace:'nowrap' }}>{fmtDateTime(v.visit_date)}</td>
                             <td style={{ padding:'12px 16px' }}>
-                              <button className="btn btn-sm btn-outline-primary"
-                                style={{ borderRadius:'8px', padding:'5px 10px', fontSize:'12px', fontWeight:700 }}
-                                onClick={(e) => { e.stopPropagation(); setHistoryPatient({ id: v.patient_pk, name: v.patient_name, gender: v.patient_gender, code: v.patient_id_code }); fetchPatientHistory(v.patient_pk); }}
-                                title="View patient triage history">
+                              <button className="btn btn-sm btn-primary" onClick={(e) => { e.stopPropagation(); setHistoryPatient({ id: v.patient_pk, name: v.patient_name, gender: v.patient_gender, code: v.patient_id_code }); fetchPatientHistory(v.patient_pk); }} title="View patient triage history">
                                 <i className="fas fa-eye"></i>
                               </button>
                             </td>
@@ -447,8 +444,7 @@ export default function NurseDashboard() {
                           <div>{fmtTime(appt.checked_in_at)}</div>
                         </div>
                         {/* Actions */}
-                        <button className="btn btn-sm" onClick={() => openTriage(appt)}
-                          style={{ background:'#e63946', color:'#fff', borderRadius:'8px', fontWeight:700, padding:'8px 16px', border:'none', flexShrink:0 }}>
+                        <button className="btn btn-sm btn-danger" onClick={() => openTriage(appt)} style={{ flexShrink:0 }}>
                           <i className="fas fa-heartbeat me-1"></i>Triage
                         </button>
                       </div>
@@ -565,7 +561,7 @@ export default function NurseDashboard() {
                 <div style={{ color:'#fff', fontWeight:800, fontSize:'19px' }}>{historyPatient.name}</div>
                 <div style={{ color:'rgba(255,255,255,0.75)', fontSize:'13px' }}>{historyPatient.code} &middot; {historyPatient.gender}</div>
               </div>
-              <button onClick={() => { setHistoryPatient(null); setPatientHistoryData(null); }} style={{ background:'rgba(255,255,255,0.2)', border:'none', borderRadius:'8px', color:'#fff', width:'32px', height:'32px', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', fontSize:'14px' }}>
+              <button onClick={() => { setHistoryPatient(null); setPatientHistoryData(null); }} className="btn btn-sm" style={{ background:'rgba(255,255,255,0.2)', color:'#fff', border:'1px solid rgba(255,255,255,0.3)', width:'32px', height:'32px', padding:0 }}>
                 <i className="fas fa-times"></i>
               </button>
             </div>
@@ -758,7 +754,7 @@ export default function NurseDashboard() {
                   </div>
                 ))}
               </div>
-              <button onClick={closeTriage} style={{ background:'rgba(255,255,255,0.2)', border:'none', borderRadius:'8px', color:'#fff', width:'32px', height:'32px', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', fontSize:'14px' }}>
+              <button onClick={closeTriage} className="btn btn-sm" style={{ background:'rgba(255,255,255,0.2)', color:'#fff', border:'1px solid rgba(255,255,255,0.3)', width:'32px', height:'32px', padding:0 }}>
                 <i className="fas fa-times"></i>
               </button>
             </div>
@@ -904,16 +900,16 @@ export default function NurseDashboard() {
                     <button onClick={() => {
                       if (!triageForm.chief_complaint.trim()) { setTriageError('Chief complaint is required.'); return; }
                       setTriageError(''); setTriageStep(2);
-                    }} className="btn btn-primary" style={{ borderRadius:'9px', fontWeight:700 }}>
+                    }} className="btn btn-primary">
                       Next: Record Vitals <i className="fas fa-arrow-right ms-2"></i>
                     </button>
                   </>
                 ) : (
                   <>
-                    <button onClick={() => setTriageStep(1)} className="btn btn-outline-secondary" style={{ borderRadius:'9px', fontWeight:600 }}>
+                    <button onClick={() => setTriageStep(1)} className="btn btn-outline-secondary">
                       <i className="fas fa-arrow-left me-1"></i>Back
                     </button>
-                    <button onClick={handleTriageSubmit} disabled={saving} className="btn" style={{ background:'#e63946', color:'#fff', borderRadius:'9px', fontWeight:700, border:'none' }}>
+                    <button onClick={handleTriageSubmit} disabled={saving} className="btn btn-danger">
                       {saving
                         ? <><span className="spinner-border spinner-border-sm me-2"></span>Saving…</>
                         : <><i className="fas fa-check-circle me-2"></i>Complete Triage</>}

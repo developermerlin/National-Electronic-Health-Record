@@ -9,8 +9,8 @@ from datetime import timedelta
 from django.contrib.auth.password_validation import validate_password
 from django.core.exceptions import ValidationError as DjangoValidationError
 
-from userauths.models import Patient, User, Role
-from userauths.serializer import PatientSerializer, PatientCreateSerializer, PatientUpdateSerializer
+from userauths.models import Patient, User, Role, Hospital, Department, PatientVisit
+from userauths.serializer import PatientSerializer, PatientReferralSerializer, PatientCreateSerializer, PatientUpdateSerializer
 from userauths.permissions import PatientAccessControl
 
 
@@ -37,7 +37,6 @@ class PatientViewSet(viewsets.ModelViewSet):
         
         # Get search query first
         search = self.request.query_params.get('search', None)
-
         # Base access control
         # Admins and ministry see all patients by default
         if role in ['admin', 'ministry_admin']:
@@ -46,9 +45,16 @@ class PatientViewSet(viewsets.ModelViewSet):
         # logic can properly evaluate cross-hospital access (403, not 404)
         elif action == 'retrieve':
             queryset = Patient.objects.all()
-        # If there's a search, allow hospital staff to find any patient across the NEHR
-        elif search and role in ['receptionist', 'doctor', 'nurse', 'hospital_admin']:
-            queryset = Patient.objects.all()
+        # If there's a search, only show:
+        #   - Patients registered at this hospital
+        #   - Patients with an actual REFERRAL visit at this hospital
+        #   - Patients with an actual REFERRAL appointment at this hospital
+        elif search and role in ['receptionist', 'doctor', 'nurse', 'hospital_admin', 'triage']:
+            queryset = Patient.objects.filter(
+                Q(hospital=user.hospital) |
+                Q(visits__hospital=user.hospital, visits__visit_type='referral') |
+                Q(appointments__hospital=user.hospital, appointments__is_referral=True)
+            ).distinct()
         # Hospital-level staff see only their hospital's patients for regular browsing
         elif user.hospital:
             queryset = Patient.objects.filter(hospital=user.hospital)
@@ -118,7 +124,11 @@ class PatientViewSet(viewsets.ModelViewSet):
         )
 
         if result['allowed']:
-            serializer = self.get_serializer(instance)
+            # Use limited serializer for cross-hospital referral access
+            if result['access_type'] == 'cross_hospital':
+                serializer = PatientReferralSerializer(instance)
+            else:
+                serializer = self.get_serializer(instance)
             return Response(serializer.data)
         else:
             return Response(
@@ -164,20 +174,120 @@ class PatientViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_403_FORBIDDEN
             )
 
+    @action(detail=True, methods=['post'], url_path='refer')
+    def refer_patient(self, request, pk=None):
+        """
+        Send a patient referral to another hospital.
+
+        POST body:
+        {
+            "referred_to_hospital": <hospital_id>,
+            "department": <department_id> (optional),
+            "doctor": <user_id> (optional),
+            "reason": "<chief complaint / referral reason>",
+            "notes": "<additional notes>" (optional)
+        }
+
+        Creates a PatientVisit(visit_type='referral') at the current hospital
+        with referred_to_hospital set, which grants that hospital's care-team
+        access to the patient record under the cross_hospital access rule.
+        """
+        actor = request.user
+        role  = actor.role.name if actor.role else None
+
+        allowed_roles = ('doctor', 'receptionist', 'hospital_admin', 'admin', 'ministry_admin')
+        if role not in allowed_roles:
+            return Response(
+                {'error': 'Only doctors, receptionists and hospital admins can send referrals.'},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        if not actor.hospital:
+            return Response(
+                {'error': 'You are not assigned to a hospital.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        patient = self.get_object()
+
+        # Validate required fields
+        referred_to_hospital_id = request.data.get('referred_to_hospital')
+        reason = request.data.get('reason', '').strip()
+
+        if not referred_to_hospital_id:
+            return Response({'error': 'Please select the hospital you are referring this patient to.'}, status=status.HTTP_400_BAD_REQUEST)
+        if not reason:
+            return Response({'error': 'A referral reason is required.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        # Prevent referring to the same hospital
+        try:
+            dest_hospital = Hospital.objects.get(id=referred_to_hospital_id)
+        except Hospital.DoesNotExist:
+            return Response({'error': 'Destination hospital not found.'}, status=status.HTTP_404_NOT_FOUND)
+
+        if dest_hospital == actor.hospital:
+            return Response({'error': 'You cannot refer a patient to your own hospital.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        # Optional fields
+        department_id = request.data.get('department')
+        doctor_id     = request.data.get('doctor')
+        notes         = request.data.get('notes', '')
+
+        department = None
+        if department_id:
+            try:
+                department = Department.objects.get(id=department_id)
+            except Department.DoesNotExist:
+                pass
+
+        referred_doctor_name = ''
+        if doctor_id:
+            try:
+                dest_doctor = User.objects.get(id=doctor_id, hospital=dest_hospital)
+                referred_doctor_name = dest_doctor.full_name or dest_doctor.email
+            except User.DoesNotExist:
+                pass
+
+        # Create the referral visit record at the current hospital
+        visit = PatientVisit.objects.create(
+            patient=patient,
+            hospital=actor.hospital,
+            department=department,
+            doctor=actor if role == 'doctor' else None,
+            registered_by=actor,
+            visit_type='referral',
+            chief_complaint=reason,
+            visit_date=timezone.now(),
+            status='referred_out',
+            referred_to_hospital=dest_hospital,
+            referred_to_doctor=referred_doctor_name,
+            discharge_notes=notes,
+        )
+
+        # Audit log
+        PatientAccessControl._log(actor, patient, 'edit', 'same_hospital', 'allowed', request)
+
+        return Response({
+            'message': f'{patient.full_name} has been referred to {dest_hospital.name}.',
+            'visit_id': visit.id,
+            'referred_to': dest_hospital.name,
+            'referred_to_id': dest_hospital.id,
+        }, status=status.HTTP_201_CREATED)
+
     def create(self, request, *args, **kwargs):
         user = request.user
         role = user.role.name if user.role else None
 
         # Receptionists, nurses, hospital_admin, and admin can register patients
-        allowed_roles = ['receptionist', 'nurse', 'hospital_admin', 'admin', 'ministry_admin']
+        allowed_roles = ['receptionist', 'nurse', 'triage', 'hospital_admin', 'admin', 'ministry_admin']
         if role not in allowed_roles:
             return Response(
                 {'error': 'You do not have permission to register patients.'},
                 status=status.HTTP_403_FORBIDDEN
             )
 
-        # Receptionist / nurse must be assigned to a hospital
-        if role in ['receptionist', 'nurse'] and not user.hospital:
+        # Receptionist / nurse / triage must be assigned to a hospital
+        if role in ['receptionist', 'nurse', 'triage'] and not user.hospital:
             return Response(
                 {'error': 'You are not assigned to any hospital. Contact your administrator.'},
                 status=status.HTTP_400_BAD_REQUEST
@@ -345,6 +455,174 @@ class PatientViewSet(viewsets.ModelViewSet):
         return Response({
             'message': f'Portal account created for {patient.full_name}.',
             'email': patient.email,
+        }, status=status.HTTP_201_CREATED)
+
+    @action(detail=False, methods=['get'], url_path='download_template')
+    def download_template(self, request):
+        """Return a blank Excel template for bulk patient upload."""
+        import openpyxl
+        from django.http import HttpResponse
+
+        wb = openpyxl.Workbook()
+        ws = wb.active
+        ws.title = 'Patients'
+
+        headers = [
+            'first_name*', 'last_name*', 'other_names', 'date_of_birth* (YYYY-MM-DD)',
+            'gender* (male/female/other)', 'nationality', 'national_id',
+            'phone*', 'alt_phone', 'email',
+            'address', 'city', 'blood_type (A+/A-/B+/B-/AB+/AB-/O+/O-/unknown)',
+            'allergies', 'chronic_conditions', 'disabilities',
+            'insurance_provider', 'insurance_number',
+            'emergency_contact_name', 'emergency_contact_phone', 'emergency_contact_relationship',
+        ]
+
+        from openpyxl.styles import Font, PatternFill, Alignment
+        header_font = Font(bold=True, color='FFFFFF')
+        header_fill = PatternFill(start_color='1E3A5F', end_color='1E3A5F', fill_type='solid')
+
+        for col_num, header in enumerate(headers, 1):
+            cell = ws.cell(row=1, column=col_num, value=header)
+            cell.font = header_font
+            cell.fill = header_fill
+            cell.alignment = Alignment(horizontal='center')
+            ws.column_dimensions[cell.column_letter].width = max(len(header) + 4, 18)
+
+        # Add one example row
+        ws.append([
+            'Aminata', 'Kamara', '', '1990-05-15',
+            'female', 'Sierra Leonean', 'SL-NIN-12345',
+            '+23276000000', '', 'aminata@example.com',
+            '12 Main Street', 'Freetown', 'O+',
+            'Peanuts', 'Hypertension', '',
+            'SLeSHI', 'INS-001',
+            'Fatmata Kamara', '+23277000000', 'Mother',
+        ])
+
+        response = HttpResponse(
+            content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+        )
+        response['Content-Disposition'] = 'attachment; filename="patient_upload_template.xlsx"'
+        wb.save(response)
+        return response
+
+    @action(detail=False, methods=['post'], url_path='bulk_upload')
+    def bulk_upload(self, request):
+        """
+        Upload an Excel file to register multiple patients at once.
+        Skips invalid rows silently. Returns counts of imported and skipped rows.
+        """
+        import openpyxl
+        from datetime import date
+
+        user = request.user
+        role = user.role.name if user.role else None
+        allowed_roles = ['receptionist', 'nurse', 'triage', 'hospital_admin', 'admin', 'ministry_admin']
+        if role not in allowed_roles:
+            return Response({'error': 'You do not have permission to upload patients.'}, status=status.HTTP_403_FORBIDDEN)
+
+        hospital = user.hospital
+        if role in ['admin', 'ministry_admin']:
+            hospital_id = request.data.get('hospital')
+            if hospital_id:
+                try:
+                    hospital = Hospital.objects.get(id=hospital_id)
+                except Hospital.DoesNotExist:
+                    return Response({'error': 'Invalid hospital ID.'}, status=status.HTTP_400_BAD_REQUEST)
+        if not hospital:
+            return Response({'error': 'No hospital assigned. Cannot import patients.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        excel_file = request.FILES.get('file')
+        if not excel_file:
+            return Response({'error': 'No file provided.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            wb = openpyxl.load_workbook(excel_file, data_only=True)
+        except Exception:
+            return Response({'error': 'Invalid Excel file. Please use the provided template.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        ws = wb.active
+        rows = list(ws.iter_rows(min_row=2, values_only=True))
+
+        GENDER_VALID = {'male', 'female', 'other'}
+        BLOOD_VALID  = {'A+','A-','B+','B-','AB+','AB-','O+','O-','unknown'}
+
+        imported = 0
+        skipped  = 0
+
+        for row in rows:
+            if not any(row):
+                continue
+            try:
+                (first_name, last_name, other_names, dob_raw,
+                 gender, nationality, national_id,
+                 phone, alt_phone, email,
+                 address, city, blood_type,
+                 allergies, chronic_conditions, disabilities,
+                 insurance_provider, insurance_number,
+                 ec_name, ec_phone, ec_relationship) = (list(row) + [None]*21)[:21]
+
+                # Required fields
+                if not first_name or not last_name or not phone:
+                    skipped += 1
+                    continue
+
+                # Parse date
+                if isinstance(dob_raw, date):
+                    dob = dob_raw
+                elif dob_raw:
+                    from datetime import datetime
+                    try:
+                        dob = datetime.strptime(str(dob_raw).strip(), '%Y-%m-%d').date()
+                    except ValueError:
+                        skipped += 1
+                        continue
+                else:
+                    skipped += 1
+                    continue
+
+                gender = (str(gender).strip().lower() if gender else 'other')
+                if gender not in GENDER_VALID:
+                    gender = 'other'
+
+                blood_type = (str(blood_type).strip() if blood_type else 'unknown')
+                if blood_type not in BLOOD_VALID:
+                    blood_type = 'unknown'
+
+                Patient.objects.create(
+                    hospital=hospital,
+                    registered_by=user,
+                    first_name=str(first_name).strip(),
+                    last_name=str(last_name).strip(),
+                    other_names=str(other_names).strip() if other_names else '',
+                    date_of_birth=dob,
+                    gender=gender,
+                    nationality=str(nationality).strip() if nationality else 'Sierra Leonean',
+                    national_id=str(national_id).strip() if national_id else None,
+                    phone=str(phone).strip(),
+                    alt_phone=str(alt_phone).strip() if alt_phone else None,
+                    email=str(email).strip() if email else None,
+                    address=str(address).strip() if address else None,
+                    city=str(city).strip() if city else None,
+                    blood_type=blood_type,
+                    allergies=str(allergies).strip() if allergies else None,
+                    chronic_conditions=str(chronic_conditions).strip() if chronic_conditions else None,
+                    disabilities=str(disabilities).strip() if disabilities else None,
+                    insurance_provider=str(insurance_provider).strip() if insurance_provider else None,
+                    insurance_number=str(insurance_number).strip() if insurance_number else None,
+                    emergency_contact_name=str(ec_name).strip() if ec_name else None,
+                    emergency_contact_phone=str(ec_phone).strip() if ec_phone else None,
+                    emergency_contact_relationship=str(ec_relationship).strip() if ec_relationship else None,
+                )
+                imported += 1
+            except Exception:
+                skipped += 1
+                continue
+
+        return Response({
+            'message': f'Import complete. {imported} patient(s) imported, {skipped} row(s) skipped.',
+            'imported': imported,
+            'skipped': skipped,
         }, status=status.HTTP_201_CREATED)
 
     @action(detail=True, methods=['delete'], url_path='revoke_portal_account')

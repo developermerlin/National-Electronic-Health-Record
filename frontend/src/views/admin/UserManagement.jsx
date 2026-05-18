@@ -4,6 +4,7 @@ import { Link } from 'react-router-dom';
 import DashboardLayout from '../../layout/DashboardLayout';
 import { getNavForUser, getBrandForUser, getRoleBadge } from '../../utils/navItems';
 import showToast from '../../utils/toast';
+import PrimaryButton from '../../components/PrimaryButton';
 import ConfirmModal from '../../components/ConfirmModal';
 
 
@@ -24,15 +25,16 @@ function UserManagement() {
   const [showEditModal, setShowEditModal] = useState(false);
   const [selectedUser, setSelectedUser] = useState(null);
   const [formData, setFormData] = useState({
-    email: '',
-    full_name: '',
-    phone: '',
-    role: '',
-    hospital: '',
-    department: '',
-    district: '',
-    password: '',
-    is_active: false
+    email: '', full_name: '', phone: '', role: '',
+    hospital: '', department: '', district: '',
+    password: '', is_active: false,
+    // Demographics
+    date_of_birth: '', gender: '', nationality: 'Sierra Leonean',
+    nin_number: '', marital_status: '', address: '', city: '', state: '', country: 'Sierra Leone',
+    // Professional
+    qualification: '', specialization: '', license_number: '', years_of_experience: '',
+    // Emergency contact
+    emergency_contact_name: '', emergency_contact_phone: '', emergency_contact_relationship: '',
   });
   const [confirmDeactivate, setConfirmDeactivate] = useState({ show: false, id: null });
   const [confirmPermanentDelete, setConfirmPermanentDelete] = useState({ show: false, id: null, confirmed: false, typedName: '' });
@@ -40,6 +42,18 @@ function UserManagement() {
   const [newPassword, setNewPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [showResetPassword, setShowResetPassword] = useState(false);
+  const [createStep, setCreateStep] = useState(1);
+  const [editStep, setEditStep] = useState(1);
+  const [editProfilePhoto, setEditProfilePhoto] = useState(null);
+  const [editPhotoPreview, setEditPhotoPreview] = useState(null);
+  const [editCertificateFile, setEditCertificateFile] = useState(null);
+  const [editLicenseFile, setEditLicenseFile] = useState(null);
+  const [editCvFile, setEditCvFile] = useState(null);
+  const [profilePhoto, setProfilePhoto] = useState(null);
+  const [certificateFile, setCertificateFile] = useState(null);
+  const [licenseFile, setLicenseFile] = useState(null);
+  const [cvFile, setCvFile] = useState(null);
+  const [photoPreview, setPhotoPreview] = useState(null);
 
   // Check if current user is admin (role is stored as string in JWT token)
   const isAdmin = user?.role === 'admin';
@@ -119,57 +133,69 @@ function UserManagement() {
     }
   };
 
-  const handleCreateUser = async (e) => {
-    e.preventDefault();
+  const handleCreateUser = async () => {
     try {
-      const response = await apiCall('/admin/users/', {
-        method: 'POST',
-        body: JSON.stringify(formData)
-      });
+      const fd = new FormData();
+      const textFields = [
+        'email','full_name','phone','role','hospital','department','district','password','is_active',
+        'date_of_birth','gender','nationality','nin_number','marital_status','address','city','state','country',
+        'qualification','specialization','license_number','years_of_experience',
+        'emergency_contact_name','emergency_contact_phone','emergency_contact_relationship',
+      ];
+      textFields.forEach(k => { if (formData[k] !== '' && formData[k] !== null && formData[k] !== undefined) fd.append(k, formData[k]); });
+      if (profilePhoto)   fd.append('profile_photo', profilePhoto);
+      if (certificateFile) fd.append('certificate', certificateFile);
+      if (licenseFile)    fd.append('license_document', licenseFile);
+      if (cvFile)         fd.append('cv', cvFile);
 
+      const response = await apiCall('/admin/users/', { method: 'POST', body: fd });
       if (response.ok) {
         setShowCreateModal(false);
         resetForm();
         fetchUsers();
-        showToast.success('User created successfully!');
+        showToast.created('User');
       } else {
         const data = await response.json();
         const msg = Object.values(data).flat().join(', ');
-        showToast.error(msg || 'Failed to create user');
+        showToast.createError(msg || 'User');
       }
     } catch {
-      showToast.error('Error creating user. Please try again.');
+      showToast.networkError();
     }
   };
 
-  const handleUpdateUser = async (e) => {
-    e.preventDefault();
+  const handleUpdateUser = async () => {
     try {
-      const updateData = {
-        full_name: formData.full_name,
-        phone: formData.phone,
-        role: formData.role,
-        is_active: formData.is_active
-      };
+      const fd = new FormData();
+      const textFields = [
+        'full_name','phone','role','hospital','department','district','is_active',
+        'date_of_birth','gender','nationality','nin_number','marital_status','address','city','state','country',
+        'qualification','specialization','license_number','years_of_experience',
+        'emergency_contact_name','emergency_contact_phone','emergency_contact_relationship',
+      ];
+      textFields.forEach(k => { if (formData[k] !== '' && formData[k] !== null && formData[k] !== undefined) fd.append(k, formData[k]); });
+      if (editProfilePhoto)    fd.append('profile_photo', editProfilePhoto);
+      if (editCertificateFile) fd.append('certificate', editCertificateFile);
+      if (editLicenseFile)     fd.append('license_document', editLicenseFile);
+      if (editCvFile)          fd.append('cv', editCvFile);
 
-      const response = await apiCall(`/admin/users/${selectedUser.id}/`, {
-        method: 'PUT',
-        body: JSON.stringify(updateData)
-      });
-
+      const response = await apiCall(`/admin/users/${selectedUser.id}/`, { method: 'PUT', body: fd });
       if (response.ok) {
         setShowEditModal(false);
         setSelectedUser(null);
         resetForm();
+        setEditStep(1);
+        setEditProfilePhoto(null); setEditPhotoPreview(null);
+        setEditCertificateFile(null); setEditLicenseFile(null); setEditCvFile(null);
         fetchUsers();
-        showToast.success('User updated successfully!');
+        showToast.updated('User');
       } else {
         const data = await response.json();
         const msg = Object.values(data).flat().join(', ');
-        showToast.error(msg || 'Failed to update user');
+        showToast.updateError(msg || 'User');
       }
     } catch {
-      showToast.error('Error updating user. Please try again.');
+      showToast.networkError();
     }
   };
 
@@ -213,12 +239,12 @@ function UserManagement() {
       });
       if (response.ok) {
         fetchUsers();
-        showToast.success('User deactivated successfully!');
+        showToast.deactivated('User');
       } else {
-        showToast.error('Failed to deactivate user');
+        showToast.updateError('User');
       }
     } catch {
-      showToast.error('Error deactivating user. Please try again.');
+      showToast.networkError();
     } finally {
       setConfirmDeactivate({ show: false, id: null, confirmed: false });
       setUserToDeactivate(null);
@@ -232,12 +258,12 @@ function UserManagement() {
       });
       if (response.ok) {
         fetchUsers();
-        showToast.success('User activated successfully!');
+        showToast.activated('User');
       } else {
-        showToast.error('Failed to activate user');
+        showToast.updateError('User');
       }
     } catch {
-      showToast.error('Error activating user. Please try again.');
+      showToast.networkError();
     }
   };
 
@@ -248,7 +274,7 @@ function UserManagement() {
 
   const confirmResetPassword = async () => {
     if (!newPassword) {
-      showToast.warning('Please enter a new password');
+      showToast.warning('Please enter a new password.', 'Password Required');
       return;
     }
     try {
@@ -257,42 +283,82 @@ function UserManagement() {
         body: JSON.stringify({ password: newPassword })
       });
       if (response.ok) {
-        showToast.success('Password reset successfully!');
+        showToast.success('Password has been reset successfully.', 'Password Reset');
       } else {
-        showToast.error('Failed to reset password');
+        showToast.updateError('password');
       }
     } catch {
-      showToast.error('Error resetting password. Please try again.');
+      showToast.networkError();
     } finally {
       setShowResetModal({ show: false, id: null });
       setNewPassword('');
     }
   };
 
-  const openEditModal = (user) => {
+  const openEditModal = async (user) => {
     setSelectedUser(user);
-    setFormData({
-      email: user.email,
-      full_name: user.full_name,
-      phone: user.phone,
-      role: user.role,
-      is_active: user.is_active
-    });
+    setEditStep(1);
+    setEditProfilePhoto(null); setEditPhotoPreview(null);
+    setEditCertificateFile(null); setEditLicenseFile(null); setEditCvFile(null);
+    // Start with basic user fields
+    const base = {
+      email: user.email || '', full_name: user.full_name || '',
+      phone: user.phone || '', role: user.role || '',
+      hospital: user.hospital || '', department: user.department || '',
+      district: user.district || '', is_active: user.is_active,
+      password: '',
+      date_of_birth: '', gender: '', nationality: 'Sierra Leonean',
+      nin_number: '', marital_status: '', address: '', city: '', state: '', country: 'Sierra Leone',
+      qualification: '', specialization: '', license_number: '', years_of_experience: '',
+      emergency_contact_name: '', emergency_contact_phone: '', emergency_contact_relationship: '',
+    };
+    setFormData(base);
+    // Try to load profile data
+    try {
+      const res = await apiCall(`/admin/users/${user.id}/profile/`);
+      if (res.ok) {
+        const p = await res.json();
+        setFormData(prev => ({
+          ...prev,
+          date_of_birth: p.date_of_birth || '',
+          gender: p.gender || '',
+          nationality: p.nationality || 'Sierra Leonean',
+          nin_number: p.nin_number || '',
+          marital_status: p.marital_status || '',
+          address: p.address || '',
+          city: p.city || '',
+          state: p.state || '',
+          country: p.country || 'Sierra Leone',
+          qualification: p.qualification || '',
+          specialization: p.specialization || '',
+          license_number: p.license_number || '',
+          years_of_experience: p.years_of_experience || '',
+          emergency_contact_name: p.emergency_contact_name || '',
+          emergency_contact_phone: p.emergency_contact_phone || '',
+          emergency_contact_relationship: p.emergency_contact_relationship || '',
+        }));
+        if (p.image) setEditPhotoPreview(p.image);
+      }
+    } catch { /* profile load failed silently */ }
     setShowEditModal(true);
   };
 
   const resetForm = () => {
     setFormData({
-      email: '',
-      full_name: '',
-      phone: '',
-      role: '',
-      hospital: '',
-      department: '',
-      district: '',
-      password: '',
-      is_active: false
+      email: '', full_name: '', phone: '', role: '',
+      hospital: '', department: '', district: '',
+      password: '', is_active: false,
+      date_of_birth: '', gender: '', nationality: 'Sierra Leonean',
+      nin_number: '', marital_status: '', address: '', city: '', state: '', country: 'Sierra Leone',
+      qualification: '', specialization: '', license_number: '', years_of_experience: '',
+      emergency_contact_name: '', emergency_contact_phone: '', emergency_contact_relationship: '',
     });
+    setCreateStep(1);
+    setProfilePhoto(null);
+    setCertificateFile(null);
+    setLicenseFile(null);
+    setCvFile(null);
+    setPhotoPreview(null);
   };
 
   return (
@@ -306,13 +372,9 @@ function UserManagement() {
                 <p className="text-muted">Manage system users and their roles</p>
               </div>
               {!isReadOnly && (
-                <button 
-                  className="btn btn-primary"
-                  onClick={() => setShowCreateModal(true)}
-                >
-                  <i className="bi bi-person-plus me-2"></i>
+                <PrimaryButton icon="fas fa-user-plus" onClick={() => setShowCreateModal(true)}>
                   Create New User
-                </button>
+                </PrimaryButton>
               )}
             </div>
           </div>
@@ -328,6 +390,7 @@ function UserManagement() {
                   placeholder="Search by name, email, or employee ID..."
                   value={filters.search}
                   onChange={(e) => setFilters({ ...filters, search: e.target.value })}
+                  autoComplete="off"
                 />
               </div>
               <div className="col-md-3">
@@ -469,318 +532,608 @@ function UserManagement() {
         </div>
       </div>
 
-      {/* Create User Modal */}
-      {showCreateModal && (
-        <div className="modal show d-block" style={{ backgroundColor: 'rgba(0,0,0,0.5)', position: 'fixed', top: 0, left: 0, width: '100%', height: '100%', zIndex: 1050 }}>
-          <div className="modal-dialog modal-lg">
-            <div className="modal-content">
-              <div className="modal-header">
-                <h5 className="modal-title">Create New User</h5>
-                <button 
-                  type="button" 
-                  className="btn-close"
-                  onClick={() => { setShowCreateModal(false); resetForm(); }}
-                ></button>
+      {/* Create User Modal — 4-step */}
+      {showCreateModal && (() => {
+        const steps = [
+          { icon: 'fas fa-user', label: 'Account' },
+          { icon: 'fas fa-id-card', label: 'Demographics' },
+          { icon: 'fas fa-briefcase-medical', label: 'Professional' },
+          { icon: 'fas fa-file-upload', label: 'Documents' },
+        ];
+        const inputStyle = { fontSize: 13, borderRadius: 8, border: '1.5px solid #e2e8f0', padding: '9px 12px', width: '100%', outline: 'none', background: '#fff', color: '#0f172a' };
+        const labelStyle = { fontSize: 12, fontWeight: 600, color: '#475569', marginBottom: 4, display: 'block' };
+        const sectionHead = (icon, title) => (
+          <div style={{ gridColumn: '1/-1', display: 'flex', alignItems: 'center', gap: 8, paddingBottom: 10, borderBottom: '1px solid #f1f5f9' }}>
+            <div style={{ width: 28, height: 28, borderRadius: 8, background: '#eff6ff', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+              <i className={icon} style={{ fontSize: 13, color: '#4361ee' }}></i>
+            </div>
+            <span style={{ fontWeight: 700, fontSize: 13, color: '#1e293b', lineHeight: 1 }}>{title}</span>
+          </div>
+        );
+        const fileInput = (label, accept, file, setFile, icon) => (
+          <div>
+            <span style={labelStyle}>{label}</span>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', borderRadius: 10, border: '1.5px dashed #cbd5e1', background: '#f8fafc', cursor: 'pointer', transition: 'all 0.15s' }}
+              onMouseEnter={e => e.currentTarget.style.borderColor='#4361ee'}
+              onMouseLeave={e => e.currentTarget.style.borderColor='#cbd5e1'}>
+              <input type="file" accept={accept} style={{ display: 'none' }} onChange={e => setFile(e.target.files[0] || null)} />
+              <div style={{ width: 32, height: 32, borderRadius: 8, background: file ? '#eff6ff' : '#f1f5f9', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                <i className={file ? 'fas fa-check-circle' : icon} style={{ fontSize: 14, color: file ? '#4361ee' : '#94a3b8' }}></i>
               </div>
-              <form onSubmit={handleCreateUser}>
-                <div className="modal-body">
-                  <div className="row g-3">
-                    <div className="col-md-6">
-                      <label className="form-label">Full Name *</label>
-                      <input
-                        type="text"
-                        className="form-control"
-                        value={formData.full_name}
-                        onChange={(e) => setFormData({ ...formData, full_name: e.target.value })}
-                        required
-                      />
-                    </div>
-                    <div className="col-md-6">
-                      <label className="form-label">Email *</label>
-                      <input
-                        type="email"
-                        className="form-control"
-                        value={formData.email}
-                        onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                        required
-                      />
-                    </div>
-                    <div className="col-md-6">
-                      <label className="form-label">Phone *</label>
-                      <input
-                        type="tel"
-                        className="form-control"
-                        value={formData.phone}
-                        onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-                        required
-                      />
-                    </div>
-                    <div className="col-md-6">
-                      <label className="form-label">Role *</label>
-                      <select
-                        className="form-select"
-                        value={formData.role}
-                        onChange={(e) => setFormData({ ...formData, role: e.target.value })}
-                        required
-                      >
-                        <option value="">Select Role</option>
-                        {roles.map((role) => (
-                          <option key={role.id} value={role.id}>{role.display_name || role.name}</option>
-                        ))}
-                      </select>
-                    </div>
-                    <div className="col-md-6">
-                      <label className="form-label">Password *</label>
-                      <div className="input-group">
-                        <input
-                          type={showPassword ? "text" : "password"}
-                          className="form-control"
-                          value={formData.password}
-                          onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-                          required
-                        />
-                        <button
-                          type="button"
-                          className="btn btn-outline-secondary"
-                          onClick={() => setShowPassword(!showPassword)}
-                          tabIndex="-1"
-                        >
-                          <i className={`fas ${showPassword ? "fa-eye-slash" : "fa-eye"}`}></i>
-                        </button>
-                      </div>
-                    </div>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 12, fontWeight: 600, color: file ? '#0f172a' : '#94a3b8', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                  {file ? file.name : 'Click to upload'}
+                </div>
+                {file && <div style={{ fontSize: 10, color: '#94a3b8' }}>{(file.size / 1024).toFixed(1)} KB</div>}
+              </div>
+              {file && <button type="button" onClick={e => { e.preventDefault(); setFile(null); }} style={{ border: 'none', background: 'none', color: '#dc2626', cursor: 'pointer', fontSize: 12, padding: 0 }}><i className="fas fa-times"></i></button>}
+            </label>
+          </div>
+        );
+        return (
+          <div onClick={() => { setShowCreateModal(false); resetForm(); setCreateStep(1); }}
+            style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.55)', backdropFilter: 'blur(3px)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
+            <div onClick={e => e.stopPropagation()}
+              style={{ background: '#fff', borderRadius: 20, width: '100%', maxWidth: 680, maxHeight: '90vh', display: 'flex', flexDirection: 'column', boxShadow: '0 24px 60px rgba(0,0,0,0.2)', overflow: 'hidden' }}>
 
-                    {/* Auto-generated Employee ID Info */}
-                    <div className="col-md-12">
-                      <div className="alert alert-info d-flex align-items-center py-2" style={{ fontSize: '13px' }}>
-                        <i className="fas fa-info-circle me-2"></i>
-                        <span><strong>Employee ID:</strong> Will be automatically generated (format: EMP-XXXXX)</span>
-                      </div>
+              {/* Header */}
+              <div style={{ padding: '22px 28px 0', borderBottom: '1px solid #f1f5f9' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 18 }}>
+                  <div>
+                    <h5 style={{ margin: 0, fontWeight: 800, fontSize: 17, color: '#0f172a' }}>Create New Staff Member</h5>
+                    <p style={{ margin: 0, fontSize: 12, color: '#94a3b8' }}>Fill in all sections to register a new system user</p>
+                  </div>
+                  <button type="button" onClick={() => { setShowCreateModal(false); resetForm(); setCreateStep(1); }}
+                    style={{ width: 32, height: 32, borderRadius: 8, border: '1px solid #e2e8f0', background: '#f8fafc', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <i className="fas fa-times" style={{ fontSize: 13, color: '#64748b' }}></i>
+                  </button>
+                </div>
+                {/* Step indicators */}
+                <div style={{ display: 'flex', gap: 0, marginBottom: -1 }}>
+                  {steps.map((s, i) => (
+                    <div key={i} onClick={() => setCreateStep(i + 1)}
+                      style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+                        padding: '10px 8px', cursor: 'pointer',
+                        borderBottom: createStep === i + 1 ? '2px solid #4361ee' : '2px solid transparent',
+                        color: createStep === i + 1 ? '#4361ee' : createStep > i + 1 ? '#16a34a' : '#94a3b8',
+                        transition: 'all 0.15s' }}>
+                      <i className={createStep > i + 1 ? 'fas fa-check-circle' : s.icon} style={{ fontSize: 18, marginBottom: 4 }}></i>
+                      <span style={{ fontSize: 11, fontWeight: 700 }}>{s.label}</span>
                     </div>
+                  ))}
+                </div>
+              </div>
 
-                    {/* District selection for District Admin */}
-                    {selectedRoleName === 'district_admin' && (
-                      <div className="col-md-12">
-                        <label className="form-label">Assigned District *</label>
-                        <select
-                          className="form-select"
-                          value={formData.district}
-                          onChange={(e) => setFormData({ ...formData, district: e.target.value })}
-                          required
-                        >
-                          <option value="">Select District</option>
-                          {districts.map((d) => (
-                            <option key={d.id} value={d.id}>{d.name}</option>
-                          ))}
+              {/* Body */}
+              <div style={{ flex: 1, overflowY: 'auto' }}>
+                <div style={{ padding: '24px 28px' }}>
+
+                  {/* ── STEP 1: Account ── */}
+                  {createStep === 1 && (
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+                      {sectionHead('fas fa-user-circle', 'Account Information')}
+                      <div>
+                        <span style={labelStyle}>Full Name *</span>
+                        <input style={inputStyle} type="text" placeholder="e.g. John Koroma" value={formData.full_name} onChange={e => setFormData({...formData, full_name: e.target.value})} />
+                      </div>
+                      <div>
+                        <span style={labelStyle}>Email Address *</span>
+                        <input style={inputStyle} type="email" placeholder="user@hospital.gov.sl" value={formData.email} onChange={e => setFormData({...formData, email: e.target.value})} />
+                      </div>
+                      <div>
+                        <span style={labelStyle}>Phone Number *</span>
+                        <input style={inputStyle} type="tel" placeholder="+232 XX XXX XXXX" value={formData.phone} onChange={e => setFormData({...formData, phone: e.target.value})} />
+                      </div>
+                      <div>
+                        <span style={labelStyle}>Role *</span>
+                        <select style={inputStyle} value={formData.role} onChange={e => setFormData({...formData, role: e.target.value})}>
+                          <option value="">Select Role</option>
+                          {roles.map(r => <option key={r.id} value={r.id}>{r.display_name || r.name}</option>)}
                         </select>
                       </div>
-                    )}
-
-                    {/* Hospital selection for Hospital Admin, Doctors, Nurses, etc. */}
-                    {['hospital_admin', 'doctor', 'nurse', 'receptionist', 'lab_technician', 'pharmacist'].includes(selectedRoleName) && (
-                      <div className="col-md-12">
-                        <label className="form-label">Assigned Hospital *</label>
-                        <select
-                          className="form-select"
-                          value={formData.hospital}
-                          onChange={(e) => setFormData({ ...formData, hospital: e.target.value, department: '' })}
-                          required
-                        >
-                          <option value="">Select Hospital</option>
-                          {hospitals.map((h) => (
-                            <option key={h.id} value={h.id}>{h.name}</option>
-                          ))}
-                        </select>
+                      <div style={{ position: 'relative' }}>
+                        <span style={labelStyle}>Password *</span>
+                        <div style={{ position: 'relative' }}>
+                          <input style={{...inputStyle, paddingRight: 40}} type={showPassword ? 'text' : 'password'} placeholder="Minimum 8 characters" value={formData.password} onChange={e => setFormData({...formData, password: e.target.value})} />
+                          <button type="button" onClick={() => setShowPassword(!showPassword)}
+                            style={{ position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)', border: 'none', background: 'none', cursor: 'pointer', color: '#94a3b8' }}>
+                            <i className={`fas ${showPassword ? 'fa-eye-slash' : 'fa-eye'}`}></i>
+                          </button>
+                        </div>
                       </div>
-                    )}
-
-                    {/* Department selection for clinical staff */}
-                    {['doctor', 'nurse', 'lab_technician', 'pharmacist'].includes(selectedRoleName) && formData.hospital && (
-                      <div className="col-md-12">
-                        <label className="form-label">Department *</label>
-                        <select
-                          className="form-select"
-                          value={formData.department}
-                          onChange={(e) => setFormData({ ...formData, department: e.target.value })}
-                          required
-                        >
-                          <option value="">Select Department</option>
-                          {departments
-                            .filter(d => d.hospital === parseInt(formData.hospital))
-                            .map((d) => (
-                              <option key={d.id} value={d.id}>{d.name_display}</option>
-                            ))}
-                        </select>
-                        {departments.filter(d => d.hospital === parseInt(formData.hospital)).length === 0 && (
-                          <small className="text-warning">
-                            <i className="fas fa-exclamation-triangle me-1"></i>
-                            No departments found for this hospital. Please add departments first.
-                          </small>
-                        )}
-                      </div>
-                    )}
-
-                    <div className="col-md-12">
-                      <div className="card border-0" style={{ backgroundColor: formData.is_active ? '#e8f5e9' : '#fff3e0', borderRadius: '8px' }}>
-                        <div className="card-body py-3 d-flex align-items-center justify-content-between">
-                          <div>
-                            <div className="d-flex align-items-center gap-2 mb-1">
-                              <i className={`fas ${formData.is_active ? 'fa-lock-open text-success' : 'fa-lock text-warning'}`} style={{ fontSize: '18px' }}></i>
-                              <strong style={{ fontSize: '14px' }}>{formData.is_active ? 'Login Access Enabled' : 'Login Access Disabled'}</strong>
+                      <div></div>
+                      {selectedRoleName === 'district_admin' && (
+                        <div style={{ gridColumn: '1/-1' }}>
+                          <span style={labelStyle}>Assigned District *</span>
+                          <select style={inputStyle} value={formData.district} onChange={e => setFormData({...formData, district: e.target.value})}>
+                            <option value="">Select District</option>
+                            {districts.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
+                          </select>
+                        </div>
+                      )}
+                      {['hospital_admin','doctor','nurse','receptionist','lab_technician','pharmacist','triage'].includes(selectedRoleName) && (
+                        <div style={{ gridColumn: '1/-1' }}>
+                          <span style={labelStyle}>Assigned Hospital *</span>
+                          <select style={inputStyle} value={formData.hospital} onChange={e => setFormData({...formData, hospital: e.target.value, department: ''})}>
+                            <option value="">Select Hospital</option>
+                            {hospitals.map(h => <option key={h.id} value={h.id}>{h.name}</option>)}
+                          </select>
+                        </div>
+                      )}
+                      {['doctor','nurse','lab_technician','pharmacist'].includes(selectedRoleName) && formData.hospital && (
+                        <div style={{ gridColumn: '1/-1' }}>
+                          <span style={labelStyle}>Department *</span>
+                          <select style={inputStyle} value={formData.department} onChange={e => setFormData({...formData, department: e.target.value})}>
+                            <option value="">Select Department</option>
+                            {departments.filter(d => d.hospital === parseInt(formData.hospital)).map(d => <option key={d.id} value={d.id}>{d.name_display}</option>)}
+                          </select>
+                        </div>
+                      )}
+                      <div style={{ gridColumn: '1/-1' }}>
+                        <div style={{ background: formData.is_active ? '#f0fdf4' : '#fffbeb', border: `1.5px solid ${formData.is_active ? '#86efac' : '#fde68a'}`, borderRadius: 10, padding: '12px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                            <i className={`fas ${formData.is_active ? 'fa-lock-open' : 'fa-lock'}`} style={{ fontSize: 16, color: formData.is_active ? '#16a34a' : '#d97706' }}></i>
+                            <div>
+                              <div style={{ fontWeight: 700, fontSize: 13, color: '#0f172a' }}>{formData.is_active ? 'Login Access Enabled' : 'Login Access Disabled'}</div>
+                              <div style={{ fontSize: 11, color: '#64748b' }}>{formData.is_active ? 'User can log in immediately.' : 'User cannot log in until activated.'}</div>
                             </div>
-                            <small className="text-muted">
-                              {formData.is_active
-                                ? 'This user will be able to log in immediately after creation.'
-                                : 'This user will NOT be able to log in until you activate their account.'}
-                            </small>
                           </div>
-                          <div className="form-check form-switch">
-                            <input
-                              type="checkbox"
-                              className="form-check-input"
-                              id="is_active_create"
-                              checked={formData.is_active}
-                              onChange={(e) => setFormData({ ...formData, is_active: e.target.checked })}
-                              style={{ width: '48px', height: '24px', cursor: 'pointer' }}
-                            />
-                          </div>
+                          <input type="checkbox" checked={formData.is_active} onChange={e => setFormData({...formData, is_active: e.target.checked})} style={{ width: 40, height: 22, cursor: 'pointer', accentColor: '#4361ee' }} />
                         </div>
                       </div>
                     </div>
-                  </div>
-                </div>
-                <div className="modal-footer">
-                  <button 
-                    type="button" 
-                    className="btn btn-secondary"
-                    onClick={() => { setShowCreateModal(false); resetForm(); }}
-                  >
-                    Cancel
-                  </button>
-                  <button type="submit" className="btn btn-primary">
-                    Create User
-                  </button>
-                </div>
-              </form>
-            </div>
-          </div>
-        </div>
-      )}
+                  )}
 
-      {/* Edit User Modal */}
-      {showEditModal && selectedUser && (
-        <div className="modal show d-block" style={{ backgroundColor: 'rgba(0,0,0,0.5)', position: 'fixed', top: 0, left: 0, width: '100%', height: '100%', zIndex: 1050 }}>
-          <div className="modal-dialog modal-lg">
-            <div className="modal-content">
-              <div className="modal-header">
-                <h5 className="modal-title">Edit User</h5>
-                <button 
-                  type="button" 
-                  className="btn-close"
-                  onClick={() => { setShowEditModal(false); setSelectedUser(null); resetForm(); }}
-                ></button>
-              </div>
-              <form onSubmit={handleUpdateUser}>
-                <div className="modal-body">
-                  <div className="row g-3">
-                    <div className="col-md-6">
-                      <label className="form-label">Full Name *</label>
-                      <input
-                        type="text"
-                        className="form-control"
-                        value={formData.full_name}
-                        onChange={(e) => setFormData({ ...formData, full_name: e.target.value })}
-                        required
-                      />
+                  {/* ── STEP 2: Demographics ── */}
+                  {createStep === 2 && (
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+                      {sectionHead('fas fa-id-card', 'Personal & Demographic Information')}
+                      <div>
+                        <span style={labelStyle}>Date of Birth</span>
+                        <input style={inputStyle} type="date" value={formData.date_of_birth} onChange={e => setFormData({...formData, date_of_birth: e.target.value})} />
+                      </div>
+                      <div>
+                        <span style={labelStyle}>Gender</span>
+                        <select style={inputStyle} value={formData.gender} onChange={e => setFormData({...formData, gender: e.target.value})}>
+                          <option value="">Select Gender</option>
+                          <option value="male">Male</option>
+                          <option value="female">Female</option>
+                          <option value="other">Other</option>
+                        </select>
+                      </div>
+                      <div>
+                        <span style={labelStyle}>NIN Number</span>
+                        <input style={inputStyle} type="text" placeholder="National Identification Number" value={formData.nin_number} onChange={e => setFormData({...formData, nin_number: e.target.value})} />
+                      </div>
+                      <div>
+                        <span style={labelStyle}>Marital Status</span>
+                        <select style={inputStyle} value={formData.marital_status} onChange={e => setFormData({...formData, marital_status: e.target.value})}>
+                          <option value="">Select Status</option>
+                          <option value="single">Single</option>
+                          <option value="married">Married</option>
+                          <option value="divorced">Divorced</option>
+                          <option value="widowed">Widowed</option>
+                        </select>
+                      </div>
+                      <div>
+                        <span style={labelStyle}>Nationality</span>
+                        <input style={inputStyle} type="text" placeholder="e.g. Sierra Leonean" value={formData.nationality} onChange={e => setFormData({...formData, nationality: e.target.value})} />
+                      </div>
+                      <div>
+                        <span style={labelStyle}>Country</span>
+                        <input style={inputStyle} type="text" placeholder="e.g. Sierra Leone" value={formData.country} onChange={e => setFormData({...formData, country: e.target.value})} />
+                      </div>
+                      <div>
+                        <span style={labelStyle}>City / Town</span>
+                        <input style={inputStyle} type="text" placeholder="e.g. Freetown" value={formData.city} onChange={e => setFormData({...formData, city: e.target.value})} />
+                      </div>
+                      <div>
+                        <span style={labelStyle}>Province / State</span>
+                        <select style={inputStyle} value={formData.state} onChange={e => setFormData({...formData, state: e.target.value})}>
+                          <option value="">Select Province</option>
+                          <option value="Western Area Urban">Western Area Urban</option>
+                          <option value="Western Area Rural">Western Area Rural</option>
+                          <option value="Northern Province">Northern Province</option>
+                          <option value="North West Province">North West Province</option>
+                          <option value="Southern Province">Southern Province</option>
+                          <option value="Eastern Province">Eastern Province</option>
+                        </select>
+                      </div>
+                      <div style={{ gridColumn: '1/-1' }}>
+                        <span style={labelStyle}>Residential Address</span>
+                        <input style={inputStyle} type="text" placeholder="Full residential address" value={formData.address} onChange={e => setFormData({...formData, address: e.target.value})} />
+                      </div>
+
+                      {sectionHead('fas fa-phone-alt', 'Emergency Contact')}
+                      <div>
+                        <span style={labelStyle}>Contact Name</span>
+                        <input style={inputStyle} type="text" placeholder="Full name" value={formData.emergency_contact_name} onChange={e => setFormData({...formData, emergency_contact_name: e.target.value})} />
+                      </div>
+                      <div>
+                        <span style={labelStyle}>Contact Phone</span>
+                        <input style={inputStyle} type="tel" placeholder="Phone number" value={formData.emergency_contact_phone} onChange={e => setFormData({...formData, emergency_contact_phone: e.target.value})} />
+                      </div>
+                      <div style={{ gridColumn: '1/-1' }}>
+                        <span style={labelStyle}>Relationship</span>
+                        <select style={inputStyle} value={formData.emergency_contact_relationship} onChange={e => setFormData({...formData, emergency_contact_relationship: e.target.value})}>
+                          <option value="">Select Relationship</option>
+                          <option value="Spouse">Spouse</option>
+                          <option value="Parent">Parent</option>
+                          <option value="Child">Child</option>
+                          <option value="Sibling">Sibling</option>
+                          <option value="Grandparent">Grandparent</option>
+                          <option value="Aunt/Uncle">Aunt / Uncle</option>
+                          <option value="Nephew/Niece">Nephew / Niece</option>
+                          <option value="Cousin">Cousin</option>
+                          <option value="Friend">Friend</option>
+                          <option value="Colleague">Colleague</option>
+                          <option value="Guardian">Guardian</option>
+                          <option value="Other">Other</option>
+                        </select>
+                      </div>
                     </div>
-                    <div className="col-md-6">
-                      <label className="form-label">Email</label>
-                      <input
-                        type="email"
-                        className="form-control"
-                        value={formData.email}
-                        disabled
-                      />
+                  )}
+
+                  {/* ── STEP 3: Professional ── */}
+                  {createStep === 3 && (
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+                      {sectionHead('fas fa-stethoscope', 'Professional Information')}
+                      <div>
+                        <span style={labelStyle}>Qualification</span>
+                        <input style={inputStyle} type="text" placeholder="e.g. MBBS, BSc Nursing, MD" value={formData.qualification} onChange={e => setFormData({...formData, qualification: e.target.value})} />
+                      </div>
+                      <div>
+                        <span style={labelStyle}>Specialization</span>
+                        <input style={inputStyle} type="text" placeholder="e.g. Cardiology, Paediatrics" value={formData.specialization} onChange={e => setFormData({...formData, specialization: e.target.value})} />
+                      </div>
+                      <div>
+                        <span style={labelStyle}>License / Registration Number</span>
+                        <input style={inputStyle} type="text" placeholder="Professional license number" value={formData.license_number} onChange={e => setFormData({...formData, license_number: e.target.value})} />
+                      </div>
+                      <div>
+                        <span style={labelStyle}>Years of Experience</span>
+                        <input style={inputStyle} type="number" min="0" max="60" placeholder="e.g. 5" value={formData.years_of_experience} onChange={e => setFormData({...formData, years_of_experience: e.target.value})} />
+                      </div>
+                      <div style={{ gridColumn: '1/-1', background: '#f8fafc', borderRadius: 10, padding: 14, border: '1px solid #e2e8f0' }}>
+                        <div style={{ fontSize: 12, color: '#64748b', marginBottom: 6 }}><i className="fas fa-info-circle me-1 text-primary"></i>Upload supporting documents in the next step.</div>
+                        <div style={{ fontSize: 12, color: '#94a3b8' }}>Accepted formats: PDF, JPG, PNG, DOC, DOCX</div>
+                      </div>
                     </div>
-                    <div className="col-md-6">
-                      <label className="form-label">Phone *</label>
-                      <input
-                        type="tel"
-                        className="form-control"
-                        value={formData.phone}
-                        onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-                        required
-                      />
-                    </div>
-                    <div className="col-md-6">
-                      <label className="form-label">Role *</label>
-                      <select
-                        className="form-select"
-                        value={formData.role}
-                        onChange={(e) => setFormData({ ...formData, role: e.target.value })}
-                        required
-                      >
-                        <option value="">Select Role</option>
-                        {roles.map((role) => (
-                          <option key={role.id} value={role.id}>{role.display_name || role.name}</option>
-                        ))}
-                      </select>
-                    </div>
-                    <div className="col-md-6">
-                      <label className="form-label">Employee ID</label>
-                      <input
-                        type="text"
-                        className="form-control bg-light"
-                        value={selectedUser?.employee_id || 'N/A'}
-                        disabled
-                      />
-                    </div>
-                    <div className="col-md-12">
-                      <div className="card border-0" style={{ backgroundColor: formData.is_active ? '#e8f5e9' : '#fff3e0', borderRadius: '8px' }}>
-                        <div className="card-body py-3 d-flex align-items-center justify-content-between">
-                          <div>
-                            <div className="d-flex align-items-center gap-2 mb-1">
-                              <i className={`fas ${formData.is_active ? 'fa-lock-open text-success' : 'fa-lock text-warning'}`} style={{ fontSize: '18px' }}></i>
-                              <strong style={{ fontSize: '14px' }}>{formData.is_active ? 'Login Access Enabled' : 'Login Access Disabled'}</strong>
-                            </div>
-                            <small className="text-muted">
-                              {formData.is_active
-                                ? 'This user can log in to the system.'
-                                : 'This user is blocked from logging in.'}
-                            </small>
-                          </div>
-                          <div className="form-check form-switch">
-                            <input
-                              type="checkbox"
-                              className="form-check-input"
-                              id="is_active_edit"
-                              checked={formData.is_active}
-                              onChange={(e) => setFormData({ ...formData, is_active: e.target.checked })}
-                              style={{ width: '48px', height: '24px', cursor: 'pointer' }}
-                            />
-                          </div>
+                  )}
+
+                  {/* ── STEP 4: Documents ── */}
+                  {createStep === 4 && (
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 16 }}>
+                      {sectionHead('fas fa-folder-open', 'Upload Documents & Photo')}
+                      {/* Profile photo */}
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 16, padding: 14, background: '#f8fafc', borderRadius: 12, border: '1.5px solid #e2e8f0' }}>
+                        <div style={{ width: 72, height: 72, borderRadius: 16, overflow: 'hidden', flexShrink: 0, background: '#e2e8f0', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                          {photoPreview
+                            ? <img src={photoPreview} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                            : <i className="fas fa-user" style={{ fontSize: 28, color: '#94a3b8' }}></i>}
+                        </div>
+                        <div style={{ flex: 1 }}>
+                          <div style={{ fontWeight: 700, fontSize: 13, color: '#0f172a', marginBottom: 4 }}>Profile Photo</div>
+                          <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '7px 14px', borderRadius: 8, border: '1.5px solid #4361ee', background: '#eff6ff', color: '#4361ee', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>
+                            <input type="file" accept="image/*" style={{ display: 'none' }} onChange={e => {
+                              const f = e.target.files[0];
+                              setProfilePhoto(f || null);
+                              setPhotoPreview(f ? URL.createObjectURL(f) : null);
+                            }} />
+                            <i className="fas fa-camera"></i> {profilePhoto ? 'Change Photo' : 'Upload Photo'}
+                          </label>
+                          {profilePhoto && <button type="button" onClick={() => { setProfilePhoto(null); setPhotoPreview(null); }} style={{ marginLeft: 8, border: 'none', background: 'none', color: '#dc2626', fontSize: 12, cursor: 'pointer' }}>Remove</button>}
+                        </div>
+                      </div>
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                        {fileInput('Professional Certificate', '.pdf,.jpg,.jpeg,.png,.doc,.docx', certificateFile, setCertificateFile, 'fas fa-certificate')}
+                        {fileInput('License / Permit Document', '.pdf,.jpg,.jpeg,.png', licenseFile, setLicenseFile, 'fas fa-id-badge')}
+                        {fileInput('Curriculum Vitae (CV)', '.pdf,.doc,.docx', cvFile, setCvFile, 'fas fa-file-alt')}
+                        <div style={{ background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 10, padding: 12, display: 'flex', alignItems: 'flex-start', gap: 8 }}>
+                          <i className="fas fa-exclamation-triangle" style={{ color: '#d97706', marginTop: 1 }}></i>
+                          <div style={{ fontSize: 11, color: '#92400e', lineHeight: 1.5 }}>All document uploads are optional but strongly recommended for clinical staff (doctors, nurses, pharmacists).</div>
                         </div>
                       </div>
                     </div>
+                  )}
+
+                </div>
+
+                {/* Footer */}
+                <div style={{ padding: '16px 28px', borderTop: '1px solid #f1f5f9', display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: '#fafbfc' }}>
+                  <button type="button" onClick={() => createStep > 1 ? setCreateStep(s => s - 1) : (setShowCreateModal(false), resetForm())}
+                    style={{ padding: '9px 20px', borderRadius: 10, border: '1.5px solid #e2e8f0', background: '#f8fafc', color: '#475569', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
+                    {createStep > 1 ? <><i className="fas fa-arrow-left me-2"></i>Back</> : 'Cancel'}
+                  </button>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                    {steps.map((_, i) => (
+                      <div key={i} style={{ width: createStep === i+1 ? 20 : 6, height: 6, borderRadius: 3, background: createStep > i ? '#4361ee' : '#e2e8f0', transition: 'all 0.2s' }}></div>
+                    ))}
                   </div>
+                  {createStep < 4 ? (
+                    <button type="button" onClick={() => setCreateStep(s => s + 1)}
+                      style={{ padding: '9px 22px', borderRadius: 10, border: 'none', background: 'linear-gradient(135deg,#4361ee,#3a0ca3)', color: '#fff', fontSize: 13, fontWeight: 700, cursor: 'pointer', boxShadow: '0 4px 12px rgba(67,97,238,0.3)' }}>
+                      Next <i className="fas fa-arrow-right ms-2"></i>
+                    </button>
+                  ) : (
+                    <button type="button" onClick={handleCreateUser}
+                      style={{ padding: '9px 22px', borderRadius: 10, border: 'none', background: 'linear-gradient(135deg,#16a34a,#15803d)', color: '#fff', fontSize: 13, fontWeight: 700, cursor: 'pointer', boxShadow: '0 4px 12px rgba(22,163,74,0.3)' }}>
+                      <i className="fas fa-user-plus me-2"></i>Create Staff Member
+                    </button>
+                  )}
                 </div>
-                <div className="modal-footer">
-                  <button 
-                    type="button" 
-                    className="btn btn-secondary"
-                    onClick={() => { setShowEditModal(false); setSelectedUser(null); resetForm(); }}
-                  >
-                    Cancel
-                  </button>
-                  <button type="submit" className="btn btn-primary">
-                    Update User
-                  </button>
-                </div>
-              </form>
+              </div>
             </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
+
+      {/* Edit User Modal — 4-step */}
+      {showEditModal && selectedUser && (() => {
+        const steps = [
+          { icon: 'fas fa-user', label: 'Account' },
+          { icon: 'fas fa-id-card', label: 'Demographics' },
+          { icon: 'fas fa-briefcase-medical', label: 'Professional' },
+          { icon: 'fas fa-file-upload', label: 'Documents' },
+        ];
+        const inputStyle = { fontSize: 13, borderRadius: 8, border: '1.5px solid #e2e8f0', padding: '9px 12px', width: '100%', outline: 'none', background: '#fff', color: '#0f172a' };
+        const labelStyle = { fontSize: 12, fontWeight: 600, color: '#475569', marginBottom: 4, display: 'block' };
+        const sectionHead = (icon, title) => (
+          <div style={{ gridColumn: '1/-1', display: 'flex', alignItems: 'center', gap: 8, paddingBottom: 10, borderBottom: '1px solid #f1f5f9' }}>
+            <div style={{ width: 28, height: 28, borderRadius: 8, background: '#e0f2fe', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+              <i className={icon} style={{ fontSize: 13, color: '#0284c7' }}></i>
+            </div>
+            <span style={{ fontWeight: 700, fontSize: 13, color: '#1e293b', lineHeight: 1 }}>{title}</span>
+          </div>
+        );
+        const fileInput = (label, accept, file, setFile, icon, existingUrl) => (
+          <div>
+            <span style={labelStyle}>{label}</span>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', borderRadius: 10, border: '1.5px dashed #cbd5e1', background: '#f8fafc', cursor: 'pointer', transition: 'all 0.15s' }}
+              onMouseEnter={e => e.currentTarget.style.borderColor='#0284c7'}
+              onMouseLeave={e => e.currentTarget.style.borderColor='#cbd5e1'}>
+              <input type="file" accept={accept} style={{ display: 'none' }} onChange={e => setFile(e.target.files[0] || null)} />
+              <div style={{ width: 32, height: 32, borderRadius: 8, background: file ? '#e0f2fe' : '#f1f5f9', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                <i className={file ? 'fas fa-check-circle' : icon} style={{ fontSize: 14, color: file ? '#0284c7' : '#94a3b8' }}></i>
+              </div>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 12, fontWeight: 600, color: file ? '#0f172a' : '#94a3b8', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                  {file ? file.name : existingUrl ? 'Existing file — click to replace' : 'Click to upload'}
+                </div>
+                {file && <div style={{ fontSize: 10, color: '#94a3b8' }}>{(file.size / 1024).toFixed(1)} KB</div>}
+              </div>
+              {file && <button type="button" onClick={e => { e.preventDefault(); setFile(null); }} style={{ border: 'none', background: 'none', color: '#dc2626', cursor: 'pointer', fontSize: 12, padding: 0 }}><i className="fas fa-times"></i></button>}
+            </label>
+          </div>
+        );
+        const editSelectedRoleName = roles.find(r => r.id === parseInt(formData.role))?.name || '';
+        return (
+          <div onClick={() => { setShowEditModal(false); setSelectedUser(null); resetForm(); setEditStep(1); }}
+            style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.55)', backdropFilter: 'blur(3px)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
+            <div onClick={e => e.stopPropagation()}
+              style={{ background: '#fff', borderRadius: 20, width: '100%', maxWidth: 680, maxHeight: '90vh', display: 'flex', flexDirection: 'column', boxShadow: '0 24px 60px rgba(0,0,0,0.2)', overflow: 'hidden' }}>
+
+              {/* Header */}
+              <div style={{ padding: '22px 28px 0', borderBottom: '1px solid #f1f5f9' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 18 }}>
+                  <div>
+                    <h5 style={{ margin: 0, fontWeight: 800, fontSize: 17, color: '#0f172a' }}>Edit Staff Member</h5>
+                    <p style={{ margin: 0, fontSize: 12, color: '#94a3b8' }}>{selectedUser.full_name} · {selectedUser.employee_id}</p>
+                  </div>
+                  <button type="button" onClick={() => { setShowEditModal(false); setSelectedUser(null); resetForm(); setEditStep(1); }}
+                    style={{ width: 32, height: 32, borderRadius: 8, border: '1px solid #e2e8f0', background: '#f8fafc', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <i className="fas fa-times" style={{ fontSize: 13, color: '#64748b' }}></i>
+                  </button>
+                </div>
+                <div style={{ display: 'flex', gap: 0, marginBottom: -1 }}>
+                  {steps.map((s, i) => (
+                    <div key={i} onClick={() => setEditStep(i + 1)}
+                      style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '10px 8px', cursor: 'pointer',
+                        borderBottom: editStep === i + 1 ? '2px solid #0284c7' : '2px solid transparent',
+                        color: editStep === i + 1 ? '#0284c7' : editStep > i + 1 ? '#16a34a' : '#94a3b8', transition: 'all 0.15s' }}>
+                      <i className={editStep > i + 1 ? 'fas fa-check-circle' : s.icon} style={{ fontSize: 18, marginBottom: 4 }}></i>
+                      <span style={{ fontSize: 11, fontWeight: 700 }}>{s.label}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Body */}
+              <div style={{ flex: 1, overflowY: 'auto' }}>
+                <div style={{ padding: '24px 28px' }}>
+
+                  {/* Step 1: Account */}
+                  {editStep === 1 && (
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+                      {sectionHead('fas fa-user-circle', 'Account Information')}
+                      <div>
+                        <span style={labelStyle}>Full Name</span>
+                        <input style={inputStyle} type="text" value={formData.full_name} onChange={e => setFormData({...formData, full_name: e.target.value})} />
+                      </div>
+                      <div>
+                        <span style={labelStyle}>Email (read-only)</span>
+                        <input style={{...inputStyle, background: '#f8fafc', color: '#94a3b8'}} type="email" value={formData.email} disabled />
+                      </div>
+                      <div>
+                        <span style={labelStyle}>Phone</span>
+                        <input style={inputStyle} type="tel" value={formData.phone} onChange={e => setFormData({...formData, phone: e.target.value})} />
+                      </div>
+                      <div>
+                        <span style={labelStyle}>Role</span>
+                        <select style={inputStyle} value={formData.role} onChange={e => setFormData({...formData, role: e.target.value})}>
+                          <option value="">Select Role</option>
+                          {roles.map(r => <option key={r.id} value={r.id}>{r.display_name || r.name}</option>)}
+                        </select>
+                      </div>
+                      <div>
+                        <span style={labelStyle}>Employee ID (read-only)</span>
+                        <input style={{...inputStyle, background: '#f8fafc', color: '#94a3b8'}} value={selectedUser.employee_id || 'N/A'} disabled />
+                      </div>
+                      <div></div>
+                      {editSelectedRoleName === 'district_admin' && (
+                        <div style={{ gridColumn: '1/-1' }}>
+                          <span style={labelStyle}>Assigned District</span>
+                          <select style={inputStyle} value={formData.district} onChange={e => setFormData({...formData, district: e.target.value})}>
+                            <option value="">Select District</option>
+                            {districts.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
+                          </select>
+                        </div>
+                      )}
+                      {['hospital_admin','doctor','nurse','receptionist','lab_technician','pharmacist','triage'].includes(editSelectedRoleName) && (
+                        <div style={{ gridColumn: '1/-1' }}>
+                          <span style={labelStyle}>Assigned Hospital</span>
+                          <select style={inputStyle} value={formData.hospital} onChange={e => setFormData({...formData, hospital: e.target.value, department: ''})}>
+                            <option value="">Select Hospital</option>
+                            {hospitals.map(h => <option key={h.id} value={h.id}>{h.name}</option>)}
+                          </select>
+                        </div>
+                      )}
+                      {['doctor','nurse','lab_technician','pharmacist'].includes(editSelectedRoleName) && formData.hospital && (
+                        <div style={{ gridColumn: '1/-1' }}>
+                          <span style={labelStyle}>Department</span>
+                          <select style={inputStyle} value={formData.department} onChange={e => setFormData({...formData, department: e.target.value})}>
+                            <option value="">Select Department</option>
+                            {departments.filter(d => d.hospital === parseInt(formData.hospital)).map(d => <option key={d.id} value={d.id}>{d.name_display}</option>)}
+                          </select>
+                        </div>
+                      )}
+                      <div style={{ gridColumn: '1/-1' }}>
+                        <div style={{ background: formData.is_active ? '#f0fdf4' : '#fffbeb', border: `1.5px solid ${formData.is_active ? '#86efac' : '#fde68a'}`, borderRadius: 10, padding: '12px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                            <i className={`fas ${formData.is_active ? 'fa-lock-open' : 'fa-lock'}`} style={{ fontSize: 16, color: formData.is_active ? '#16a34a' : '#d97706' }}></i>
+                            <div>
+                              <div style={{ fontWeight: 700, fontSize: 13, color: '#0f172a' }}>{formData.is_active ? 'Login Access Enabled' : 'Login Access Disabled'}</div>
+                              <div style={{ fontSize: 11, color: '#64748b' }}>{formData.is_active ? 'User can log in immediately.' : 'User cannot log in until activated.'}</div>
+                            </div>
+                          </div>
+                          <input type="checkbox" checked={formData.is_active} onChange={e => setFormData({...formData, is_active: e.target.checked})} style={{ width: 40, height: 22, cursor: 'pointer', accentColor: '#0284c7' }} />
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Step 2: Demographics */}
+                  {editStep === 2 && (
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+                      {sectionHead('fas fa-id-card', 'Personal & Demographic Information')}
+                      <div><span style={labelStyle}>Date of Birth</span><input style={inputStyle} type="date" value={formData.date_of_birth} onChange={e => setFormData({...formData, date_of_birth: e.target.value})} /></div>
+                      <div><span style={labelStyle}>Gender</span>
+                        <select style={inputStyle} value={formData.gender} onChange={e => setFormData({...formData, gender: e.target.value})}>
+                          <option value="">Select Gender</option>
+                          <option value="male">Male</option>
+                          <option value="female">Female</option>
+                          <option value="other">Other</option>
+                        </select>
+                      </div>
+                      <div><span style={labelStyle}>NIN Number</span><input style={inputStyle} type="text" placeholder="National Identification Number" value={formData.nin_number} onChange={e => setFormData({...formData, nin_number: e.target.value})} /></div>
+                      <div><span style={labelStyle}>Marital Status</span>
+                        <select style={inputStyle} value={formData.marital_status} onChange={e => setFormData({...formData, marital_status: e.target.value})}>
+                          <option value="">Select Status</option>
+                          <option value="single">Single</option>
+                          <option value="married">Married</option>
+                          <option value="divorced">Divorced</option>
+                          <option value="widowed">Widowed</option>
+                        </select>
+                      </div>
+                      <div><span style={labelStyle}>Nationality</span><input style={inputStyle} type="text" value={formData.nationality} onChange={e => setFormData({...formData, nationality: e.target.value})} /></div>
+                      <div><span style={labelStyle}>Country</span><input style={inputStyle} type="text" value={formData.country} onChange={e => setFormData({...formData, country: e.target.value})} /></div>
+                      <div><span style={labelStyle}>City / Town</span><input style={inputStyle} type="text" value={formData.city} onChange={e => setFormData({...formData, city: e.target.value})} /></div>
+                      <div><span style={labelStyle}>Province / State</span>
+                        <select style={inputStyle} value={formData.state} onChange={e => setFormData({...formData, state: e.target.value})}>
+                          <option value="">Select Province</option>
+                          <option value="Western Area Urban">Western Area Urban</option>
+                          <option value="Western Area Rural">Western Area Rural</option>
+                          <option value="Northern Province">Northern Province</option>
+                          <option value="North West Province">North West Province</option>
+                          <option value="Southern Province">Southern Province</option>
+                          <option value="Eastern Province">Eastern Province</option>
+                        </select>
+                      </div>
+                      <div style={{ gridColumn: '1/-1' }}><span style={labelStyle}>Residential Address</span><input style={inputStyle} type="text" value={formData.address} onChange={e => setFormData({...formData, address: e.target.value})} /></div>
+                      {sectionHead('fas fa-phone-alt', 'Emergency Contact')}
+                      <div><span style={labelStyle}>Contact Name</span><input style={inputStyle} type="text" value={formData.emergency_contact_name} onChange={e => setFormData({...formData, emergency_contact_name: e.target.value})} /></div>
+                      <div><span style={labelStyle}>Contact Phone</span><input style={inputStyle} type="tel" value={formData.emergency_contact_phone} onChange={e => setFormData({...formData, emergency_contact_phone: e.target.value})} /></div>
+                      <div style={{ gridColumn: '1/-1' }}><span style={labelStyle}>Relationship</span>
+                        <select style={inputStyle} value={formData.emergency_contact_relationship} onChange={e => setFormData({...formData, emergency_contact_relationship: e.target.value})}>
+                          <option value="">Select Relationship</option>
+                          <option value="Spouse">Spouse</option><option value="Parent">Parent</option><option value="Child">Child</option>
+                          <option value="Sibling">Sibling</option><option value="Grandparent">Grandparent</option>
+                          <option value="Aunt/Uncle">Aunt / Uncle</option><option value="Nephew/Niece">Nephew / Niece</option>
+                          <option value="Cousin">Cousin</option><option value="Friend">Friend</option>
+                          <option value="Colleague">Colleague</option><option value="Guardian">Guardian</option><option value="Other">Other</option>
+                        </select>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Step 3: Professional */}
+                  {editStep === 3 && (
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+                      {sectionHead('fas fa-stethoscope', 'Professional Information')}
+                      <div><span style={labelStyle}>Qualification</span><input style={inputStyle} type="text" placeholder="e.g. MBBS, BSc Nursing" value={formData.qualification} onChange={e => setFormData({...formData, qualification: e.target.value})} /></div>
+                      <div><span style={labelStyle}>Specialization</span><input style={inputStyle} type="text" placeholder="e.g. Cardiology" value={formData.specialization} onChange={e => setFormData({...formData, specialization: e.target.value})} /></div>
+                      <div><span style={labelStyle}>License / Registration Number</span><input style={inputStyle} type="text" value={formData.license_number} onChange={e => setFormData({...formData, license_number: e.target.value})} /></div>
+                      <div><span style={labelStyle}>Years of Experience</span><input style={inputStyle} type="number" min="0" max="60" value={formData.years_of_experience} onChange={e => setFormData({...formData, years_of_experience: e.target.value})} /></div>
+                    </div>
+                  )}
+
+                  {/* Step 4: Documents */}
+                  {editStep === 4 && (
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 16 }}>
+                      {sectionHead('fas fa-folder-open', 'Update Documents & Photo')}
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 16, padding: 14, background: '#f8fafc', borderRadius: 12, border: '1.5px solid #e2e8f0' }}>
+                        <div style={{ width: 72, height: 72, borderRadius: 16, overflow: 'hidden', flexShrink: 0, background: '#e2e8f0', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                          {editPhotoPreview ? <img src={editPhotoPreview} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : <i className="fas fa-user" style={{ fontSize: 28, color: '#94a3b8' }}></i>}
+                        </div>
+                        <div style={{ flex: 1 }}>
+                          <div style={{ fontWeight: 700, fontSize: 13, color: '#0f172a', marginBottom: 4 }}>Profile Photo</div>
+                          <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '7px 14px', borderRadius: 8, border: '1.5px solid #0284c7', background: '#e0f2fe', color: '#0284c7', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>
+                            <input type="file" accept="image/*" style={{ display: 'none' }} onChange={e => { const f = e.target.files[0]; setEditProfilePhoto(f || null); setEditPhotoPreview(f ? URL.createObjectURL(f) : editPhotoPreview); }} />
+                            <i className="fas fa-camera"></i> {editProfilePhoto ? 'Change Photo' : 'Update Photo'}
+                          </label>
+                          {editProfilePhoto && <button type="button" onClick={() => { setEditProfilePhoto(null); }} style={{ marginLeft: 8, border: 'none', background: 'none', color: '#dc2626', fontSize: 12, cursor: 'pointer' }}>Remove new</button>}
+                        </div>
+                      </div>
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                        {fileInput('Professional Certificate', '.pdf,.jpg,.jpeg,.png,.doc,.docx', editCertificateFile, setEditCertificateFile, 'fas fa-certificate', null)}
+                        {fileInput('License / Permit Document', '.pdf,.jpg,.jpeg,.png', editLicenseFile, setEditLicenseFile, 'fas fa-id-badge', null)}
+                        {fileInput('Curriculum Vitae (CV)', '.pdf,.doc,.docx', editCvFile, setEditCvFile, 'fas fa-file-alt', null)}
+                        <div style={{ background: '#f0f9ff', border: '1px solid #bae6fd', borderRadius: 10, padding: 12, display: 'flex', alignItems: 'flex-start', gap: 8 }}>
+                          <i className="fas fa-info-circle" style={{ color: '#0284c7', marginTop: 1 }}></i>
+                          <div style={{ fontSize: 11, color: '#0c4a6e', lineHeight: 1.5 }}>Only upload new files to replace existing ones. Leave blank to keep current documents.</div>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                </div>
+
+                {/* Footer */}
+                <div style={{ padding: '16px 28px', borderTop: '1px solid #f1f5f9', display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: '#fafbfc' }}>
+                  <button type="button" onClick={() => editStep > 1 ? setEditStep(s => s - 1) : (setShowEditModal(false), setSelectedUser(null), resetForm(), setEditStep(1))}
+                    style={{ padding: '9px 20px', borderRadius: 10, border: '1.5px solid #e2e8f0', background: '#f8fafc', color: '#475569', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
+                    {editStep > 1 ? <><i className="fas fa-arrow-left me-2"></i>Back</> : 'Cancel'}
+                  </button>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                    {steps.map((_, i) => (<div key={i} style={{ width: editStep === i+1 ? 20 : 6, height: 6, borderRadius: 3, background: editStep > i ? '#0284c7' : '#e2e8f0', transition: 'all 0.2s' }}></div>))}
+                  </div>
+                  {editStep < 4 ? (
+                    <button type="button" onClick={() => setEditStep(s => s + 1)}
+                      style={{ padding: '9px 22px', borderRadius: 10, border: 'none', background: 'linear-gradient(135deg,#0284c7,#0369a1)', color: '#fff', fontSize: 13, fontWeight: 700, cursor: 'pointer', boxShadow: '0 4px 12px rgba(2,132,199,0.3)' }}>
+                      Next <i className="fas fa-arrow-right ms-2"></i>
+                    </button>
+                  ) : (
+                    <button type="button" onClick={handleUpdateUser}
+                      style={{ padding: '9px 22px', borderRadius: 10, border: 'none', background: 'linear-gradient(135deg,#16a34a,#15803d)', color: '#fff', fontSize: 13, fontWeight: 700, cursor: 'pointer', boxShadow: '0 4px 12px rgba(22,163,74,0.3)' }}>
+                      <i className="fas fa-save me-2"></i>Save Changes
+                    </button>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
       {/* Professional User Deactivate Modal */}
       {confirmDeactivate.show && userToDeactivate && (
         <div className="modal show d-block" style={{ backgroundColor: 'rgba(0,0,0,0.6)', position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, zIndex: 1060 }}>

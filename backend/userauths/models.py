@@ -226,6 +226,8 @@ class Hospital(models.Model):
     facility_manager = models.CharField(max_length=300, blank=True, null=True, help_text='Administrative head')
     license_number = models.CharField(max_length=100, blank=True, null=True, help_text='Government license number')
     license_expiry_date = models.DateField(blank=True, null=True, help_text='License expiry date')
+    license_document = models.FileField(upload_to='hospitals/licenses/', blank=True, null=True, help_text='Upload license permit (PDF/image)')
+    hospital_image = models.ImageField(upload_to='hospitals/images/', blank=True, null=True, help_text='Hospital banner/cover photo')
 
     # ── 5. SERVICE & CAPACITY INFORMATION ────────────────
     bed_capacity = models.PositiveIntegerField(default=0, help_text='Total number of beds')
@@ -301,6 +303,7 @@ class Department(models.Model):
         ('physiotherapy', 'Physiotherapy'),
         ('records', 'Medical Records'),
         ('admin', 'Administration'),
+        ('triage', 'Triage'),
         ('ward', 'Ward'),
         ('other', 'Other'),
     ]
@@ -351,6 +354,7 @@ class Role(models.Model):
         ('doctor', 'Doctor'),
         ('nurse', 'Nurse'),
         ('receptionist', 'Receptionist'),
+        ('triage', 'Triage Officer'),
         ('lab_technician', 'Lab Technician'),
         ('pharmacist', 'Pharmacist'),
         ('patient', 'Patient'),
@@ -471,14 +475,19 @@ class Profile(models.Model):
     
     gender = models.CharField(max_length=500, null=True, blank=True)
     date_of_birth = models.DateField(null=True, blank=True)
+    nationality = models.CharField(max_length=200, null=True, blank=True, default='Sierra Leonean')
+    nin_number = models.CharField(max_length=100, null=True, blank=True, help_text='National Identification Number (NIN)')
+    marital_status = models.CharField(max_length=50, null=True, blank=True, help_text='e.g. Single, Married, Divorced, Widowed')
     country = models.CharField(max_length=1000, null=True, blank=True)
     city = models.CharField(max_length=500, null=True, blank=True)
     state = models.CharField(max_length=500, null=True, blank=True)
     address = models.CharField(max_length=1000, null=True, blank=True)
 
     cv = models.FileField(upload_to='accounts/cv/', null=True, blank=True, help_text='Upload CV (PDF, DOC, DOCX)')
+    certificate = models.FileField(upload_to='accounts/certificates/', null=True, blank=True, help_text='Upload professional certificate (PDF/image)')
     specialization = models.CharField(max_length=500, null=True, blank=True, help_text='e.g. Cardiology, General Practice')
     license_number = models.CharField(max_length=200, null=True, blank=True, help_text='Professional license/registration number')
+    license_document = models.FileField(upload_to='accounts/licenses/', null=True, blank=True, help_text='Upload license/permit document (PDF/image)')
     years_of_experience = models.PositiveIntegerField(null=True, blank=True)
     qualification = models.CharField(max_length=500, null=True, blank=True, help_text='e.g. MBBS, MD, BSc Nursing')
     emergency_contact_name = models.CharField(max_length=500, null=True, blank=True)

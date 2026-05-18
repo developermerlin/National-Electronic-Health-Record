@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import DashboardLayout from '../../layout/DashboardLayout';
 import showToast from '../../utils/toast';
+import PrimaryButton from '../../components/PrimaryButton';
 import ConfirmModal from '../../components/ConfirmModal';
 import { getNavForUser, getBrandForUser, getRoleBadge } from '../../utils/navItems';
 
@@ -111,14 +112,14 @@ function TownManagement() {
         setShowCreateModal(false);
         setFormData({ name: '', district: '', chiefdom: '', is_active: true });
         fetchTowns();
-        showToast.success('Town created successfully!');
+        showToast.created('Town');
       } else {
         const data = await response.json();
         const msg = Object.values(data).flat().join(', ');
-        showToast.error(msg || 'Failed to create town');
+        showToast.createError(msg || 'Town');
       }
     } catch {
-      showToast.error('Error creating town. Please try again.');
+      showToast.networkError();
     }
   };
 
@@ -136,14 +137,14 @@ function TownManagement() {
         setSelectedTown(null);
         setFormData({ name: '', district: '', chiefdom: '', is_active: true });
         fetchTowns();
-        showToast.success('Town updated successfully!');
+        showToast.updated('Town');
       } else {
         const data = await response.json();
         const msg = Object.values(data).flat().join(', ');
-        showToast.error(msg || 'Failed to update town');
+        showToast.updateError(msg || 'Town');
       }
     } catch {
-      showToast.error('Error updating town. Please try again.');
+      showToast.networkError();
     }
   };
 
@@ -156,12 +157,12 @@ function TownManagement() {
       const response = await apiCall(`/admin/towns/${confirmDelete.id}/`, { method: 'DELETE' });
       if (response.ok) {
         fetchTowns();
-        showToast.success('Town deleted successfully!');
+        showToast.deleted('Town');
       } else {
-        showToast.error('Failed to delete town');
+        showToast.deleteError('Town');
       }
     } catch {
-      showToast.error('Error deleting town. Please try again.');
+      showToast.networkError();
     } finally {
       setConfirmDelete({ show: false, id: null });
     }
@@ -238,10 +239,9 @@ function TownManagement() {
                 <p className="text-muted mb-0">Manage towns within districts and chiefdoms</p>
               </div>
               {!isReadOnly && (
-                <button className="btn btn-primary"
-                  onClick={() => { setFormData({ name: '', district: '', chiefdom: '', is_active: true }); setShowCreateModal(true); }}>
-                  <i className="fas fa-plus me-2"></i>Add Town
-                </button>
+                <PrimaryButton onClick={() => { setFormData({ name: '', district: '', chiefdom: '', is_active: true }); setShowCreateModal(true); }}>
+                  Add Town
+                </PrimaryButton>
               )}
             </div>
           </div>

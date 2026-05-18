@@ -50,6 +50,8 @@ urlpatterns = [
     path('admin/permissions/', admin_views.PermissionListView.as_view(), name='permissions-list'),
     path('admin/bulk-action/', admin_views.bulk_user_action, name='bulk-user-action'),
     path('admin/ministry-dashboard/', admin_views.ministry_dashboard, name='ministry-dashboard'),
+    path('admin/hospital-dashboard/', admin_views.hospital_dashboard, name='hospital-dashboard'),
+    path('admin/referral-doctors/', admin_views.referral_doctors, name='referral-doctors'),
     path('user/my-profile/', admin_views.my_profile, name='my-profile'),
 
     # Social Auth endpoints

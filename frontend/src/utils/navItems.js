@@ -91,6 +91,8 @@ const receptionistNav = [
     items: [
       { path: '/receptionist/appointments', icon: 'fas fa-calendar-check', text: 'Appointments' },
       { path: '/receptionist/queue', icon: 'fas fa-list-ol', text: 'Patient Queue' },
+      { path: '/triage',           icon: 'fas fa-heartbeat',      text: 'Triage Dashboard' },
+      { path: '/receptionist/referrals', icon: 'fas fa-share-square', text: 'Referral Cases' },
     ],
   },
   {
@@ -154,7 +156,7 @@ const nurseNav = [
   {
     label: 'Triage & Vitals',
     items: [
-      { path: '/nurse/triage',    icon: 'fas fa-heartbeat',      text: 'Triage Queue' },
+      { path: '/triage',          icon: 'fas fa-th-large',       text: 'Triage Dashboard' },
       { path: '/nurse/walkin',    icon: 'fas fa-walking',        text: 'Walk-in Triage' },
     ],
   },
@@ -169,6 +171,49 @@ const nurseNav = [
     items: [
       { path: '/chat',     icon: 'fas fa-comments', text: 'Live Chat' },
       { path: '/messages', icon: 'fas fa-envelope',  text: 'Messages' },
+    ],
+  },
+  {
+    label: 'Account',
+    items: [
+      { path: '/admin/profile', icon: 'fas fa-user-circle', text: 'My Profile' },
+    ],
+  },
+];
+
+const hospitalAdminNav = [
+  {
+    label: 'Dashboard',
+    items: [
+      { path: '/hospital-admin/dashboard', icon: 'fas fa-tachometer-alt', text: 'Hospital Overview' },
+    ],
+  },
+  {
+    label: 'Staff Management',
+    items: [
+      { path: '/admin/users', icon: 'fas fa-users', text: 'All Staff' },
+    ],
+  },
+  {
+    label: 'Patients',
+    items: [
+      { path: '/receptionist/patients', icon: 'fas fa-user-injured', text: 'Patient Records' },
+      { path: '/receptionist/patients/register', icon: 'fas fa-user-plus', text: 'Register Patient' },
+    ],
+  },
+  {
+    label: 'Operations',
+    items: [
+      { path: '/receptionist/appointments', icon: 'fas fa-calendar-check', text: 'Appointments' },
+      { path: '/receptionist/referrals', icon: 'fas fa-share-square', text: 'Referral Cases' },
+      { path: '/admin/departments', icon: 'fas fa-building', text: 'Departments' },
+    ],
+  },
+  {
+    label: 'Communication',
+    items: [
+      { path: '/chat', icon: 'fas fa-comments', text: 'Live Chat' },
+      { path: '/messages', icon: 'fas fa-envelope', text: 'Messages' },
     ],
   },
   {
@@ -195,12 +240,102 @@ const patientNav = [
   },
 ];
 
+const labTechNav = [
+  {
+    label: 'Dashboard',
+    items: [
+      { path: '/triage', icon: 'fas fa-flask', text: 'Lab Dashboard' },
+    ],
+  },
+  {
+    label: 'Patients',
+    items: [
+      { path: '/receptionist/patients', icon: 'fas fa-users', text: 'Patient Records' },
+    ],
+  },
+  {
+    label: 'Communication',
+    items: [
+      { path: '/chat', icon: 'fas fa-comments', text: 'Live Chat' },
+      { path: '/messages', icon: 'fas fa-envelope', text: 'Messages' },
+    ],
+  },
+  {
+    label: 'Account',
+    items: [
+      { path: '/admin/profile', icon: 'fas fa-user-circle', text: 'My Profile' },
+    ],
+  },
+];
+
+const pharmacistNav = [
+  {
+    label: 'Dashboard',
+    items: [
+      { path: '/triage', icon: 'fas fa-pills', text: 'Pharmacy Dashboard' },
+    ],
+  },
+  {
+    label: 'Patients',
+    items: [
+      { path: '/receptionist/patients', icon: 'fas fa-users', text: 'Patient Records' },
+    ],
+  },
+  {
+    label: 'Communication',
+    items: [
+      { path: '/chat', icon: 'fas fa-comments', text: 'Live Chat' },
+      { path: '/messages', icon: 'fas fa-envelope', text: 'Messages' },
+    ],
+  },
+  {
+    label: 'Account',
+    items: [
+      { path: '/admin/profile', icon: 'fas fa-user-circle', text: 'My Profile' },
+    ],
+  },
+];
+
+const triageNav = [
+  {
+    label: 'Triage',
+    items: [
+      { path: '/triage', icon: 'fas fa-th-large', text: 'Triage Dashboard' },
+      { path: '/nurse/walkin', icon: 'fas fa-walking', text: 'Walk-in Triage' },
+    ],
+  },
+  {
+    label: 'Patients',
+    items: [
+      { path: '/receptionist/patients', icon: 'fas fa-users', text: 'All Patients' },
+      { path: '/receptionist/patients/register', icon: 'fas fa-user-plus', text: 'Register Patient' },
+    ],
+  },
+  {
+    label: 'Communication',
+    items: [
+      { path: '/chat', icon: 'fas fa-comments', text: 'Live Chat' },
+      { path: '/messages', icon: 'fas fa-envelope', text: 'Messages' },
+    ],
+  },
+  {
+    label: 'Account',
+    items: [
+      { path: '/admin/profile', icon: 'fas fa-user-circle', text: 'My Profile' },
+    ],
+  },
+];
+
 export function getNavForUser(user) {
   const role = user?.role;
   if (role === 'ministry_admin') return ministryNav;
+  if (role === 'hospital_admin') return hospitalAdminNav;
   if (role === 'receptionist') return receptionistNav;
   if (role === 'doctor') return doctorNav;
   if (role === 'nurse') return nurseNav;
+  if (role === 'triage') return triageNav;
+  if (role === 'lab_technician') return labTechNav;
+  if (role === 'pharmacist') return pharmacistNav;
   if (role === 'patient') return patientNav;
   return adminNav;
 }
@@ -208,9 +343,13 @@ export function getNavForUser(user) {
 export function getBrandForUser(user) {
   const role = user?.role;
   if (role === 'ministry_admin') return 'NEHR Ministry';
+  if (role === 'hospital_admin') return 'NEHR Hospital';
   if (role === 'receptionist') return 'NEHR System';
   if (role === 'doctor') return 'NEHR Clinic';
   if (role === 'nurse') return 'NEHR Nursing';
+  if (role === 'triage') return 'NEHR Triage';
+  if (role === 'lab_technician') return 'NEHR Laboratory';
+  if (role === 'pharmacist') return 'NEHR Pharmacy';
   if (role === 'patient') return 'Patient Portal';
   return 'NEHR Admin';
 }
@@ -224,8 +363,11 @@ export function getRoleBadge(user) {
   if (role === 'district_admin') return 'District Admin';
   if (role === 'doctor') return 'Doctor';
   if (role === 'nurse') return 'Nurse';
+  if (role === 'triage') return 'Triage Officer';
+  if (role === 'lab_technician') return 'Lab Technician';
+  if (role === 'pharmacist') return 'Pharmacist';
   if (role === 'patient') return 'Patient';
   return 'User';
 }
 
-export { ministryNav, adminNav, receptionistNav, doctorNav, nurseNav, patientNav };
+export { ministryNav, adminNav, hospitalAdminNav, receptionistNav, doctorNav, nurseNav, triageNav, labTechNav, pharmacistNav, patientNav };

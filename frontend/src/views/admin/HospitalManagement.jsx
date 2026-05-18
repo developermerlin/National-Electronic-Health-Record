@@ -20,6 +20,10 @@ function HospitalManagement() {
   const [filters, setFilters] = useState({ search: '', region: '', district: '', type: '' });
   const [confirmDelete, setConfirmDelete] = useState({ show: false, id: null });
   const [gpsLoading, setGpsLoading] = useState(false);
+  const [viewMode, setViewMode] = useState('grid');
+  const [hospitalImageFile, setHospitalImageFile] = useState(null);
+  const [licenseDocFile, setLicenseDocFile] = useState(null);
+  const [imagePreview, setImagePreview] = useState(null);
   const [formStep, setFormStep] = useState(1);
   const [selectedChiefdom, setSelectedChiefdom] = useState('');
   const [selectedTown, setSelectedTown] = useState('');
@@ -183,25 +187,36 @@ function HospitalManagement() {
     }
   };
 
+  const buildFormData = () => {
+    const fd = new FormData();
+    Object.entries(formData).forEach(([key, val]) => {
+      if (val === null || val === undefined) return;
+      fd.append(key, val);
+    });
+    if (hospitalImageFile) fd.append('hospital_image', hospitalImageFile);
+    if (licenseDocFile)   fd.append('license_document', licenseDocFile);
+    return fd;
+  };
+
   const handleCreate = async (e) => {
     e.preventDefault();
     try {
       const response = await apiCall('/admin/hospitals/', {
         method: 'POST',
-        body: JSON.stringify(formData)
+        body: buildFormData(),
       });
       if (response.ok) {
         setShowCreateModal(false);
         resetForm();
         fetchHospitals();
-        showToast.success('Hospital created successfully!');
+        showToast.created('Hospital');
       } else {
         const data = await response.json();
         const msg = Object.values(data).flat().join(', ');
-        showToast.error(msg || 'Failed to create hospital');
+        showToast.createError(msg || 'Hospital');
       }
     } catch {
-      showToast.error('Error creating hospital. Please try again.');
+      showToast.networkError();
     }
   };
 
@@ -209,22 +224,22 @@ function HospitalManagement() {
     e.preventDefault();
     try {
       const response = await apiCall(`/admin/hospitals/${selectedHospital.id}/`, {
-        method: 'PUT',
-        body: JSON.stringify(formData)
+        method: 'PATCH',
+        body: buildFormData(),
       });
       if (response.ok) {
         setShowEditModal(false);
         setSelectedHospital(null);
         resetForm();
         fetchHospitals();
-        showToast.success('Hospital updated successfully!');
+        showToast.updated('Hospital');
       } else {
         const data = await response.json();
         const msg = Object.values(data).flat().join(', ');
-        showToast.error(msg || 'Failed to update hospital');
+        showToast.updateError(msg || 'Hospital');
       }
     } catch {
-      showToast.error('Error updating hospital. Please try again.');
+      showToast.networkError();
     }
   };
 
@@ -241,12 +256,12 @@ function HospitalManagement() {
       });
       if (response.ok) {
         fetchHospitals();
-        showToast.success(`Hospital ${newStatus === 'approved' ? 'approved' : 'set to pending'} successfully!`);
+        newStatus === 'approved' ? showToast.approved('Hospital') : showToast.info('Hospital approval set to pending', 'Approval Updated');
       } else {
-        showToast.error('Failed to update approval status');
+        showToast.updateError('approval status');
       }
     } catch {
-      showToast.error('Error updating approval status. Please try again.');
+      showToast.networkError();
     }
   };
 
@@ -255,12 +270,12 @@ function HospitalManagement() {
       const response = await apiCall(`/admin/hospitals/${confirmDelete.id}/`, { method: 'DELETE' });
       if (response.ok) {
         fetchHospitals();
-        showToast.success('Hospital deleted successfully!');
+        showToast.deleted('Hospital');
       } else {
-        showToast.error('Failed to delete hospital');
+        showToast.deleteError('Hospital');
       }
     } catch {
-      showToast.error('Error deleting hospital. Please try again.');
+      showToast.networkError();
     } finally {
       setConfirmDelete({ show: false, id: null });
     }
@@ -330,6 +345,9 @@ function HospitalManagement() {
     setTowns([]);
     setSelectedChiefdom('');
     setSelectedTown('');
+    setHospitalImageFile(null);
+    setLicenseDocFile(null);
+    setImagePreview(null);
   };
 
   const hospitalTypes = [
@@ -676,6 +694,74 @@ function HospitalManagement() {
         <input type="date" className="form-control" value={formData.license_expiry_date}
           onChange={(e) => setFormData({ ...formData, license_expiry_date: e.target.value })} />
       </div>
+
+      <div className="col-12 mt-2"><hr className="my-2" /><h6 className="text-primary mb-0"><i className="fas fa-file-upload me-2"></i>Documents &amp; Media</h6></div>
+
+      <div className="col-md-6">
+        <label className="form-label fw-semibold">License Permit Document</label>
+        <div style={{ border: '2px dashed #cbd5e1', borderRadius: 10, padding: '14px 16px', background: '#f8fafc', cursor: 'pointer' }}
+          onClick={() => document.getElementById('licenseDocInput').click()}>
+          <input id="licenseDocInput" type="file" accept=".pdf,.jpg,.jpeg,.png" style={{ display: 'none' }}
+            onChange={(e) => setLicenseDocFile(e.target.files[0] || null)} />
+          {licenseDocFile ? (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <i className="fas fa-file-alt" style={{ color: '#4361ee', fontSize: 22 }}></i>
+              <div>
+                <div style={{ fontWeight: 600, fontSize: 13, color: '#1e293b' }}>{licenseDocFile.name}</div>
+                <div style={{ fontSize: 11, color: '#64748b' }}>{(licenseDocFile.size / 1024).toFixed(1)} KB</div>
+              </div>
+              <button type="button" className="btn btn-sm btn-outline-danger ms-auto" style={{ fontSize: 11 }}
+                onClick={(e) => { e.stopPropagation(); setLicenseDocFile(null); }}>
+                <i className="fas fa-times"></i>
+              </button>
+            </div>
+          ) : (
+            <div style={{ textAlign: 'center', color: '#94a3b8' }}>
+              <i className="fas fa-cloud-upload-alt" style={{ fontSize: 24, display: 'block', marginBottom: 4 }}></i>
+              <div style={{ fontSize: 12 }}>Click to upload PDF or image</div>
+              {selectedHospital?.license_document && (
+                <a href={selectedHospital.license_document} target="_blank" rel="noopener noreferrer"
+                  style={{ fontSize: 11, color: '#4361ee' }} onClick={e => e.stopPropagation()}>
+                  <i className="fas fa-eye me-1"></i>View current document
+                </a>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+
+      <div className="col-md-6">
+        <label className="form-label fw-semibold">Hospital Banner Image</label>
+        <div style={{ border: '2px dashed #cbd5e1', borderRadius: 10, padding: '14px 16px', background: '#f8fafc', cursor: 'pointer', minHeight: 90 }}
+          onClick={() => document.getElementById('hospitalImageInput').click()}>
+          <input id="hospitalImageInput" type="file" accept="image/*" style={{ display: 'none' }}
+            onChange={(e) => {
+              const f = e.target.files[0] || null;
+              setHospitalImageFile(f);
+              setImagePreview(f ? URL.createObjectURL(f) : null);
+            }} />
+          {imagePreview ? (
+            <div style={{ position: 'relative' }}>
+              <img src={imagePreview} alt="Preview" style={{ width: '100%', height: 80, objectFit: 'cover', borderRadius: 7 }} />
+              <button type="button" className="btn btn-sm btn-danger" style={{ position: 'absolute', top: 4, right: 4, padding: '2px 6px', fontSize: 11 }}
+                onClick={(e) => { e.stopPropagation(); setHospitalImageFile(null); setImagePreview(null); }}>
+                <i className="fas fa-times"></i>
+              </button>
+            </div>
+          ) : selectedHospital?.hospital_image ? (
+            <div style={{ position: 'relative' }}>
+              <img src={selectedHospital.hospital_image} alt="Current" style={{ width: '100%', height: 80, objectFit: 'cover', borderRadius: 7 }} />
+              <div style={{ position: 'absolute', bottom: 4, left: 4, background: 'rgba(0,0,0,0.55)', color: '#fff', fontSize: 10, padding: '2px 6px', borderRadius: 4 }}>Current image · click to replace</div>
+            </div>
+          ) : (
+            <div style={{ textAlign: 'center', color: '#94a3b8' }}>
+              <i className="fas fa-image" style={{ fontSize: 24, display: 'block', marginBottom: 4 }}></i>
+              <div style={{ fontSize: 12 }}>Click to upload banner image</div>
+              <div style={{ fontSize: 11 }}>Shown as dashboard banner</div>
+            </div>
+          )}
+        </div>
+      </div>
     </div>
   );
 
@@ -693,7 +779,7 @@ function HospitalManagement() {
     ];
     return (
       <div className="row g-3">
-        <div className="col-12"><h6 className="text-primary mb-0"><i className="fas fa-stethoscope me-2"></i>Services & Capacity</h6><hr className="mt-1 mb-2"/></div>
+        <div className="col-12"><h6 className="text-primary mb-0"><i className="fas fa-stethoscope me-2"></i>Services &amp; Capacity</h6><hr className="mt-1 mb-2"/></div>
         <div className="col-md-4">
           <label className="form-label">Total Beds</label>
           <input type="number" className="form-control" value={formData.bed_capacity}
@@ -813,6 +899,7 @@ function HospitalManagement() {
   );
 
   return (
+  <>
     <DashboardLayout navItems={getNavForUser(user)} brandTitle={getBrandForUser(user)} roleBadge={getRoleBadge(user)}>
       <div className="container-fluid py-4">
         {/* Header */}
@@ -824,8 +911,23 @@ function HospitalManagement() {
                 <p className="text-muted mb-0">Manage hospitals and health facilities across the country</p>
               </div>
               {!isReadOnly && (
-                <button className="btn btn-primary" onClick={() => { resetForm(); setShowCreateModal(true); }}>
-                  <i className="fas fa-plus me-2"></i>Add Hospital
+                <button
+                  onClick={() => { resetForm(); setShowCreateModal(true); }}
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: 8,
+                    padding: '10px 20px', borderRadius: 12, border: 'none',
+                    background: 'linear-gradient(135deg, #4361ee 0%, #3a0ca3 100%)',
+                    color: '#fff', fontWeight: 700, fontSize: 14,
+                    cursor: 'pointer', boxShadow: '0 4px 14px rgba(67,97,238,0.35)',
+                    transition: 'all 0.2s',
+                  }}
+                  onMouseEnter={e => { e.currentTarget.style.boxShadow = '0 6px 20px rgba(67,97,238,0.5)'; e.currentTarget.style.transform = 'translateY(-1px)'; }}
+                  onMouseLeave={e => { e.currentTarget.style.boxShadow = '0 4px 14px rgba(67,97,238,0.35)'; e.currentTarget.style.transform = 'translateY(0)'; }}
+                >
+                  <span style={{ width: 26, height: 26, borderRadius: 8, background: 'rgba(255,255,255,0.18)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <i className="fas fa-plus" style={{ fontSize: 12 }}></i>
+                  </span>
+                  Add Hospital
                 </button>
               )}
             </div>
@@ -891,10 +993,14 @@ function HospitalManagement() {
         {/* Filters */}
         <div className="card border-0 shadow-sm mb-4">
           <div className="card-body">
-            <div className="row g-2">
+            <div className="row g-2 align-items-center">
               <div className="col-md-3">
-                <input type="text" className="form-control form-control-sm" placeholder="Search hospitals..."
-                  value={filters.search} onChange={(e) => setFilters({ ...filters, search: e.target.value })} />
+                <div style={{ position: 'relative' }}>
+                  <i className="fas fa-search" style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: '#94a3b8', fontSize: 13 }}></i>
+                  <input type="text" className="form-control form-control-sm" placeholder="Search hospitals..."
+                    style={{ paddingLeft: 30 }}
+                    value={filters.search} onChange={(e) => setFilters({ ...filters, search: e.target.value })} />
+                </div>
               </div>
               <div className="col-md-2">
                 <select className="form-select form-select-sm" value={filters.region}
@@ -917,130 +1023,219 @@ function HospitalManagement() {
                   {hospitalTypes.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
                 </select>
               </div>
-              <div className="col-md-2">
+              <div className="col-md-1">
                 <select className="form-select form-select-sm" value={filters.ownership || ''}
                   onChange={(e) => setFilters({ ...filters, ownership: e.target.value })}>
                   <option value="">All Ownership</option>
                   {ownershipTypes.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
                 </select>
               </div>
-              <div className="col-md-1">
-                <button className="btn btn-outline-secondary btn-sm w-100"
+              <div className="col-md-2 d-flex gap-2 justify-content-end">
+                <button className="btn btn-outline-secondary btn-sm"
                   onClick={() => setFilters({ search: '', region: '', district: '', type: '', ownership: '' })}>
-                  Clear
+                  <i className="fas fa-times me-1"></i>Clear
                 </button>
+                <div style={{ display: 'flex', borderRadius: 8, overflow: 'hidden', border: '1px solid #e2e8f0' }}>
+                  <button title="Grid view" onClick={() => setViewMode('grid')}
+                    style={{ padding: '5px 11px', border: 'none', background: viewMode === 'grid' ? '#4361ee' : '#f8fafc', color: viewMode === 'grid' ? '#fff' : '#64748b', cursor: 'pointer', transition: 'all 0.15s' }}>
+                    <i className="fas fa-th"></i>
+                  </button>
+                  <button title="List view" onClick={() => setViewMode('list')}
+                    style={{ padding: '5px 11px', border: 'none', borderLeft: '1px solid #e2e8f0', background: viewMode === 'list' ? '#4361ee' : '#f8fafc', color: viewMode === 'list' ? '#fff' : '#64748b', cursor: 'pointer', transition: 'all 0.15s' }}>
+                    <i className="fas fa-list"></i>
+                  </button>
+                </div>
               </div>
             </div>
           </div>
         </div>
 
-        {/* Table */}
-        <div className="card border-0 shadow-sm">
-          <div className="card-body p-0">
-            {loading ? (
-              <div className="text-center py-5">
-                <div className="spinner-border text-primary" role="status">
-                  <span className="visually-hidden">Loading...</span>
-                </div>
-              </div>
-            ) : (
-              <div className="table-responsive">
-                <table className="table table-hover mb-0">
-                  <thead className="bg-light">
-                    <tr>
-                      <th>Facility</th>
-                      <th>Code</th>
-                      <th>Type</th>
-                      <th>Ownership</th>
-                      <th>Level</th>
-                      <th>District</th>
-                      <th>Beds</th>
-                      <th>Op. Status</th>
-                      <th>Approval</th>
-                      <th>Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {hospitals.length === 0 ? (
-                      <tr>
-                        <td colSpan="10" className="text-center py-4">
-                          <i className="fas fa-hospital" style={{ fontSize: '36px', color: '#dee2e6', display: 'block', marginBottom: '8px' }}></i>
-                          No hospitals found. Add your first hospital to get started.
-                        </td>
-                      </tr>
-                    ) : hospitals.map((h) => (
-                      <tr key={h.id}>
-                        <td>
-                          <strong>{h.name}</strong>
-                          {h.town_city && <><br/><small className="text-muted">{h.town_city}</small></>}
-                        </td>
-                        <td><code style={{fontSize: '11px'}}>{h.code}</code></td>
-                        <td>
-                          <span className="badge bg-info bg-opacity-10 text-info" style={{fontSize: '11px'}}>
-                            {h.hospital_type_display}
-                          </span>
-                        </td>
-                        <td><small>{h.ownership_type_display}</small></td>
-                        <td>
-                          <span className={`badge ${h.level_of_care === 'tertiary' ? 'bg-danger' : h.level_of_care === 'secondary' ? 'bg-warning text-dark' : 'bg-secondary'} bg-opacity-75`} style={{fontSize: '11px'}}>
-                            {h.level_of_care_display}
-                          </span>
-                        </td>
-                        <td><small>{h.district_name}</small><br/><small className="text-muted">{h.region_name}</small></td>
-                        <td>{h.bed_capacity || 0}</td>
-                        <td>
-                          <span className={`badge ${h.operational_status === 'active' ? 'bg-success' : h.operational_status === 'suspended' ? 'bg-danger' : 'bg-warning text-dark'}`} style={{fontSize: '11px'}}>
-                            {h.operational_status_display}
-                          </span>
-                        </td>
-                        <td>
-                          {/* Approval Toggle Switch */}
-                          <div className="form-check form-switch d-flex align-items-center gap-2" style={{ margin: 0, minHeight: 'auto' }}>
-                            <input
-                              className="form-check-input"
-                              type="checkbox"
-                              role="switch"
-                              id={`approval-toggle-${h.id}`}
-                              checked={h.approval_status === 'approved'}
-                              onChange={() => handleApprovalToggle(h)}
-                              style={{ width: '40px', height: '22px', cursor: 'pointer' }}
-                            />
-                            <label
-                              className="form-check-label"
-                              htmlFor={`approval-toggle-${h.id}`}
-                              style={{
-                                fontSize: '11px',
-                                fontWeight: 600,
-                                color: h.approval_status === 'approved' ? '#198754' : h.approval_status === 'rejected' ? '#dc3545' : '#6c757d',
-                                cursor: 'pointer'
-                              }}
-                            >
-                              {h.approval_status === 'approved' ? '✓ Approved' : h.approval_status === 'rejected' ? '✗ Rejected' : '○ Pending'}
-                            </label>
-                          </div>
-                        </td>
-                        <td>
-                          {isReadOnly ? (
-                            <span className="text-muted small">View only</span>
-                          ) : (
-                            <div className="btn-group btn-group-sm">
-                              <button className="btn btn-outline-primary" onClick={() => openEditModal(h)} title="Edit">
-                                <i className="fas fa-edit"></i>
-                              </button>
-                              <button className="btn btn-outline-danger" onClick={() => handleDelete(h.id)} title="Delete">
-                                <i className="fas fa-trash"></i>
-                              </button>
-                            </div>
-                          )}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
+        {/* Results count */}
+        {!loading && (
+          <div style={{ marginBottom: 12, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <span style={{ fontSize: 13, color: '#64748b' }}>
+              <strong style={{ color: '#0f172a' }}>{hospitals.length}</strong> hospital{hospitals.length !== 1 ? 's' : ''} found
+            </span>
           </div>
-        </div>
+        )}
+
+        {loading ? (
+          <div style={{ textAlign: 'center', padding: '60px 0' }}>
+            <div className="spinner-border text-primary" role="status"><span className="visually-hidden">Loading...</span></div>
+          </div>
+        ) : hospitals.length === 0 ? (
+          <div style={{ textAlign: 'center', padding: '60px 20px', background: '#fff', borderRadius: 16, boxShadow: '0 1px 4px rgba(0,0,0,0.06)' }}>
+            <i className="fas fa-hospital" style={{ fontSize: 48, color: '#e2e8f0', display: 'block', marginBottom: 12 }}></i>
+            <h6 style={{ color: '#94a3b8', margin: 0 }}>No hospitals found</h6>
+            <p style={{ color: '#cbd5e1', fontSize: 13, marginTop: 4 }}>Try adjusting your filters or add a new hospital.</p>
+          </div>
+        ) : viewMode === 'grid' ? (
+          /* ── GRID VIEW ── */
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: 20 }}>
+            {hospitals.map(h => {
+              const opColor = h.operational_status === 'active' ? '#16a34a' : h.operational_status === 'suspended' ? '#dc2626' : '#d97706';
+              const opBg   = h.operational_status === 'active' ? '#f0fdf4' : h.operational_status === 'suspended' ? '#fff0f0' : '#fffbeb';
+              return (
+                <div key={h.id} style={{ background: '#fff', borderRadius: 16, boxShadow: '0 2px 12px rgba(0,0,0,0.07)', overflow: 'hidden', display: 'flex', flexDirection: 'column', transition: 'box-shadow 0.2s' }}
+                  onMouseEnter={e => e.currentTarget.style.boxShadow = '0 8px 28px rgba(0,0,0,0.13)'}
+                  onMouseLeave={e => e.currentTarget.style.boxShadow = '0 2px 12px rgba(0,0,0,0.07)'}>
+                  {/* Banner */}
+                  <div style={{ height: 90, position: 'relative', overflow: 'hidden',
+                    ...(h.hospital_image
+                      ? { backgroundImage: `url(${h.hospital_image})`, backgroundSize: 'cover', backgroundPosition: 'center' }
+                      : { background: 'linear-gradient(135deg, #1e293b 0%, #4361ee 100%)' }) }}>
+                    {h.hospital_image && <div style={{ position: 'absolute', inset: 0, background: 'rgba(15,23,42,0.45)' }} />}
+                    <div style={{ position: 'absolute', top: 10, right: 10 }}>
+                      <span style={{ background: opBg, color: opColor, fontSize: 10, fontWeight: 700, padding: '3px 9px', borderRadius: 20, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                        {h.operational_status_display}
+                      </span>
+                    </div>
+                    <div style={{ position: 'absolute', bottom: 10, left: 14 }}>
+                      <code style={{ background: 'rgba(255,255,255,0.15)', color: '#fff', fontSize: 10, padding: '2px 8px', borderRadius: 6, letterSpacing: '0.5px' }}>{h.code}</code>
+                    </div>
+                  </div>
+
+                  {/* Body */}
+                  <div style={{ padding: '16px 18px 12px', flex: 1 }}>
+                    <h6 style={{ margin: '0 0 4px', fontWeight: 700, fontSize: 15, color: '#0f172a', lineHeight: 1.3 }}>{h.name}</h6>
+                    <p style={{ margin: '0 0 12px', fontSize: 12, color: '#94a3b8' }}>
+                      <i className="fas fa-map-marker-alt me-1"></i>
+                      {[h.town_city, h.district_name, h.region_name].filter(Boolean).join(' · ')}
+                    </p>
+
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 12 }}>
+                      <span style={{ background: '#eff6ff', color: '#2563eb', fontSize: 11, fontWeight: 600, padding: '3px 10px', borderRadius: 20 }}>{h.hospital_type_display}</span>
+                      <span style={{ background: '#f8fafc', color: '#475569', fontSize: 11, fontWeight: 500, padding: '3px 10px', borderRadius: 20, border: '1px solid #e2e8f0' }}>{h.ownership_type_display}</span>
+                    </div>
+
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px 12px', fontSize: 12 }}>
+                      <div><span style={{ color: '#94a3b8' }}>Level</span><br/><strong style={{ color: '#334155', fontSize: 11 }}>{h.level_of_care_display}</strong></div>
+                      <div><span style={{ color: '#94a3b8' }}>Beds</span><br/><strong style={{ color: '#334155' }}>{h.bed_capacity || 0}</strong></div>
+                    </div>
+                  </div>
+
+                  {/* Footer */}
+                  <div style={{ padding: '10px 18px', borderTop: '1px solid #f1f5f9', display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: '#fafbfc' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <input type="checkbox" role="switch" id={`gt-${h.id}`}
+                        checked={h.approval_status === 'approved'}
+                        onChange={() => handleApprovalToggle(h)}
+                        style={{ width: 36, height: 20, cursor: 'pointer', accentColor: '#4361ee' }} />
+                      <label htmlFor={`gt-${h.id}`} style={{ fontSize: 11, fontWeight: 600, cursor: 'pointer',
+                        color: h.approval_status === 'approved' ? '#16a34a' : h.approval_status === 'rejected' ? '#dc2626' : '#94a3b8' }}>
+                        {h.approval_status === 'approved' ? 'Approved' : h.approval_status === 'rejected' ? 'Rejected' : 'Pending'}
+                      </label>
+                    </div>
+                    {!isReadOnly && (
+                      <div style={{ display: 'flex', gap: 6 }}>
+                        <button onClick={() => openEditModal(h)} title="Edit"
+                          style={{ width: 32, height: 32, borderRadius: 8, border: '1px solid #e2e8f0', background: '#fff', color: '#4361ee', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'all 0.15s' }}
+                          onMouseEnter={e => { e.currentTarget.style.background='#eff6ff'; }}
+                          onMouseLeave={e => { e.currentTarget.style.background='#fff'; }}>
+                          <i className="fas fa-edit" style={{ fontSize: 13 }}></i>
+                        </button>
+                        <button onClick={() => handleDelete(h.id)} title="Delete"
+                          style={{ width: 32, height: 32, borderRadius: 8, border: '1px solid #ffe4e4', background: '#fff0f0', color: '#dc2626', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'all 0.15s' }}
+                          onMouseEnter={e => { e.currentTarget.style.background='#fecaca'; }}
+                          onMouseLeave={e => { e.currentTarget.style.background='#fff0f0'; }}>
+                          <i className="fas fa-trash" style={{ fontSize: 13 }}></i>
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        ) : (
+          /* ── LIST VIEW ── */
+          <div style={{ background: '#fff', borderRadius: 16, boxShadow: '0 2px 12px rgba(0,0,0,0.07)', overflow: 'hidden' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+              <thead>
+                <tr style={{ background: '#f8fafc', borderBottom: '2px solid #e2e8f0' }}>
+                  {['Facility', 'Code', 'Type & Level', 'Location', 'Beds', 'Status', 'Approval', 'Actions'].map(h => (
+                    <th key={h} style={{ padding: '12px 16px', fontSize: 11, fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.6px', whiteSpace: 'nowrap' }}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {hospitals.map((h, idx) => {
+                  const opColor = h.operational_status === 'active' ? '#16a34a' : h.operational_status === 'suspended' ? '#dc2626' : '#d97706';
+                  const opBg   = h.operational_status === 'active' ? '#f0fdf4' : h.operational_status === 'suspended' ? '#fff0f0' : '#fffbeb';
+                  return (
+                    <tr key={h.id} style={{ borderBottom: idx < hospitals.length - 1 ? '1px solid #f1f5f9' : 'none', transition: 'background 0.15s' }}
+                      onMouseEnter={e => e.currentTarget.style.background = '#fafbff'}
+                      onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
+                      <td style={{ padding: '14px 16px' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                          <div style={{ width: 40, height: 40, borderRadius: 10, flexShrink: 0, overflow: 'hidden',
+                            ...(h.hospital_image ? {} : { background: 'linear-gradient(135deg, #1e293b, #4361ee)', display: 'flex', alignItems: 'center', justifyContent: 'center' }) }}>
+                            {h.hospital_image
+                              ? <img src={h.hospital_image} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                              : <i className="fas fa-hospital" style={{ color: '#fff', fontSize: 16 }}></i>}
+                          </div>
+                          <div>
+                            <div style={{ fontWeight: 700, fontSize: 14, color: '#0f172a' }}>{h.name}</div>
+                            {h.town_city && <div style={{ fontSize: 11, color: '#94a3b8' }}>{h.town_city}</div>}
+                          </div>
+                        </div>
+                      </td>
+                      <td style={{ padding: '14px 16px' }}>
+                        <code style={{ background: '#f1f5f9', color: '#4361ee', fontSize: 11, padding: '3px 8px', borderRadius: 6 }}>{h.code}</code>
+                      </td>
+                      <td style={{ padding: '14px 16px' }}>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                          <span style={{ background: '#eff6ff', color: '#2563eb', fontSize: 11, fontWeight: 600, padding: '2px 8px', borderRadius: 20, display: 'inline-block' }}>{h.hospital_type_display}</span>
+                          <span style={{ background: '#f8fafc', color: '#64748b', fontSize: 10, padding: '2px 8px', borderRadius: 20, border: '1px solid #e2e8f0', display: 'inline-block' }}>{h.level_of_care_display}</span>
+                        </div>
+                      </td>
+                      <td style={{ padding: '14px 16px' }}>
+                        <div style={{ fontSize: 13, color: '#334155', fontWeight: 500 }}>{h.district_name}</div>
+                        <div style={{ fontSize: 11, color: '#94a3b8' }}>{h.region_name}</div>
+                      </td>
+                      <td style={{ padding: '14px 16px', textAlign: 'center' }}>
+                        <span style={{ fontWeight: 700, fontSize: 16, color: '#0f172a' }}>{h.bed_capacity || 0}</span>
+                      </td>
+                      <td style={{ padding: '14px 16px' }}>
+                        <span style={{ background: opBg, color: opColor, fontSize: 11, fontWeight: 700, padding: '4px 10px', borderRadius: 20 }}>{h.operational_status_display}</span>
+                      </td>
+                      <td style={{ padding: '14px 16px' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+                          <input type="checkbox" role="switch" id={`lt-${h.id}`}
+                            checked={h.approval_status === 'approved'}
+                            onChange={() => handleApprovalToggle(h)}
+                            style={{ width: 36, height: 20, cursor: 'pointer', accentColor: '#4361ee' }} />
+                          <label htmlFor={`lt-${h.id}`} style={{ fontSize: 11, fontWeight: 600, cursor: 'pointer', margin: 0,
+                            color: h.approval_status === 'approved' ? '#16a34a' : h.approval_status === 'rejected' ? '#dc2626' : '#94a3b8' }}>
+                            {h.approval_status === 'approved' ? 'Approved' : h.approval_status === 'rejected' ? 'Rejected' : 'Pending'}
+                          </label>
+                        </div>
+                      </td>
+                      <td style={{ padding: '14px 16px' }}>
+                        {isReadOnly ? <span style={{ fontSize: 11, color: '#94a3b8' }}>View only</span> : (
+                          <div style={{ display: 'flex', gap: 6 }}>
+                            <button onClick={() => openEditModal(h)} title="Edit"
+                              style={{ width: 32, height: 32, borderRadius: 8, border: '1px solid #e2e8f0', background: '#fff', color: '#4361ee', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                              onMouseEnter={e => e.currentTarget.style.background='#eff6ff'}
+                              onMouseLeave={e => e.currentTarget.style.background='#fff'}>
+                              <i className="fas fa-edit" style={{ fontSize: 13 }}></i>
+                            </button>
+                            <button onClick={() => handleDelete(h.id)} title="Delete"
+                              style={{ width: 32, height: 32, borderRadius: 8, border: '1px solid #ffe4e4', background: '#fff0f0', color: '#dc2626', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                              onMouseEnter={e => e.currentTarget.style.background='#fecaca'}
+                              onMouseLeave={e => e.currentTarget.style.background='#fff0f0'}>
+                              <i className="fas fa-trash" style={{ fontSize: 13 }}></i>
+                            </button>
+                          </div>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
 
       {/* Create Modal */}
@@ -1097,16 +1292,17 @@ function HospitalManagement() {
           </div>
         </div>
       )}
-      <ConfirmModal
-        show={confirmDelete.show}
-        title="Delete Hospital?"
-        message="This will permanently delete this hospital and may affect associated staff and departments."
-        confirmLabel="Delete"
-        variant="danger"
-        onConfirm={confirmDeleteAction}
-        onCancel={() => setConfirmDelete({ show: false, id: null })}
-      />
     </DashboardLayout>
+    <ConfirmModal
+      show={confirmDelete.show}
+      title="Delete Hospital?"
+      message="This will permanently delete this hospital and may affect associated staff and departments."
+      confirmLabel="Delete"
+      variant="danger"
+      onConfirm={confirmDeleteAction}
+      onCancel={() => setConfirmDelete({ show: false, id: null })}
+    />
+  </>
   );
 }
 

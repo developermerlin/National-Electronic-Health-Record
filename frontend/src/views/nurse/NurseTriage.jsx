@@ -310,7 +310,7 @@ export default function NurseTriage() {
                             )}
                           </div>
                         </div>
-                        <button className="btn btn-sm btn-outline-primary" style={{ borderRadius:'8px', fontWeight:600, flexShrink:0 }}
+                        <button className="btn btn-sm btn-primary"
                           onClick={(e) => { e.stopPropagation(); selectPatient(p); }}>
                           Select <i className="fas fa-arrow-right ms-1"></i>
                         </button>
@@ -325,8 +325,7 @@ export default function NurseTriage() {
                     <div style={{ fontWeight:600, marginBottom:'4px' }}>No patients found</div>
                     <div style={{ fontSize:'13px', marginBottom:'16px' }}>Try a different name or ID, or register them now</div>
                     <button
-                      className="btn btn-sm"
-                      style={{ background:'#e63946', color:'#fff', borderRadius:'9px', fontWeight:700, border:'none', padding:'8px 20px' }}
+                      className="btn btn-sm btn-danger"
                       onClick={() => { setShowQuickReg(true); setRegError(''); }}
                     >
                       <i className="fas fa-user-plus me-2"></i>Register New Patient
@@ -341,7 +340,7 @@ export default function NurseTriage() {
                       <div style={{ fontWeight:700, color:'#e63946', fontSize:'14px' }}>
                         <i className="fas fa-user-plus me-2"></i>Quick Patient Registration
                       </div>
-                      <button onClick={() => setShowQuickReg(false)} style={{ background:'none', border:'none', color:'#adb5bd', fontSize:'16px', cursor:'pointer', lineHeight:1 }}>
+                      <button onClick={() => setShowQuickReg(false)} className="btn btn-sm btn-outline-secondary btn-icon" style={{ fontSize:'16px' }}>
                         <i className="fas fa-times"></i>
                       </button>
                     </div>
@@ -382,11 +381,10 @@ export default function NurseTriage() {
                       </div>
                     </div>
                     <div style={{ display:'flex', gap:'10px', justifyContent:'flex-end', marginTop:'16px' }}>
-                      <button onClick={() => setShowQuickReg(false)} className="btn btn-sm btn-outline-secondary" style={{ borderRadius:'8px' }}>
+                      <button onClick={() => setShowQuickReg(false)} className="btn btn-sm btn-outline-secondary">
                         Cancel
                       </button>
-                      <button onClick={handleQuickRegister} disabled={regSaving} className="btn btn-sm"
-                        style={{ background:'#e63946', color:'#fff', borderRadius:'8px', fontWeight:700, border:'none' }}>
+                      <button onClick={handleQuickRegister} disabled={regSaving} className="btn btn-sm btn-danger">
                         {regSaving
                           ? <><span className="spinner-border spinner-border-sm me-1"></span>Registering…</>
                           : <><i className="fas fa-check me-1"></i>Register &amp; Triage</>}
@@ -425,7 +423,7 @@ export default function NurseTriage() {
                     )}
                   </div>
                 </div>
-                <button onClick={() => { setStep(1); setSelected(null); }} style={{ background:'rgba(255,255,255,0.15)', border:'none', borderRadius:'8px', color:'#fff', padding:'6px 12px', fontSize:'12px', cursor:'pointer', fontWeight:600 }}>
+                <button onClick={() => { setStep(1); setSelected(null); }} className="btn btn-sm" style={{ background:'rgba(255,255,255,0.15)', color:'#fff', border:'1px solid rgba(255,255,255,0.3)' }}>
                   <i className="fas fa-exchange-alt me-1"></i>Change
                 </button>
               </div>
@@ -582,11 +580,10 @@ export default function NurseTriage() {
                 )}
 
                 <div style={{ display:'flex', gap:'10px', justifyContent:'flex-end', marginTop:'20px' }}>
-                  <button onClick={() => setStep(2)} className="btn btn-outline-secondary" style={{ borderRadius:'9px', fontWeight:600 }}>
+                  <button onClick={() => setStep(2)} className="btn btn-outline-secondary">
                     <i className="fas fa-arrow-left me-1"></i>Back
                   </button>
-                  <button onClick={handleSubmit} disabled={saving} className="btn"
-                    style={{ background:'#e63946', color:'#fff', borderRadius:'9px', fontWeight:700, border:'none' }}>
+                  <button onClick={handleSubmit} disabled={saving} className="btn btn-danger">
                     {saving
                       ? <><span className="spinner-border spinner-border-sm me-2"></span>Saving…</>
                       : <><i className="fas fa-check-circle me-2"></i>Complete Triage</>}

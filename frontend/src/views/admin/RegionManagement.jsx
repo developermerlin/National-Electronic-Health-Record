@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import DashboardLayout from '../../layout/DashboardLayout';
 import showToast from '../../utils/toast';
+import PrimaryButton from '../../components/PrimaryButton';
 import ConfirmModal from '../../components/ConfirmModal';
 import { getNavForUser, getBrandForUser, getRoleBadge } from '../../utils/navItems';
 
@@ -56,14 +57,14 @@ function RegionManagement() {
         setShowCreateModal(false);
         setFormData({ name: '', description: '', is_active: true });
         fetchRegions();
-        showToast.success('Region created successfully!');
+        showToast.created('Region');
       } else {
         const data = await response.json();
         const msg = Object.values(data).flat().join(', ');
-        showToast.error(msg || 'Failed to create region');
+        showToast.createError(msg || 'Region');
       }
     } catch {
-      showToast.error('Error creating region. Please try again.');
+      showToast.networkError();
     }
   };
 
@@ -79,14 +80,14 @@ function RegionManagement() {
         setSelectedRegion(null);
         setFormData({ name: '', description: '', is_active: true });
         fetchRegions();
-        showToast.success('Region updated successfully!');
+        showToast.updated('Region');
       } else {
         const data = await response.json();
         const msg = Object.values(data).flat().join(', ');
-        showToast.error(msg || 'Failed to update region');
+        showToast.updateError(msg || 'Region');
       }
     } catch {
-      showToast.error('Error updating region. Please try again.');
+      showToast.networkError();
     }
   };
 
@@ -99,12 +100,12 @@ function RegionManagement() {
       const response = await apiCall(`/admin/regions/${confirmDelete.id}/`, { method: 'DELETE' });
       if (response.ok) {
         fetchRegions();
-        showToast.success('Region deleted successfully!');
+        showToast.deleted('Region');
       } else {
-        showToast.error('Failed to delete region');
+        showToast.deleteError('Region');
       }
     } catch {
-      showToast.error('Error deleting region. Please try again.');
+      showToast.networkError();
     } finally {
       setConfirmDelete({ show: false, id: null });
     }
@@ -132,10 +133,9 @@ function RegionManagement() {
                 <p className="text-muted mb-0">Manage geographical regions across the country</p>
               </div>
               {!isReadOnly && (
-                <button className="btn btn-primary"
-                  onClick={() => { setFormData({ name: '', description: '', is_active: true }); setShowCreateModal(true); }}>
-                  <i className="fas fa-plus me-2"></i>Add Region
-                </button>
+                <PrimaryButton onClick={() => { setFormData({ name: '', description: '', is_active: true }); setShowCreateModal(true); }}>
+                  Add Region
+                </PrimaryButton>
               )}
             </div>
           </div>

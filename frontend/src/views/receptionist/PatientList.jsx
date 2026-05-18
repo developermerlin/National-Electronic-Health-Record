@@ -54,6 +54,13 @@ function PatientList() {
   const [editPhotoPreview, setEditPhotoPreview] = useState(null);
   const editFileInputRef = useRef(null);
 
+  // Excel bulk import state
+  const [showImportModal, setShowImportModal] = useState(false);
+  const [importFile,      setImportFile]      = useState(null);
+  const [importing,       setImporting]       = useState(false);
+  const [importResult,    setImportResult]    = useState(null);
+  const importFileRef = useRef(null);
+
   // Load regions once on mount
   const fetchEditRegions = useCallback(async () => {
     try {
@@ -320,6 +327,47 @@ function PatientList() {
     }
   };
 
+  const handleImport = async () => {
+    if (!importFile) return;
+    setImporting(true);
+    setImportResult(null);
+    try {
+      const fd = new FormData();
+      fd.append('file', importFile);
+      const res = await apiCall('/patients/bulk_upload/', { method: 'POST', body: fd });
+      const data = await res.json();
+      if (res.ok) {
+        setImportResult({ success: true, message: data.message, imported: data.imported, skipped: data.skipped });
+        fetchPatients();
+        fetchStats();
+      } else {
+        setImportResult({ success: false, message: data.error || 'Upload failed.' });
+      }
+    } catch {
+      setImportResult({ success: false, message: 'Network error. Please try again.' });
+    } finally {
+      setImporting(false);
+    }
+  };
+
+  const handleDownloadTemplate = async () => {
+    try {
+      const res = await apiCall('/patients/download_template/');
+      if (!res.ok) { alert('Failed to download template.'); return; }
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'patient_upload_template.xlsx';
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } catch {
+      alert('Error downloading template. Please try again.');
+    }
+  };
+
   // Pagination
   const totalPages = Math.ceil(patients.length / perPage);
   const paginatedPatients = patients.slice((currentPage - 1) * perPage, currentPage * perPage);
@@ -332,9 +380,14 @@ function PatientList() {
           <h4 className="mb-1"><i className="fas fa-user-injured me-2 text-primary"></i>Patient Registry</h4>
           <p className="text-muted mb-0">Manage and search registered patients</p>
         </div>
-        <Link to="/receptionist/patients/register" className="btn btn-primary">
-          <i className="fas fa-user-plus me-2"></i>Register New Patient
-        </Link>
+        <div className="d-flex gap-2">
+          <button className="btn btn-outline-success" onClick={() => { setShowImportModal(true); setImportFile(null); setImportResult(null); }}>
+            <i className="fas fa-file-excel me-2"></i>Import Excel
+          </button>
+          <Link to="/receptionist/patients/register" className="btn btn-primary">
+            <i className="fas fa-user-plus me-2"></i>Register New Patient
+          </Link>
+        </div>
       </div>
 
       {/* Stat Cards */}
@@ -501,8 +554,11 @@ function PatientList() {
                   <tr key={p.id}>
                     <td>
                       <div className="user-cell">
-                        <div className="avatar" style={{background: genderColors[p.gender] || '#4361ee'}}>
-                          {getInitials(p.first_name, p.last_name)}
+                        <div className="avatar" style={{background: genderColors[p.gender] || '#4361ee', overflow: 'hidden', padding: 0}}>
+                          {p.photo_url
+                            ? <img src={p.photo_url} alt={p.full_name} style={{width: '100%', height: '100%', objectFit: 'cover', borderRadius: '50%'}} />
+                            : getInitials(p.first_name, p.last_name)
+                          }
                         </div>
                         <div>
                           <div className="user-name">{p.full_name}</div>
@@ -1440,6 +1496,104 @@ function PatientList() {
                 </div>
               </div>
 
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Import Excel Modal ── */}
+      {showImportModal && (
+        <div style={{position:'fixed',top:0,left:0,width:'100%',height:'100%',background:'rgba(0,0,0,0.5)',zIndex:1060,display:'flex',alignItems:'center',justifyContent:'center'}}>
+          <div style={{background:'#fff',borderRadius:16,width:'100%',maxWidth:520,boxShadow:'0 20px 60px rgba(0,0,0,0.2)',overflow:'hidden'}}>
+            {/* Header */}
+            <div style={{background:'linear-gradient(135deg,#1a7c4f,#22c55e)',padding:'20px 28px',display:'flex',alignItems:'center',justifyContent:'space-between'}}>
+              <div className="d-flex align-items-center gap-3">
+                <div style={{width:40,height:40,borderRadius:10,background:'rgba(255,255,255,0.2)',display:'flex',alignItems:'center',justifyContent:'center'}}>
+                  <i className="fas fa-file-excel" style={{color:'#fff',fontSize:18}}></i>
+                </div>
+                <div>
+                  <div style={{color:'#fff',fontWeight:700,fontSize:16}}>Import Patients from Excel</div>
+                  <div style={{color:'rgba(255,255,255,0.8)',fontSize:12}}>Bulk register patients using a spreadsheet</div>
+                </div>
+              </div>
+              <button onClick={() => setShowImportModal(false)} style={{background:'none',border:'none',color:'#fff',fontSize:20,cursor:'pointer',lineHeight:1}}>&times;</button>
+            </div>
+
+            {/* Body */}
+            <div style={{padding:'24px 28px'}}>
+              {/* Step 1: Download template */}
+              <div style={{background:'#f0fdf4',border:'1px solid #bbf7d0',borderRadius:10,padding:'14px 18px',marginBottom:20}}>
+                <div style={{fontWeight:600,fontSize:13,color:'#15803d',marginBottom:6}}>
+                  <i className="fas fa-download me-2"></i>Step 1 — Download the template
+                </div>
+                <div style={{fontSize:12,color:'#166534',marginBottom:10}}>
+                  Fill in the Excel template with patient data. Columns marked with <strong>*</strong> are required.
+                </div>
+                <button className="btn btn-sm btn-success" onClick={handleDownloadTemplate}>
+                  <i className="fas fa-file-excel me-2"></i>Download Template (.xlsx)
+                </button>
+              </div>
+
+              {/* Step 2: Upload */}
+              <div style={{fontWeight:600,fontSize:13,color:'#374151',marginBottom:10}}>
+                <i className="fas fa-upload me-2"></i>Step 2 — Upload your filled file
+              </div>
+              <input
+                ref={importFileRef}
+                type="file"
+                accept=".xlsx,.xls"
+                style={{display:'none'}}
+                onChange={e => { setImportFile(e.target.files[0]); setImportResult(null); }}
+              />
+              <div
+                onClick={() => importFileRef.current?.click()}
+                style={{border:'2px dashed #d1d5db',borderRadius:10,padding:'24px',textAlign:'center',cursor:'pointer',
+                  background: importFile ? '#f0fdf4' : '#f9fafb',
+                  borderColor: importFile ? '#22c55e' : '#d1d5db',
+                  transition:'all 0.2s'}}
+              >
+                {importFile ? (
+                  <>
+                    <i className="fas fa-file-excel" style={{fontSize:28,color:'#22c55e',marginBottom:8,display:'block'}}></i>
+                    <div style={{fontWeight:600,color:'#15803d',fontSize:13}}>{importFile.name}</div>
+                    <div style={{fontSize:11,color:'#6b7280',marginTop:4}}>Click to change file</div>
+                  </>
+                ) : (
+                  <>
+                    <i className="fas fa-cloud-upload-alt" style={{fontSize:28,color:'#9ca3af',marginBottom:8,display:'block'}}></i>
+                    <div style={{fontWeight:600,color:'#374151',fontSize:13}}>Click to select an Excel file</div>
+                    <div style={{fontSize:11,color:'#9ca3af',marginTop:4}}>Supports .xlsx and .xls</div>
+                  </>
+                )}
+              </div>
+
+              {/* Result */}
+              {importResult && (
+                <div style={{marginTop:16,padding:'12px 16px',borderRadius:10,
+                  background: importResult.success ? '#f0fdf4' : '#fef2f2',
+                  border: `1px solid ${importResult.success ? '#86efac' : '#fca5a5'}`}}>
+                  <div style={{fontWeight:600,fontSize:13,color: importResult.success ? '#15803d' : '#b91c1c'}}>
+                    <i className={`fas ${importResult.success ? 'fa-check-circle' : 'fa-exclamation-circle'} me-2`}></i>
+                    {importResult.message}
+                  </div>
+                  {importResult.success && (
+                    <div style={{fontSize:12,color:'#166534',marginTop:6}}>
+                      <span className="me-3"><i className="fas fa-user-check me-1"></i>{importResult.imported} imported</span>
+                      {importResult.skipped > 0 && <span style={{color:'#b45309'}}><i className="fas fa-skip me-1"></i>{importResult.skipped} skipped (missing required fields)</span>}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* Footer */}
+            <div style={{padding:'16px 28px',borderTop:'1px solid #e9ecef',display:'flex',justifyContent:'flex-end',gap:10,background:'#f8fafc'}}>
+              <button className="btn btn-outline-secondary" onClick={() => setShowImportModal(false)}>Close</button>
+              <button className="btn btn-success px-4" onClick={handleImport} disabled={!importFile || importing}>
+                {importing
+                  ? <><span className="spinner-border spinner-border-sm me-2"></span>Importing...</>
+                  : <><i className="fas fa-upload me-2"></i>Import Patients</>}
+              </button>
             </div>
           </div>
         </div>

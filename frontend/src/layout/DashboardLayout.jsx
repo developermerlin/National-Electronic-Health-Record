@@ -33,7 +33,7 @@ const SIDEBAR_COLORS = [
   { name: 'True Black', value: '#09090b' },
 ];
 
-function DashboardLayout({ children, navItems = [], brandTitle = 'NEHR', roleBadge = '' }) {
+function DashboardLayout({ children, navItems = [], brandTitle = 'NEHR', roleBadge = '', hideBanner = false }) {
   const { user, logout, apiCall } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
@@ -171,6 +171,10 @@ function DashboardLayout({ children, navItems = [], brandTitle = 'NEHR', roleBad
   const displayName = user?.full_name || user?.username || 'User';
   const initials = displayName.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2);
   const userRole = user?.role_display || user?.role || 'User';
+  const API_BASE = 'http://localhost:8000';
+  const photoUrl = user?.photo_url
+    ? (user.photo_url.startsWith('http') ? user.photo_url : `${API_BASE}${user.photo_url}`)
+    : null;
 
   const toggleDarkMode = () => setDarkMode(prev => !prev);
 
@@ -192,10 +196,24 @@ function DashboardLayout({ children, navItems = [], brandTitle = 'NEHR', roleBad
         </div>
 
         <div className="dash-sidebar-user">
-          <div className="user-avatar">{initials}</div>
+          {photoUrl ? (
+            <img
+              src={photoUrl}
+              alt={displayName}
+              className="user-avatar"
+              style={{ objectFit: 'cover', border: '2px solid rgba(255,255,255,0.25)' }}
+            />
+          ) : (
+            <div className="user-avatar">{initials}</div>
+          )}
           <div className="user-info">
             <h6>{displayName}</h6>
             <small>{roleBadge || userRole}</small>
+            {user?.hospital_name && (
+              <small style={{ display: 'block', color: 'rgba(255,255,255,0.5)', fontSize: '10px', marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                <i className="fas fa-hospital-alt me-1" style={{ fontSize: 9 }}></i>{user.hospital_name}
+              </small>
+            )}
           </div>
         </div>
 
@@ -359,7 +377,11 @@ function DashboardLayout({ children, navItems = [], brandTitle = 'NEHR', roleBad
                 onClick={() => setProfileDropdownOpen(!profileDropdownOpen)}
                 style={{ cursor: 'pointer' }}
               >
-                <div className="user-avatar-sm">{initials}</div>
+                {photoUrl ? (
+                  <img src={photoUrl} alt={displayName} className="user-avatar-sm" style={{ objectFit: 'cover' }} />
+                ) : (
+                  <div className="user-avatar-sm">{initials}</div>
+                )}
                 <span className="user-name">{displayName}</span>
                 <i className={`fas fa-chevron-${profileDropdownOpen ? 'up' : 'down'}`} style={{ fontSize: '10px', marginLeft: '6px', color: '#6c757d' }}></i>
               </div>
@@ -373,12 +395,16 @@ function DashboardLayout({ children, navItems = [], brandTitle = 'NEHR', roleBad
                   {/* User Info Header */}
                   <div style={{ padding: '16px', borderBottom: '1px solid #f0f0f0', backgroundColor: '#f8f9fa' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                      <div style={{
-                        width: '44px', height: '44px', borderRadius: '50%', background: 'linear-gradient(135deg, #667eea, #764ba2)',
-                        display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontWeight: 700, fontSize: '16px'
-                      }}>
-                        {initials}
-                      </div>
+                      {photoUrl ? (
+                        <img src={photoUrl} alt={displayName} style={{ width: '44px', height: '44px', borderRadius: '50%', objectFit: 'cover' }} />
+                      ) : (
+                        <div style={{
+                          width: '44px', height: '44px', borderRadius: '50%', background: 'linear-gradient(135deg, #667eea, #764ba2)',
+                          display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontWeight: 700, fontSize: '16px'
+                        }}>
+                          {initials}
+                        </div>
+                      )}
                       <div>
                         <div style={{ fontWeight: 600, fontSize: '14px', color: '#1a1a2e' }}>{displayName}</div>
                         <div style={{ fontSize: '12px', color: '#6c757d' }}>{user?.email}</div>
@@ -438,6 +464,100 @@ function DashboardLayout({ children, navItems = [], brandTitle = 'NEHR', roleBad
 
         {/* Page content */}
         <div className="dash-content">
+
+          {/* ── Hospital & Staff Banner ── */}
+          {!hideBanner && user?.hospital_name && (() => {
+            const firstName = displayName.split(' ')[0];
+            const lastName  = displayName.split(' ').pop();
+            const isDoctor  = (user.role_display || user.role || '').toLowerCase().includes('doctor');
+            const greeting  = isDoctor ? `Dr. ${lastName}` : firstName;
+            const today     = new Date().toLocaleDateString('en-GB', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' });
+            return (
+              <div style={{
+                background: 'linear-gradient(135deg, #0f172a 0%, #1e3a5f 55%, #4361ee 100%)',
+                borderRadius: 16,
+                padding: '22px 28px',
+                marginBottom: 22,
+                boxShadow: '0 6px 24px rgba(29,78,216,0.25)',
+                position: 'relative',
+                overflow: 'hidden',
+              }}>
+                {/* Decorative circles */}
+                <div style={{ position: 'absolute', right: -50, top: -50, width: 220, height: 220, borderRadius: '50%', background: 'rgba(255,255,255,0.04)', pointerEvents: 'none' }}></div>
+                <div style={{ position: 'absolute', right: 100, bottom: -80, width: 180, height: 180, borderRadius: '50%', background: 'rgba(255,255,255,0.03)', pointerEvents: 'none' }}></div>
+
+                <div style={{ display: 'flex', alignItems: 'center', gap: 20, flexWrap: 'wrap', position: 'relative' }}>
+                  {/* Hospital icon */}
+                  <div style={{
+                    width: 54, height: 54, borderRadius: 14,
+                    background: 'rgba(255,255,255,0.13)',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+                    border: '1px solid rgba(255,255,255,0.18)',
+                  }}>
+                    <i className="fas fa-hospital" style={{ color: '#fff', fontSize: 24 }}></i>
+                  </div>
+
+                  {/* Main info block */}
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    {/* Greeting row */}
+                    <div style={{ color: 'rgba(255,255,255,0.55)', fontSize: 12, fontWeight: 600, marginBottom: 4 }}>
+                      Welcome back, <span style={{ color: '#93c5fd', fontWeight: 700 }}>{greeting}</span>
+                      <span style={{ marginLeft: 14, color: 'rgba(255,255,255,0.35)', fontWeight: 400 }}>{today}</span>
+                    </div>
+                    {/* Hospital name */}
+                    <div style={{
+                      color: '#fff', fontWeight: 900, fontSize: 21,
+                      lineHeight: 1.15, letterSpacing: '-0.3px',
+                      overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                    }}>
+                      {user.hospital_name}
+                    </div>
+                    {/* Sub-info chips */}
+                    <div style={{ display: 'flex', gap: 16, marginTop: 8, flexWrap: 'wrap' }}>
+                      <span style={{ color: 'rgba(255,255,255,0.65)', fontSize: 12, display: 'flex', alignItems: 'center', gap: 5 }}>
+                        <i className="fas fa-id-badge" style={{ fontSize: 11 }}></i>
+                        {user.employee_id || 'Staff'}
+                      </span>
+                      <span style={{ color: 'rgba(255,255,255,0.65)', fontSize: 12, display: 'flex', alignItems: 'center', gap: 5 }}>
+                        <i className="fas fa-briefcase-medical" style={{ fontSize: 11 }}></i>
+                        {user.role_display || user.role || 'Staff'}
+                      </span>
+                      {user.address && (
+                        <span style={{ color: 'rgba(255,255,255,0.65)', fontSize: 12, display: 'flex', alignItems: 'center', gap: 5 }}>
+                          <i className="fas fa-map-marker-alt" style={{ fontSize: 11 }}></i>
+                          {user.address}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Divider */}
+                  <div style={{ width: 1, height: 52, background: 'rgba(255,255,255,0.15)', flexShrink: 0, alignSelf: 'center' }}></div>
+
+                  {/* Status badge */}
+                  <div style={{ flexShrink: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6 }}>
+                    <div style={{
+                      background: 'rgba(255,255,255,0.10)',
+                      border: '1px solid rgba(255,255,255,0.22)',
+                      borderRadius: 20, padding: '6px 18px',
+                      display: 'flex', alignItems: 'center', gap: 7,
+                    }}>
+                      <span style={{
+                        width: 8, height: 8, borderRadius: '50%',
+                        background: '#4ade80', display: 'inline-block',
+                        boxShadow: '0 0 6px #4ade80',
+                      }}></span>
+                      <span style={{ color: '#fff', fontSize: 12, fontWeight: 700 }}>On Duty</span>
+                    </div>
+                    <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: 10, fontWeight: 600, letterSpacing: '1px', textTransform: 'uppercase' }}>
+                      Active Facility
+                    </div>
+                  </div>
+                </div>
+              </div>
+            );
+          })()}
+
           {children}
         </div>
 

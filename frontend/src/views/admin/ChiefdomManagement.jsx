@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import DashboardLayout from '../../layout/DashboardLayout';
 import showToast from '../../utils/toast';
+import PrimaryButton from '../../components/PrimaryButton';
 import ConfirmModal from '../../components/ConfirmModal';
 import { getNavForUser, getBrandForUser, getRoleBadge } from '../../utils/navItems';
 
@@ -87,14 +88,14 @@ function ChiefdomManagement() {
         setShowCreateModal(false);
         setFormData({ name: '', district: '', is_active: true });
         fetchChiefdoms();
-        showToast.success('Chiefdom created successfully!');
+        showToast.created('Chiefdom');
       } else {
         const data = await response.json();
         const msg = Object.values(data).flat().join(', ');
-        showToast.error(msg || 'Failed to create chiefdom');
+        showToast.createError(msg || 'Chiefdom');
       }
     } catch {
-      showToast.error('Error creating chiefdom. Please try again.');
+      showToast.networkError();
     }
   };
 
@@ -110,14 +111,14 @@ function ChiefdomManagement() {
         setSelectedChiefdom(null);
         setFormData({ name: '', district: '', is_active: true });
         fetchChiefdoms();
-        showToast.success('Chiefdom updated successfully!');
+        showToast.updated('Chiefdom');
       } else {
         const data = await response.json();
         const msg = Object.values(data).flat().join(', ');
-        showToast.error(msg || 'Failed to update chiefdom');
+        showToast.updateError(msg || 'Chiefdom');
       }
     } catch {
-      showToast.error('Error updating chiefdom. Please try again.');
+      showToast.networkError();
     }
   };
 
@@ -130,12 +131,12 @@ function ChiefdomManagement() {
       const response = await apiCall(`/admin/chiefdoms/${confirmDelete.id}/`, { method: 'DELETE' });
       if (response.ok) {
         fetchChiefdoms();
-        showToast.success('Chiefdom deleted successfully!');
+        showToast.deleted('Chiefdom');
       } else {
-        showToast.error('Failed to delete chiefdom');
+        showToast.deleteError('Chiefdom');
       }
     } catch {
-      showToast.error('Error deleting chiefdom. Please try again.');
+      showToast.networkError();
     } finally {
       setConfirmDelete({ show: false, id: null });
     }
@@ -203,10 +204,9 @@ function ChiefdomManagement() {
                 <p className="text-muted mb-0">Manage chiefdoms within districts</p>
               </div>
               {!isReadOnly && (
-                <button className="btn btn-primary"
-                  onClick={() => { setFormData({ name: '', district: '', is_active: true }); setShowCreateModal(true); }}>
-                  <i className="fas fa-plus me-2"></i>Add Chiefdom
-                </button>
+                <PrimaryButton onClick={() => { setFormData({ name: '', district: '', is_active: true }); setShowCreateModal(true); }}>
+                  Add Chiefdom
+                </PrimaryButton>
               )}
             </div>
           </div>

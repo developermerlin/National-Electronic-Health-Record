@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import DashboardLayout from '../../layout/DashboardLayout';
 import showToast from '../../utils/toast';
+import PrimaryButton from '../../components/PrimaryButton';
 import ConfirmModal from '../../components/ConfirmModal';
 import { getNavForUser, getBrandForUser, getRoleBadge } from '../../utils/navItems';
 
@@ -21,6 +22,7 @@ const departmentTypes = [
   { value: 'physiotherapy', label: 'Physiotherapy', icon: 'fas fa-dumbbell', color: '#8b5cf6' },
   { value: 'records', label: 'Medical Records', icon: 'fas fa-folder-open', color: '#64748b' },
   { value: 'admin', label: 'Administration', icon: 'fas fa-cogs', color: '#475569' },
+  { value: 'triage', label: 'Triage', icon: 'fas fa-stethoscope', color: '#e53e3e' },
   { value: 'ward', label: 'Ward', icon: 'fas fa-door-open', color: '#059669' },
   { value: 'other', label: 'Other', icon: 'fas fa-ellipsis-h', color: '#94a3b8' },
 ];
@@ -30,6 +32,7 @@ const getDeptMeta = (name) => departmentTypes.find(d => d.value === name) || dep
 function DepartmentManagement() {
   const { apiCall, user } = useAuth();
   const isReadOnly = user?.role === 'ministry_admin';
+  const isHospitalAdmin = user?.role === 'hospital_admin';
   const [departments, setDepartments] = useState([]);
   const [hospitals, setHospitals] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -84,14 +87,14 @@ function DepartmentManagement() {
         setShowCreateModal(false);
         resetForm();
         fetchDepartments();
-        showToast.success('Department created successfully!');
+        showToast.created('Department');
       } else {
         const data = await response.json();
         const msg = Object.values(data).flat().join(', ');
-        showToast.error(msg || 'Failed to create department');
+        showToast.createError(msg || 'Department');
       }
     } catch {
-      showToast.error('Error creating department. Please try again.');
+      showToast.networkError();
     }
   };
 
@@ -107,14 +110,14 @@ function DepartmentManagement() {
         setSelectedDept(null);
         resetForm();
         fetchDepartments();
-        showToast.success('Department updated successfully!');
+        showToast.updated('Department');
       } else {
         const data = await response.json();
         const msg = Object.values(data).flat().join(', ');
-        showToast.error(msg || 'Failed to update department');
+        showToast.updateError(msg || 'Department');
       }
     } catch {
-      showToast.error('Error updating department. Please try again.');
+      showToast.networkError();
     }
   };
 
@@ -125,12 +128,12 @@ function DepartmentManagement() {
       const response = await apiCall(`/admin/departments/${confirmDelete.id}/`, { method: 'DELETE' });
       if (response.ok) {
         fetchDepartments();
-        showToast.success('Department deleted successfully!');
+        showToast.deleted('Department');
       } else {
-        showToast.error('Failed to delete department');
+        showToast.deleteError('Department');
       }
     } catch {
-      showToast.error('Error deleting department. Please try again.');
+      showToast.networkError();
     } finally {
       setConfirmDelete({ show: false, id: null });
     }
@@ -146,7 +149,7 @@ function DepartmentManagement() {
   };
 
   const resetForm = () => {
-    setFormData({ name: '', hospital: '', head_of_department: '', phone: '', status: 'active', is_active: true });
+    setFormData({ name: '', hospital: isHospitalAdmin ? (user?.hospital_id || user?.hospital || '') : '', head_of_department: '', phone: '', status: 'active', is_active: true });
   };
 
   // Filtering & pagination
@@ -211,11 +214,16 @@ function DepartmentManagement() {
         <div className="row g-3">
           <div className="col-md-6">
             <label className="form-label">Hospital *</label>
-            <select className="form-select" value={formData.hospital}
-              onChange={(e) => setFormData({ ...formData, hospital: e.target.value })} required>
-              <option value="">Select Hospital</option>
-              {hospitals.map(h => <option key={h.id} value={h.id}>{h.name}</option>)}
-            </select>
+            {isHospitalAdmin ? (
+              <input type="text" className="form-control bg-light" readOnly
+                value={hospitals.find(h => String(h.id) === String(formData.hospital))?.name || 'Your Hospital'} />
+            ) : (
+              <select className="form-select" value={formData.hospital}
+                onChange={(e) => setFormData({ ...formData, hospital: e.target.value })} required>
+                <option value="">Select Hospital</option>
+                {hospitals.map(h => <option key={h.id} value={h.id}>{h.name}</option>)}
+              </select>
+            )}
           </div>
           <div className="col-md-6">
             <label className="form-label">Department Type *</label>
@@ -273,10 +281,9 @@ function DepartmentManagement() {
                 <p className="text-muted mb-0">Manage hospital departments</p>
               </div>
               {!isReadOnly && (
-                <button className="btn btn-primary"
-                  onClick={() => { resetForm(); setShowCreateModal(true); }}>
-                  <i className="fas fa-plus me-2"></i>Add Department
-                </button>
+                <PrimaryButton onClick={() => { resetForm(); setShowCreateModal(true); }}>
+                  Add Department
+                </PrimaryButton>
               )}
             </div>
           </div>
@@ -330,6 +337,7 @@ function DepartmentManagement() {
                   )}
                 </div>
               </div>
+              {!isHospitalAdmin && (
               <div className="col-md-4">
                 <select className="form-select" value={filterHospital}
                   onChange={(e) => setFilterHospital(e.target.value)}>
@@ -337,6 +345,7 @@ function DepartmentManagement() {
                   {hospitals.map(h => <option key={h.id} value={h.id}>{h.name}</option>)}
                 </select>
               </div>
+              )}
               <div className="col-md-3 text-end">
                 <span className="badge bg-primary bg-opacity-10 text-primary" style={{ fontSize: '13px', padding: '8px 14px' }}>
                   {filteredDepts.length} department{filteredDepts.length !== 1 ? 's' : ''}

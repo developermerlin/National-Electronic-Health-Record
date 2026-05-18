@@ -26,10 +26,11 @@ function Login() {
       admin: '/admin/dashboard',
       ministry_admin: '/ministry/dashboard',
       district_admin: '/admin/districts',
-      hospital_admin: '/admin/hospitals',
+      hospital_admin: '/hospital-admin/dashboard',
       doctor: '/doctor/dashboard',
       nurse: '/nurse/dashboard',
       receptionist: '/receptionist/dashboard',
+      triage: '/triage',
       lab_technician: '/lab/dashboard',
       pharmacist: '/pharmacy/dashboard',
       patient: '/patient/dashboard',
@@ -216,7 +217,7 @@ function Login() {
         } else if (userRole === 'district_admin') {
           navigate('/admin/districts');
         } else if (userRole === 'hospital_admin') {
-          navigate('/admin/hospitals');
+          navigate('/hospital-admin/dashboard');
         } else if (userRole === 'doctor') {
           navigate('/doctor/dashboard');
         } else if (userRole === 'nurse') {

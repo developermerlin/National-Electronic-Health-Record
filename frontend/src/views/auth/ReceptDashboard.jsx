@@ -61,12 +61,6 @@ function ReceptDashboard() {
   return (
     <DashboardLayout navItems={getNavForUser(user)} brandTitle={getBrandForUser(user)} roleBadge={getRoleBadge(user)}>
 
-      {/* Welcome Banner */}
-      <div className="dash-welcome-banner">
-        <h3>Welcome back, {user?.full_name || 'Receptionist'}!</h3>
-        <p>Here is an overview of today's front desk activity. Manage patient registrations, appointments, and queue efficiently.</p>
-      </div>
-
       {/* Stat Cards Row */}
       <div className="row g-4 mb-4">
         <div className="col-xl-3 col-md-6">

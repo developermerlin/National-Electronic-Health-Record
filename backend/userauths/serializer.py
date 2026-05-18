@@ -38,6 +38,16 @@ class MyTokenObtainPairSerializer(TokenObtainPairSerializer):
             token['vendor_id'] = user.vendor.id
         except:
             token['vendor_id'] = 0
+        try:
+            profile = user.profile
+            if profile.image and hasattr(profile.image, 'url'):
+                token['photo_url'] = profile.image.url
+            else:
+                token['photo_url'] = None
+            token['address'] = profile.address or None
+        except Exception:
+            token['photo_url'] = None
+            token['address'] = None
 
         return token
     
@@ -162,32 +172,89 @@ class UserCreateSerializer(serializers.ModelSerializer):
     password = serializers.CharField(write_only=True, required=True)
     is_active = serializers.BooleanField(default=False)
     employee_id = serializers.CharField(read_only=True)
-    
+
+    # Profile demographic fields
+    date_of_birth   = serializers.DateField(required=False, allow_null=True)
+    gender          = serializers.CharField(required=False, allow_blank=True, allow_null=True)
+    nationality     = serializers.CharField(required=False, allow_blank=True, allow_null=True)
+    nin_number      = serializers.CharField(required=False, allow_blank=True, allow_null=True)
+    marital_status  = serializers.CharField(required=False, allow_blank=True, allow_null=True)
+    address         = serializers.CharField(required=False, allow_blank=True, allow_null=True)
+    city            = serializers.CharField(required=False, allow_blank=True, allow_null=True)
+    state           = serializers.CharField(required=False, allow_blank=True, allow_null=True)
+    country         = serializers.CharField(required=False, allow_blank=True, allow_null=True)
+
+    # Profile professional fields
+    qualification       = serializers.CharField(required=False, allow_blank=True, allow_null=True)
+    specialization      = serializers.CharField(required=False, allow_blank=True, allow_null=True)
+    license_number      = serializers.CharField(required=False, allow_blank=True, allow_null=True)
+    years_of_experience = serializers.IntegerField(required=False, allow_null=True)
+
+    # Profile emergency contact
+    emergency_contact_name         = serializers.CharField(required=False, allow_blank=True, allow_null=True)
+    emergency_contact_phone        = serializers.CharField(required=False, allow_blank=True, allow_null=True)
+    emergency_contact_relationship = serializers.CharField(required=False, allow_blank=True, allow_null=True)
+
+    # Profile file uploads
+    profile_photo    = serializers.ImageField(required=False, allow_null=True)
+    certificate      = serializers.FileField(required=False, allow_null=True)
+    license_document = serializers.FileField(required=False, allow_null=True)
+    cv               = serializers.FileField(required=False, allow_null=True)
+
+    PROFILE_FIELDS = [
+        'date_of_birth', 'gender', 'nationality', 'nin_number', 'marital_status',
+        'address', 'city', 'state', 'country',
+        'qualification', 'specialization', 'license_number', 'years_of_experience',
+        'emergency_contact_name', 'emergency_contact_phone', 'emergency_contact_relationship',
+        'profile_photo', 'certificate', 'license_document', 'cv',
+    ]
+
     class Meta:
         model = User
-        fields = ['email', 'full_name', 'phone', 'role', 'employee_id', 'hospital', 'department', 'district', 'password', 'is_active']
-    
+        fields = [
+            'email', 'full_name', 'phone', 'role', 'employee_id',
+            'hospital', 'department', 'district', 'password', 'is_active',
+            'date_of_birth', 'gender', 'nationality', 'nin_number', 'marital_status',
+            'address', 'city', 'state', 'country',
+            'qualification', 'specialization', 'license_number', 'years_of_experience',
+            'emergency_contact_name', 'emergency_contact_phone', 'emergency_contact_relationship',
+            'profile_photo', 'certificate', 'license_document', 'cv',
+        ]
+
     def generate_employee_id(self):
         """Generate unique employee ID in format EMP-XXXXX"""
         while True:
-            # Generate random 5-digit number
             random_num = ''.join(random.choices(string.digits, k=5))
             employee_id = f'EMP-{random_num}'
-            
-            # Check if already exists
             if not User.objects.filter(employee_id=employee_id).exists():
                 return employee_id
-    
+
     def create(self, validated_data):
+        # Separate profile fields from user fields
+        profile_data = {}
+        for field in self.PROFILE_FIELDS:
+            if field in validated_data:
+                profile_data[field] = validated_data.pop(field)
+
         password = validated_data.pop('password')
-        
-        # Auto-generate employee_id if not provided
+
         if not validated_data.get('employee_id'):
             validated_data['employee_id'] = self.generate_employee_id()
-        
+
         user = User.objects.create(**validated_data)
         user.set_password(password)
         user.save()
+
+        # Update the auto-created profile
+        profile, _ = Profile.objects.get_or_create(user=user)
+        photo = profile_data.pop('profile_photo', None)
+        for attr, value in profile_data.items():
+            if value not in (None, ''):
+                setattr(profile, attr, value)
+        if photo:
+            profile.image = photo
+        profile.save()
+
         return user
 
 
@@ -326,6 +393,8 @@ class HospitalSerializer(serializers.ModelSerializer):
             'approval_status', 'approval_status_display',
             'approved_by', 'approved_by_name',
             'department_count', 'staff_count',
+            # Documents
+            'hospital_image', 'license_document',
         ]
         extra_kwargs = {'code': {'required': False, 'allow_blank': True, 'allow_null': True}}
 
@@ -381,10 +450,14 @@ class HospitalCreateSerializer(serializers.ModelSerializer):
             'referral_level', 'supervising_authority',
             # Audit
             'is_active', 'approval_status',
+            # Documents
+            'hospital_image', 'license_document',
         ]
         extra_kwargs = {
             'code': {'required': False, 'allow_blank': True, 'allow_null': True},
             'facility_code': {'required': False, 'allow_blank': True, 'allow_null': True},
+            'hospital_image': {'required': False},
+            'license_document': {'required': False},
         }
     
     def validate(self, attrs):
@@ -414,14 +487,65 @@ class PatientSerializer(serializers.ModelSerializer):
     chiefdom_name = serializers.CharField(source='chiefdom.name', read_only=True, default=None)
     town_name = serializers.CharField(source='town.name', read_only=True, default=None)
     has_portal_account = serializers.SerializerMethodField()
+    photo_url = serializers.SerializerMethodField()
 
     def get_has_portal_account(self, obj):
         return obj.user_id is not None
+
+    def get_photo_url(self, obj):
+        if not obj.photo:
+            return None
+        request = self.context.get('request')
+        if request:
+            return request.build_absolute_uri(obj.photo.url)
+        return obj.photo.url
 
     class Meta:
         model = Patient
         fields = '__all__'
         read_only_fields = ['patient_id', 'created_at', 'updated_at']
+
+
+class PatientReferralSerializer(serializers.ModelSerializer):
+    """
+    Limited view of a patient record for cross-hospital referral access.
+    Only shows referral-relevant data (demographics, allergies, chronic
+    conditions, current medications, contact info) — not full lifetime history.
+    """
+    full_name = serializers.CharField(read_only=True)
+    age = serializers.IntegerField(read_only=True)
+    hospital_name = serializers.CharField(source='hospital.name', read_only=True)
+    gender_display = serializers.CharField(source='get_gender_display', read_only=True)
+    blood_type_display = serializers.CharField(source='get_blood_type_display', read_only=True)
+    marital_status_display = serializers.CharField(source='get_marital_status_display', read_only=True, default=None)
+    district_name = serializers.CharField(source='district.name', read_only=True, default=None)
+    chiefdom_name = serializers.CharField(source='chiefdom.name', read_only=True, default=None)
+    town_name = serializers.CharField(source='town.name', read_only=True, default=None)
+
+    class Meta:
+        model = Patient
+        fields = [
+            'id', 'patient_id', 'full_name', 'age',
+            'first_name', 'last_name', 'other_names',
+            'date_of_birth', 'gender', 'gender_display',
+            'marital_status', 'marital_status_display',
+            'nationality', 'national_id',
+            'photo',
+            'phone', 'alt_phone', 'email', 'address', 'city', 'region',
+            'district', 'district_name',
+            'chiefdom', 'chiefdom_name',
+            'town', 'town_name',
+            'blood_type', 'blood_type_display',
+            'allergies', 'chronic_conditions', 'disabilities',
+            'insurance_provider', 'insurance_number',
+            'next_of_kin_name', 'next_of_kin_phone',
+            'next_of_kin_relationship', 'next_of_kin_address',
+            'emergency_contact_name', 'emergency_contact_phone',
+            'emergency_contact_relationship',
+            'hospital', 'hospital_name',
+            'status', 'is_active',
+        ]
+        read_only_fields = fields
 
 
 class PatientCreateSerializer(serializers.ModelSerializer):
@@ -714,6 +838,7 @@ class PatientVisitListSerializer(serializers.ModelSerializer):
     vitals_summary    = serializers.SerializerMethodField()
     vitals            = VitalSignsSerializer(read_only=True)
     clinical_note     = ClinicalNoteSerializer(read_only=True)
+    referred_to_hospital_name = serializers.SerializerMethodField()
 
     class Meta:
         model  = PatientVisit
@@ -721,7 +846,7 @@ class PatientVisitListSerializer(serializers.ModelSerializer):
             'id', 'visit_date', 'visit_type', 'visit_type_display',
             'chief_complaint', 'status', 'status_display',
             'hospital_name', 'department_name', 'doctor_name', 'registered_by_name',
-            'discharge_date', 'referred_to_doctor',
+            'discharge_date', 'referred_to_doctor', 'referred_to_hospital_name',
             'has_vitals', 'has_clinical_note', 'diagnosis',
             'patient_name', 'patient_id_code', 'patient_phone', 'patient_gender', 'patient_pk',
             'vitals_summary', 'vitals', 'clinical_note',
@@ -739,6 +864,7 @@ class PatientVisitListSerializer(serializers.ModelSerializer):
     def get_patient_phone(self, obj):    return obj.patient.phone if obj.patient else None
     def get_patient_gender(self, obj):   return obj.patient.gender if obj.patient else None
     def get_patient_pk(self, obj):       return obj.patient.id if obj.patient else None
+    def get_referred_to_hospital_name(self, obj): return obj.referred_to_hospital.name if obj.referred_to_hospital else None
     def get_diagnosis(self, obj):
         if hasattr(obj, 'clinical_note'):
             return obj.clinical_note.diagnosis

@@ -2,8 +2,12 @@ from rest_framework import generics, status, viewsets
 from rest_framework.decorators import api_view, permission_classes, action
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated, AllowAny
-from django.db.models import Q, Count, Sum, Avg
-from userauths.models import User, Role, Permission, RolePermission, Region, District, Chiefdom, Town, Hospital, Department
+from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
+from django.db.models import Q, Count, Sum, Avg, F
+from django.db.models.functions import TruncMonth, TruncDate
+from django.utils import timezone
+from datetime import timedelta
+from userauths.models import User, Role, Permission, RolePermission, Region, District, Chiefdom, Town, Hospital, Department, PatientVisit, Appointment, AuditLog
 from userauths.serializer import (
     UserSerializer, UserCreateSerializer, UserUpdateSerializer,
     RoleSerializer, SimplePermissionSerializer, RolePermissionAssignSerializer,
@@ -14,6 +18,36 @@ from userauths.serializer import (
 from userauths.models import Profile
 
 
+class AdminWriteMixin:
+    """
+    Mixin that restricts create/update/destroy to admin and ministry_admin.
+    All authenticated users can list/retrieve.
+    """
+    def _require_admin(self, request):
+        role = request.user.role.name if request.user.role else None
+        if role not in ('admin', 'ministry_admin'):
+            return Response(
+                {'error': 'Only system administrators can modify this data.'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        return None
+
+    def create(self, request, *args, **kwargs):
+        err = self._require_admin(request)
+        if err: return err
+        return super().create(request, *args, **kwargs)
+
+    def update(self, request, *args, **kwargs):
+        err = self._require_admin(request)
+        if err: return err
+        return super().update(request, *args, **kwargs)
+
+    def destroy(self, request, *args, **kwargs):
+        err = self._require_admin(request)
+        if err: return err
+        return super().destroy(request, *args, **kwargs)
+
+
 class UserManagementViewSet(viewsets.ModelViewSet):
     """
     ViewSet for managing users in the admin dashboard.
@@ -21,6 +55,7 @@ class UserManagementViewSet(viewsets.ModelViewSet):
     """
     queryset = User.objects.all().select_related('role').order_by('-date_joined')
     permission_classes = [IsAuthenticated]
+    parser_classes = [MultiPartParser, FormParser, JSONParser]
     
     def get_serializer_class(self):
         if self.action == 'create':
@@ -119,13 +154,43 @@ class UserManagementViewSet(viewsets.ModelViewSet):
         }, status=status.HTTP_201_CREATED)
     
     def update(self, request, *args, **kwargs):
-        """Update user information"""
+        """Update user information including profile fields"""
         partial = kwargs.pop('partial', False)
         instance = self.get_object()
         serializer = self.get_serializer(instance, data=request.data, partial=partial)
         serializer.is_valid(raise_exception=True)
         serializer.save()
-        
+
+        # Also update profile fields if present
+        PROFILE_TEXT_FIELDS = [
+            'date_of_birth', 'gender', 'nationality', 'nin_number', 'marital_status',
+            'address', 'city', 'state', 'country',
+            'qualification', 'specialization', 'license_number', 'years_of_experience',
+            'emergency_contact_name', 'emergency_contact_phone', 'emergency_contact_relationship',
+        ]
+        profile, _ = Profile.objects.get_or_create(user=instance)
+        updated = False
+        for field in PROFILE_TEXT_FIELDS:
+            if field in request.data:
+                val = request.data[field]
+                if val not in ('', None):
+                    setattr(profile, field, val)
+                    updated = True
+        if 'profile_photo' in request.FILES:
+            profile.image = request.FILES['profile_photo']
+            updated = True
+        if 'certificate' in request.FILES:
+            profile.certificate = request.FILES['certificate']
+            updated = True
+        if 'license_document' in request.FILES:
+            profile.license_document = request.FILES['license_document']
+            updated = True
+        if 'cv' in request.FILES:
+            profile.cv = request.FILES['cv']
+            updated = True
+        if updated:
+            profile.save()
+
         return Response({
             'message': 'User updated successfully',
             'user': UserSerializer(instance).data
@@ -190,6 +255,34 @@ class UserManagementViewSet(viewsets.ModelViewSet):
             'deleted': True
         }, status=status.HTTP_200_OK)
     
+    @action(detail=True, methods=['get'])
+    def profile(self, request, pk=None):
+        """Get profile data for a specific user (used when opening edit modal)"""
+        user = self.get_object()
+        profile, _ = Profile.objects.get_or_create(user=user)
+        return Response({
+            'image': request.build_absolute_uri(profile.image.url) if profile.image else None,
+            'gender': profile.gender,
+            'date_of_birth': profile.date_of_birth,
+            'nationality': profile.nationality,
+            'nin_number': profile.nin_number,
+            'marital_status': profile.marital_status,
+            'address': profile.address,
+            'city': profile.city,
+            'state': profile.state,
+            'country': profile.country,
+            'qualification': profile.qualification,
+            'specialization': profile.specialization,
+            'license_number': profile.license_number,
+            'years_of_experience': profile.years_of_experience,
+            'emergency_contact_name': profile.emergency_contact_name,
+            'emergency_contact_phone': profile.emergency_contact_phone,
+            'emergency_contact_relationship': profile.emergency_contact_relationship,
+            'certificate': request.build_absolute_uri(profile.certificate.url) if profile.certificate else None,
+            'license_document': request.build_absolute_uri(profile.license_document.url) if profile.license_document else None,
+            'cv': request.build_absolute_uri(profile.cv.url) if profile.cv else None,
+        })
+
     @action(detail=True, methods=['post'])
     def reset_password(self, request, pk=None):
         """Reset user password"""
@@ -236,14 +329,46 @@ class UserManagementViewSet(viewsets.ModelViewSet):
 class RoleManagementViewSet(viewsets.ModelViewSet):
     """
     ViewSet for managing roles and their permissions.
+    Only system administrators (admin, ministry_admin) can modify roles.
+    All authenticated users can read roles.
     """
     queryset = Role.objects.all().order_by('name')
     serializer_class = RoleSerializer
-    permission_classes = [IsAuthenticated]
+
+    def get_permissions(self):
+        if self.action in ['list', 'retrieve']:
+            return [IsAuthenticated()]
+        return [IsAuthenticated()]  # write actions need extra check below
+
+    def check_admin(self, request):
+        role = request.user.role.name if request.user.role else None
+        if role not in ('admin', 'ministry_admin'):
+            return Response(
+                {'error': 'Only system administrators can modify roles and permissions.'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        return None
+
+    def create(self, request, *args, **kwargs):
+        err = self.check_admin(request)
+        if err: return err
+        return super().create(request, *args, **kwargs)
+
+    def update(self, request, *args, **kwargs):
+        err = self.check_admin(request)
+        if err: return err
+        return super().update(request, *args, **kwargs)
+
+    def destroy(self, request, *args, **kwargs):
+        err = self.check_admin(request)
+        if err: return err
+        return super().destroy(request, *args, **kwargs)
     
     @action(detail=True, methods=['post'])
     def assign_permissions(self, request, pk=None):
         """Assign permissions to a role"""
+        err = self.check_admin(request)
+        if err: return err
         role = self.get_object()
         permission_ids = request.data.get('permission_ids', [])
         
@@ -333,7 +458,17 @@ def bulk_user_action(request):
     """
     Perform bulk actions on multiple users.
     Actions: activate, deactivate, delete
+    Only admin, ministry_admin, and hospital_admin can use this.
     """
+    user = request.user
+    role = user.role.name if user.role else None
+
+    if role not in ('admin', 'ministry_admin', 'hospital_admin'):
+        return Response(
+            {'error': 'You do not have permission to perform bulk actions.'},
+            status=status.HTTP_403_FORBIDDEN
+        )
+
     user_ids = request.data.get('user_ids', [])
     action = request.data.get('action', '')
     
@@ -341,8 +476,16 @@ def bulk_user_action(request):
         return Response({
             'error': 'user_ids and action are required'
         }, status=status.HTTP_400_BAD_REQUEST)
-    
+
+    # Hospital admin can only act on users at their own hospital
     users = User.objects.filter(id__in=user_ids)
+    if role == 'hospital_admin' and user.hospital:
+        users = users.filter(hospital=user.hospital)
+    elif role == 'hospital_admin' and not user.hospital:
+        return Response(
+            {'error': 'No hospital assigned to your account.'},
+            status=status.HTTP_403_FORBIDDEN
+        )
     
     if action == 'activate':
         users.update(is_active=True)
@@ -366,7 +509,7 @@ def bulk_user_action(request):
 
 # ============ Organization ViewSets ============
 
-class RegionViewSet(viewsets.ModelViewSet):
+class RegionViewSet(AdminWriteMixin, viewsets.ModelViewSet):
     """CRUD for Regions (Ministry level management)"""
     queryset = Region.objects.all().order_by('name')
     serializer_class = RegionSerializer
@@ -383,7 +526,7 @@ class RegionViewSet(viewsets.ModelViewSet):
         return queryset
 
 
-class DistrictViewSet(viewsets.ModelViewSet):
+class DistrictViewSet(AdminWriteMixin, viewsets.ModelViewSet):
     """CRUD for Districts"""
     queryset = District.objects.all().select_related('region').order_by('region__name', 'name')
     serializer_class = DistrictSerializer
@@ -403,7 +546,7 @@ class DistrictViewSet(viewsets.ModelViewSet):
         return queryset
 
 
-class ChiefdomViewSet(viewsets.ModelViewSet):
+class ChiefdomViewSet(AdminWriteMixin, viewsets.ModelViewSet):
     """CRUD for Chiefdoms"""
     queryset = Chiefdom.objects.all().select_related('district', 'district__region').order_by('district__region__name', 'district__name', 'name')
     serializer_class = ChiefdomSerializer
@@ -423,7 +566,7 @@ class ChiefdomViewSet(viewsets.ModelViewSet):
         return qs
 
 
-class TownViewSet(viewsets.ModelViewSet):
+class TownViewSet(AdminWriteMixin, viewsets.ModelViewSet):
     """CRUD for Towns"""
     queryset = Town.objects.all().select_related('district', 'district__region', 'chiefdom').order_by('district__region__name', 'district__name', 'name')
     serializer_class = TownSerializer
@@ -446,7 +589,7 @@ class TownViewSet(viewsets.ModelViewSet):
         return qs
 
 
-class HospitalViewSet(viewsets.ModelViewSet):
+class HospitalViewSet(AdminWriteMixin, viewsets.ModelViewSet):
     """CRUD for Hospitals"""
     queryset = Hospital.objects.all().select_related(
         'district', 'district__region', 'admin_user', 'created_by', 'last_updated_by', 'approved_by'
@@ -513,14 +656,35 @@ class HospitalViewSet(viewsets.ModelViewSet):
         })
 
 
-class DepartmentViewSet(viewsets.ModelViewSet):
+class DepartmentViewSet(AdminWriteMixin, viewsets.ModelViewSet):
     """CRUD for Departments within hospitals"""
     queryset = Department.objects.all().select_related('hospital', 'hospital__district').order_by('hospital__name', 'name')
     serializer_class = DepartmentSerializer
     permission_classes = [IsAuthenticated]
 
+    def _require_admin(self, request):
+        role = request.user.role.name if request.user.role else None
+        if role in ('admin', 'ministry_admin'):
+            return None
+        if role == 'hospital_admin' and request.user.hospital:
+            return None
+        return Response(
+            {'error': 'Only administrators can manage departments.'},
+            status=status.HTTP_403_FORBIDDEN
+        )
+
+    def perform_create(self, serializer):
+        role = self.request.user.role.name if self.request.user.role else None
+        if role == 'hospital_admin' and self.request.user.hospital:
+            serializer.save(hospital=self.request.user.hospital)
+        else:
+            serializer.save()
+
     def get_queryset(self):
         queryset = super().get_queryset()
+        role = self.request.user.role.name if self.request.user.role else None
+        if role == 'hospital_admin' and self.request.user.hospital:
+            queryset = queryset.filter(hospital=self.request.user.hospital)
         hospital = self.request.query_params.get('hospital', None)
         if hospital:
             queryset = queryset.filter(hospital_id=hospital)
@@ -537,6 +701,13 @@ def ministry_dashboard(request):
     National-level dashboard for Ministry administrators.
     Shows aggregate stats across all regions, districts, and hospitals.
     """
+    user = request.user
+    role = user.role.name if user.role else None
+    if role not in ('admin', 'ministry_admin'):
+        return Response(
+            {'error': 'Only ministry administrators can access national dashboards.'},
+            status=status.HTTP_403_FORBIDDEN
+        )
     total_regions = Region.objects.filter(is_active=True).count()
     total_districts = District.objects.filter(is_active=True).count()
     total_hospitals = Hospital.objects.filter(is_active=True).count()
@@ -662,6 +833,172 @@ def ministry_dashboard(request):
     })
 
 
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def referral_doctors(request):
+    """
+    Returns all active doctors across all hospitals for use in referral dropdowns.
+    Optionally filter by ?hospital=<id> to scope to a specific hospital.
+    Any authenticated staff member can call this.
+    """
+    qs = User.objects.filter(
+        role__name='doctor',
+        is_active=True,
+    ).select_related('hospital', 'role').order_by('full_name')
+
+    hospital_id = request.query_params.get('hospital')
+    if hospital_id:
+        qs = qs.filter(hospital_id=hospital_id)
+
+    doctors = [
+        {
+            'id': d.id,
+            'full_name': d.full_name or d.email,
+            'email': d.email,
+            'hospital_id': d.hospital_id,
+            'hospital_name': d.hospital.name if d.hospital else '—',
+        }
+        for d in qs
+    ]
+    return Response({'doctors': doctors})
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def hospital_dashboard(request):
+    """
+    Hospital-level dashboard for hospital administrators.
+    Shows stats scoped to one hospital.
+    """
+    user = request.user
+    role = user.role.name if user.role else None
+    hosp = user.hospital
+
+    if role not in ('admin', 'hospital_admin', 'ministry_admin'):
+        return Response(
+            {'error': 'You do not have permission to access this dashboard.'},
+            status=status.HTTP_403_FORBIDDEN
+        )
+
+    if not hosp:
+        return Response(
+            {'error': 'No hospital assigned to your account.'},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+
+    now = timezone.now()
+    today = now.date()
+    thirty_days_ago = now - timedelta(days=30)
+    six_months_ago = now - timedelta(days=180)
+
+    # ── Core counts ──
+    total_staff = User.objects.filter(hospital=hosp, is_active=True).count()
+    total_patients = hosp.patients.filter(is_active=True).count()
+    total_visits = hosp.visits.count()
+    total_departments = hosp.departments.filter(is_active=True).count()
+
+    # ── Today's activity ──
+    visits_today = hosp.visits.filter(visit_date__date=today).count()
+    active_visits = hosp.visits.filter(status__in=['registered', 'waiting', 'triaged', 'in_progress']).count()
+    new_patients_this_month = hosp.patients.filter(
+        is_active=True, created_at__gte=thirty_days_ago
+    ).count()
+
+    # ── Appointment stats (Appointment has no hospital FK — scope via doctor's hospital) ──
+    appointments_today = Appointment.objects.filter(doctor__hospital=hosp, scheduled_at__date=today).count()
+    appointments_pending = Appointment.objects.filter(doctor__hospital=hosp, status='pending').count()
+    appointments_confirmed = Appointment.objects.filter(doctor__hospital=hosp, status='confirmed').count()
+
+    # ── Visits by status ──
+    visits_by_status = list(
+        hosp.visits.values('status').annotate(count=Count('id'))
+    )
+
+    # ── Monthly visit trend (last 6 months) ──
+    monthly_trend = list(
+        hosp.visits
+        .filter(visit_date__gte=six_months_ago)
+        .annotate(month=TruncMonth('visit_date'))
+        .values('month')
+        .annotate(count=Count('id'))
+        .order_by('month')
+    )
+    monthly_trend_data = [
+        {'month': m['month'].strftime('%b %Y'), 'count': m['count']}
+        for m in monthly_trend
+    ]
+
+    # ── Top departments by visit count ──
+    top_departments = list(
+        hosp.visits
+        .filter(department__isnull=False)
+        .values('department__name')
+        .annotate(count=Count('id'))
+        .order_by('-count')[:5]
+    )
+
+    # ── Recent visits ──
+    recent_visits = hosp.visits.select_related('patient', 'department', 'doctor').order_by('-visit_date')[:8]
+    recent_visits_data = [{
+        'id': v.id,
+        'patient_name': v.patient.full_name if v.patient else '—',
+        'patient_pk': v.patient.id if v.patient else None,
+        'visit_type': v.visit_type,
+        'status': v.status,
+        'visit_date': v.visit_date,
+        'department': v.department.name if v.department else '—',
+        'doctor': v.doctor.full_name if v.doctor else '—',
+    } for v in recent_visits]
+
+    # ── Staff by role ──
+    staff_by_role = list(
+        User.objects.filter(hospital=hosp, is_active=True)
+        .values('role__name')
+        .annotate(count=Count('id'))
+    )
+
+    # ── Recent audit events (last 10) ──
+    # user_hospital and patient_hospital are ForeignKeys to Hospital
+    recent_audit = list(
+        AuditLog.objects.filter(
+            Q(user_hospital=hosp) | Q(patient_hospital=hosp)
+        ).order_by('-created_at')[:10]
+        .values(
+            'id', 'action', 'access_type', 'outcome',
+            'created_at', 'user_name', 'user_role', 'patient_name',
+        )
+    )
+
+    return Response({
+        'hospital': {
+            'id': hosp.id,
+            'name': hosp.name,
+            'hospital_type_display': hosp.get_hospital_type_display() if hasattr(hosp, 'get_hospital_type_display') else None,
+            'district_name': hosp.district.name if hosp.district else None,
+            'code': hosp.code if hasattr(hosp, 'code') else None,
+            'hospital_image': request.build_absolute_uri(hosp.hospital_image.url) if hosp.hospital_image else None,
+        },
+        'overview': {
+            'total_staff': total_staff,
+            'total_patients': total_patients,
+            'total_visits': total_visits,
+            'total_departments': total_departments,
+            'visits_today': visits_today,
+            'active_visits': active_visits,
+            'new_patients_this_month': new_patients_this_month,
+            'appointments_today': appointments_today,
+            'appointments_pending': appointments_pending,
+            'appointments_confirmed': appointments_confirmed,
+        },
+        'visits_by_status': visits_by_status,
+        'monthly_trend': monthly_trend_data,
+        'top_departments': top_departments,
+        'recent_visits': recent_visits_data,
+        'staff_by_role': staff_by_role,
+        'recent_audit': recent_audit,
+    })
+
+
 @api_view(['GET', 'PUT'])
 @permission_classes([IsAuthenticated])
 def my_profile(request):
@@ -734,7 +1071,16 @@ def my_profile(request):
             profile.state = data['state']
         if 'address' in data:
             profile.address = data['address']
+        if 'profile_photo' in request.FILES:
+            profile.image = request.FILES['profile_photo']
 
         profile.save()
 
-        return Response({'message': 'Profile updated successfully'})
+        photo_url = None
+        if profile.image:
+            try:
+                photo_url = request.build_absolute_uri(profile.image.url)
+            except Exception:
+                pass
+
+        return Response({'message': 'Profile updated successfully', 'photo_url': photo_url})

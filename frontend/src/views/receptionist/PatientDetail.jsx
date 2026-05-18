@@ -82,6 +82,18 @@ function PatientDetail() {
   const [emergencyError, setEmergencyError] = useState('');
   const [accessDenied, setAccessDenied] = useState(false);
 
+  // ── Referral state ──
+  const [showReferralModal, setShowReferralModal]   = useState(false);
+  const [allHospitals, setAllHospitals]             = useState([]);
+  const [destDepartments, setDestDepartments]       = useState([]);
+  const [destDoctors, setDestDoctors]               = useState([]);
+  const [referralForm, setReferralForm]             = useState({
+    referred_to_hospital: '', department: '', doctor: '', reason: '', notes: '',
+  });
+  const [referralSaving, setReferralSaving]         = useState(false);
+  const [referralError, setReferralError]           = useState('');
+  const [referralSuccess, setReferralSuccess]       = useState('');
+
   useEffect(() => {
     const fetchHospital = async () => {
       if (!user?.hospital_id) return;
@@ -94,7 +106,7 @@ function PatientDetail() {
       } catch (err) { console.error('Error fetching hospital:', err); }
     };
     fetchHospital();
-  }, [apiCall, user?.hospital_id]);
+  }, [user?.hospital_id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handlePrintRecord = () => {
     window.print();
@@ -131,7 +143,7 @@ function PatientDetail() {
     } finally {
       setLoading(false);
     }
-  }, [id, apiCall]);
+  }, [id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const fetchVisitHistory = useCallback(async () => {
     setLoadingVisits(true);
@@ -148,7 +160,7 @@ function PatientDetail() {
     } finally {
       setLoadingVisits(false);
     }
-  }, [id, apiCall]);
+  }, [id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleEmergencyAccess = async () => {
     if (!emergencyJustification.trim() || emergencyJustification.trim().length < 10) {
@@ -179,6 +191,79 @@ function PatientDetail() {
     }
   };
 
+  const openReferralModal = async () => {
+    setReferralForm({ referred_to_hospital: '', department: '', doctor: '', reason: '', notes: '' });
+    setReferralError('');
+    setReferralSuccess('');
+    setDestDepartments([]);
+    setDestDoctors([]);
+    // Load all hospitals (excluding the current one) for the dropdown
+    try {
+      const res = await apiCall('/admin/hospitals/');
+      if (res.ok) {
+        const data = await res.json();
+        const list = Array.isArray(data) ? data : data.results || [];
+        setAllHospitals(list.filter(h => h.id !== user?.hospital_id));
+      }
+    } catch { /* silent */ }
+    setShowReferralModal(true);
+  };
+
+  const onReferralHospitalChange = async (hospitalId) => {
+    setReferralForm(f => ({ ...f, referred_to_hospital: hospitalId, department: '', doctor: '' }));
+    setDestDepartments([]);
+    setDestDoctors([]);
+    if (!hospitalId) return;
+    try {
+      const [deptRes, docRes] = await Promise.all([
+        apiCall(`/admin/departments/?hospital=${hospitalId}`),
+        apiCall(`/admin/referral-doctors/`),
+      ]);
+      if (deptRes.ok) {
+        const d = await deptRes.json();
+        setDestDepartments(Array.isArray(d) ? d : d.results || []);
+      }
+      if (docRes.ok) {
+        const d = await docRes.json();
+        setDestDoctors(d.doctors || []);
+      }
+    } catch { /* silent */ }
+  };
+
+  const handleReferralSubmit = async () => {
+    if (!referralForm.referred_to_hospital) { setReferralError('Please select a destination hospital.'); return; }
+    if (!referralForm.reason.trim()) { setReferralError('A referral reason is required.'); return; }
+    setReferralSaving(true);
+    setReferralError('');
+    try {
+      const body = {
+        referred_to_hospital: referralForm.referred_to_hospital,
+        reason: referralForm.reason.trim(),
+        notes: referralForm.notes.trim(),
+      };
+      if (referralForm.department) body.department = referralForm.department;
+      if (referralForm.doctor)     body.doctor     = referralForm.doctor;
+
+      const res = await apiCall(`/patients/${id}/refer/`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setReferralSuccess(data.message || 'Referral sent successfully.');
+        // Refresh visit history so referral appears immediately
+        fetchVisitHistory();
+      } else {
+        setReferralError(data.error || 'Failed to send referral.');
+      }
+    } catch {
+      setReferralError('Network error. Please try again.');
+    } finally {
+      setReferralSaving(false);
+    }
+  };
+
   const fetchLookups = useCallback(async () => {
     try {
       const [dRes, depRes] = await Promise.all([
@@ -194,7 +279,7 @@ function PatientDetail() {
         setDepartments(Array.isArray(dep) ? dep : dep.results || []);
       }
     } catch (err) { console.error('Error fetching lookups:', err); }
-  }, [apiCall]);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     fetchPatient();
@@ -775,6 +860,12 @@ function PatientDetail() {
               <span style={{ fontSize: '12px', color: '#86efac', fontWeight: 600, padding: '6px 0' }}>
                 <i className="fas fa-check-circle me-1"></i>Portal Active
               </span>
+            )}
+            {['doctor', 'receptionist', 'hospital_admin', 'admin'].includes(user?.role) && (
+              <button className="btn btn-warning btn-sm" onClick={openReferralModal}
+                style={{ fontWeight: 600 }}>
+                <i className="fas fa-share-square me-2"></i>Refer Patient
+              </button>
             )}
             <button className="btn btn-outline-light btn-sm" onClick={handlePrintRecord}>
               <i className="fas fa-print me-2"></i>Print Record
@@ -1412,6 +1503,141 @@ function PatientDetail() {
         </div>
       )}
       </div>
+
+      {/* ── Refer Patient Modal ── */}
+      {showReferralModal && (
+        <div className="modal fade show d-block" style={{ background: 'rgba(0,0,0,0.55)', zIndex: 9999 }}>
+          <div className="modal-dialog modal-dialog-centered" style={{ maxWidth: 580 }}>
+            <div className="modal-content border-0 shadow" style={{ borderRadius: 16 }}>
+
+              {/* Header */}
+              <div className="modal-header border-0 pb-0" style={{ background: 'linear-gradient(135deg,#f77f0011,#4361ee11)', borderRadius: '16px 16px 0 0' }}>
+                <h5 className="modal-title fw-bold" style={{ color: '#1a1a2e', fontSize: 17 }}>
+                  <i className="fas fa-share-square me-2" style={{ color: '#f77f00' }}></i>
+                  Refer Patient — {patient?.full_name}
+                </h5>
+                <button type="button" className="btn-close" onClick={() => setShowReferralModal(false)}></button>
+              </div>
+
+              <div className="modal-body pt-3">
+
+                {/* Success state */}
+                {referralSuccess ? (
+                  <div style={{ textAlign: 'center', padding: '20px 0' }}>
+                    <div style={{ width: 64, height: 64, borderRadius: '50%', background: '#dcfce7', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 16px' }}>
+                      <i className="fas fa-check" style={{ fontSize: 28, color: '#16a34a' }}></i>
+                    </div>
+                    <div style={{ fontSize: 15, fontWeight: 700, color: '#16a34a', marginBottom: 8 }}>{referralSuccess}</div>
+                    <div style={{ fontSize: 13, color: '#64748b', marginBottom: 20 }}>
+                      The destination hospital staff can now access this patient's referral record.
+                    </div>
+                    <button className="btn btn-success btn-sm" onClick={() => setShowReferralModal(false)}>Close</button>
+                  </div>
+                ) : (
+                  <>
+                    {referralError && (
+                      <div className="alert alert-danger py-2" style={{ borderRadius: 10, fontSize: 13 }}>{referralError}</div>
+                    )}
+
+                    <div className="alert alert-info py-2 mb-3" style={{ borderRadius: 10, fontSize: 12 }}>
+                      <i className="fas fa-info-circle me-2"></i>
+                      A referral visit record will be created at your hospital and the receiving hospital staff will be granted access to this patient's record.
+                    </div>
+
+                    {/* Destination Hospital */}
+                    <div className="mb-3">
+                      <label className="form-label fw-semibold" style={{ fontSize: 13 }}>
+                        Destination Hospital <span className="text-danger">*</span>
+                      </label>
+                      <select className="form-select form-select-sm"
+                        value={referralForm.referred_to_hospital}
+                        onChange={e => onReferralHospitalChange(e.target.value)}>
+                        <option value="">— Select hospital —</option>
+                        {allHospitals.map(h => (
+                          <option key={h.id} value={h.id}>{h.name}</option>
+                        ))}
+                      </select>
+                    </div>
+
+                    {/* Department at destination */}
+                    {destDepartments.length > 0 && (
+                      <div className="mb-3">
+                        <label className="form-label fw-semibold" style={{ fontSize: 13 }}>Department (optional)</label>
+                        <select className="form-select form-select-sm"
+                          value={referralForm.department}
+                          onChange={e => setReferralForm(f => ({ ...f, department: e.target.value }))}>
+                          <option value="">— Any department —</option>
+                          {destDepartments.map(d => (
+                            <option key={d.id} value={d.id}>{d.name}</option>
+                          ))}
+                        </select>
+                      </div>
+                    )}
+
+                    {/* Doctor — always shown once a hospital is selected */}
+                    {referralForm.referred_to_hospital && (
+                      <div className="mb-3">
+                        <label className="form-label fw-semibold" style={{ fontSize: 13 }}>
+                          Referring to Doctor (optional)
+                          {destDoctors.length === 0 && (
+                            <span className="text-muted fw-normal ms-2" style={{ fontSize: 11 }}>
+                              <span className="spinner-border spinner-border-sm me-1" style={{ width: 10, height: 10 }}></span>
+                              Loading...
+                            </span>
+                          )}
+                        </label>
+                        <select className="form-select form-select-sm"
+                          value={referralForm.doctor}
+                          onChange={e => setReferralForm(f => ({ ...f, doctor: e.target.value }))}
+                          disabled={destDoctors.length === 0}>
+                          <option value="">— No specific doctor —</option>
+                          {destDoctors.map(d => (
+                            <option key={d.id} value={d.id}>
+                              Dr. {d.full_name || d.email}{d.hospital_name && d.hospital_name !== '—' ? ` · ${d.hospital_name}` : ''}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    )}
+
+                    {/* Referral Reason */}
+                    <div className="mb-3">
+                      <label className="form-label fw-semibold" style={{ fontSize: 13 }}>
+                        Referral Reason / Chief Complaint <span className="text-danger">*</span>
+                      </label>
+                      <textarea className="form-control form-control-sm" rows={3}
+                        placeholder="e.g. Requires specialist cardiology review for chest pain..."
+                        value={referralForm.reason}
+                        onChange={e => setReferralForm(f => ({ ...f, reason: e.target.value }))} />
+                    </div>
+
+                    {/* Additional Notes */}
+                    <div className="mb-1">
+                      <label className="form-label fw-semibold" style={{ fontSize: 13 }}>Additional Notes (optional)</label>
+                      <textarea className="form-control form-control-sm" rows={2}
+                        placeholder="Any additional clinical notes for the receiving team..."
+                        value={referralForm.notes}
+                        onChange={e => setReferralForm(f => ({ ...f, notes: e.target.value }))} />
+                    </div>
+                  </>
+                )}
+              </div>
+
+              {!referralSuccess && (
+                <div className="modal-footer border-0 pt-0">
+                  <button className="btn btn-secondary btn-sm" onClick={() => setShowReferralModal(false)}>Cancel</button>
+                  <button className="btn btn-warning btn-sm fw-bold" onClick={handleReferralSubmit} disabled={referralSaving}>
+                    {referralSaving
+                      ? <><span className="spinner-border spinner-border-sm me-2"></span>Sending Referral...</>
+                      : <><i className="fas fa-share-square me-2"></i>Send Referral</>
+                    }
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ── Emergency Access Modal ── */}
       {showEmergencyModal && (

@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import DashboardLayout from '../../layout/DashboardLayout';
 import showToast from '../../utils/toast';
+import PrimaryButton from '../../components/PrimaryButton';
 import ConfirmModal from '../../components/ConfirmModal';
 import { getNavForUser, getBrandForUser, getRoleBadge } from '../../utils/navItems';
 
@@ -87,14 +88,14 @@ function DistrictManagement() {
         setShowCreateModal(false);
         setFormData({ name: '', region: '', description: '', is_active: true });
         fetchDistricts();
-        showToast.success('District created successfully!');
+        showToast.created('District');
       } else {
         const data = await response.json();
         const msg = Object.values(data).flat().join(', ');
-        showToast.error(msg || 'Failed to create district');
+        showToast.createError(msg || 'District');
       }
     } catch {
-      showToast.error('Error creating district. Please try again.');
+      showToast.networkError();
     }
   };
 
@@ -110,14 +111,14 @@ function DistrictManagement() {
         setSelectedDistrict(null);
         setFormData({ name: '', region: '', description: '', is_active: true });
         fetchDistricts();
-        showToast.success('District updated successfully!');
+        showToast.updated('District');
       } else {
         const data = await response.json();
         const msg = Object.values(data).flat().join(', ');
-        showToast.error(msg || 'Failed to update district');
+        showToast.updateError(msg || 'District');
       }
     } catch {
-      showToast.error('Error updating district. Please try again.');
+      showToast.networkError();
     }
   };
 
@@ -130,12 +131,12 @@ function DistrictManagement() {
       const response = await apiCall(`/admin/districts/${confirmDelete.id}/`, { method: 'DELETE' });
       if (response.ok) {
         fetchDistricts();
-        showToast.success('District deleted successfully!');
+        showToast.deleted('District');
       } else {
-        showToast.error('Failed to delete district');
+        showToast.deleteError('District');
       }
     } catch {
-      showToast.error('Error deleting district. Please try again.');
+      showToast.networkError();
     } finally {
       setConfirmDelete({ show: false, id: null });
     }
@@ -211,10 +212,9 @@ function DistrictManagement() {
                 <p className="text-muted mb-0">Manage districts within regions</p>
               </div>
               {!isReadOnly && (
-                <button className="btn btn-primary"
-                  onClick={() => { setFormData({ name: '', region: '', description: '', is_active: true }); setShowCreateModal(true); }}>
-                  <i className="fas fa-plus me-2"></i>Add District
-                </button>
+                <PrimaryButton onClick={() => { setFormData({ name: '', region: '', description: '', is_active: true }); setShowCreateModal(true); }}>
+                  Add District
+                </PrimaryButton>
               )}
             </div>
           </div>

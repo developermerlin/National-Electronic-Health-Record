@@ -216,22 +216,6 @@ function DoctorDashboard() {
   return (
     <DashboardLayout navItems={getNavForUser(user)} brandTitle={getBrandForUser(user)} roleBadge={getRoleBadge(user)}>
 
-      {/* Welcome Banner */}
-      <div className="dash-welcome-banner mb-4">
-        <div className="d-flex justify-content-between align-items-start">
-          <div>
-            <h3>Welcome back, Dr. {user?.full_name?.split(' ').pop() || 'Doctor'}!</h3>
-            <p className="mb-0">
-              <span className="me-3"><i className="fas fa-hospital me-1"></i>{user?.hospital?.name || 'Hospital'}</span>
-              <span className="me-3"><i className="fas fa-id-card me-1"></i>{user?.doctor_id || 'Doctor ID'}</span>
-              <span><i className="fas fa-user-md me-1"></i>{user?.specialty || 'General Practice'}</span>
-            </p>
-          </div>
-          <a href="/doctor/appointment-requests" className="btn btn-light">
-            <i className="fas fa-plus me-2"></i>Manage Requests
-          </a>
-        </div>
-      </div>
 
       {/* Next Upcoming Appointment Card */}
       {nextAppointment && (

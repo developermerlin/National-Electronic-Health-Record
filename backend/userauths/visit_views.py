@@ -43,9 +43,21 @@ class PatientVisitViewSet(viewsets.ModelViewSet):
 
         role = user.role.name if user.role else None
 
-        # Scope by hospital unless national/district admin
-        if role not in ('ministry_admin', 'admin'):
-            qs = qs.filter(hospital=user.hospital)
+        # direction=incoming → referrals sent TO this hospital from another hospital
+        direction = self.request.query_params.get('direction')
+        if direction == 'incoming' and user.hospital:
+            qs = qs.filter(
+                visit_type='referral',
+                referred_to_hospital=user.hospital,
+            )
+        else:
+            # Scope by hospital unless national/district admin
+            if role not in ('ministry_admin', 'admin'):
+                qs = qs.filter(hospital=user.hospital)
+
+        # triage role: restrict to active triage statuses only (unless explicit status filter given)
+        if role == 'triage' and not self.request.query_params.get('status'):
+            qs = qs.filter(status__in=['registered', 'triaged', 'waiting', 'in_progress'])
 
         # Filters from query params
         patient_id = self.request.query_params.get('patient')
