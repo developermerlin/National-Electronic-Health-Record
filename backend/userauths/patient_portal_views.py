@@ -6,7 +6,7 @@ from django.contrib.auth.password_validation import validate_password
 from django.core.exceptions import ValidationError
 from datetime import datetime
 
-from userauths.models import User, Role, Patient, Hospital, Appointment, Department, Notification
+from userauths.models import User, Role, Patient, Hospital, Appointment, Department, Notification, PatientVisit
 from userauths.serializer import PatientSerializer, AppointmentSerializer, NotificationSerializer
 
 
@@ -107,7 +107,7 @@ def patient_own_profile(request):
         patient = request.user.patient_record
     except Patient.DoesNotExist:
         return Response({'error': 'Patient record not found.'}, status=status.HTTP_404_NOT_FOUND)
-    return Response(PatientSerializer(patient).data)
+    return Response(PatientSerializer(patient, context={'request': request}).data)
 
 
 # ─────────────────────────────────────────────
@@ -290,3 +290,59 @@ def list_available_doctors(request):
         'hospital_name': hospital.name,
         'doctors': list(doctors),
     })
+
+
+# ─────────────────────────────────────────────
+# PATIENT: Medical history (own visits)
+# ─────────────────────────────────────────────
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def patient_medical_history(request):
+    if not _is_patient(request.user):
+        return Response({'error': 'Not authorized.'}, status=status.HTTP_403_FORBIDDEN)
+    try:
+        patient = request.user.patient_record
+    except Patient.DoesNotExist:
+        return Response({'error': 'Patient record not found.'}, status=status.HTTP_404_NOT_FOUND)
+
+    visits = (
+        PatientVisit.objects
+        .filter(patient=patient)
+        .select_related('hospital', 'department', 'doctor', 'clinical_note')
+        .prefetch_related('vitals')
+        .order_by('-visit_date')
+    )
+
+    history = []
+    for v in visits:
+        note = getattr(v, 'clinical_note', None)
+        vitals = getattr(v, 'vitals', None)
+        history.append({
+            'id': v.id,
+            'visit_date': v.visit_date,
+            'visit_type': v.visit_type,
+            'visit_type_display': v.get_visit_type_display(),
+            'status': v.status,
+            'status_display': v.get_status_display(),
+            'hospital': v.hospital.name if v.hospital else None,
+            'department': v.department.name if v.department else None,
+            'doctor': v.doctor.full_name if v.doctor else None,
+            'chief_complaint': v.chief_complaint,
+            'discharge_date': v.discharge_date,
+            'discharge_notes': v.discharge_notes or None,
+            'diagnosis': note.diagnosis if note else None,
+            'secondary_diagnoses': note.secondary_diagnoses or None if note else None,
+            'treatment_plan': note.treatment_plan or None if note else None,
+            'prescriptions': note.prescriptions or None if note else None,
+            'follow_up_date': note.follow_up_date if note else None,
+            'follow_up_instructions': note.follow_up_instructions or None if note else None,
+            'vitals': {
+                'blood_pressure': vitals.blood_pressure if vitals else None,
+                'heart_rate': vitals.heart_rate if vitals else None,
+                'temperature': str(vitals.temperature_celsius) if vitals and vitals.temperature_celsius else None,
+                'weight_kg': str(vitals.weight_kg) if vitals and vitals.weight_kg else None,
+                'oxygen_saturation': str(vitals.oxygen_saturation) if vitals and vitals.oxygen_saturation else None,
+            } if vitals else None,
+        })
+
+    return Response(history)

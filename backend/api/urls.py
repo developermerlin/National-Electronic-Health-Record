@@ -11,6 +11,10 @@ from userauths import patient_portal_views
 from userauths import doctor_appointment_views
 from userauths import doctor_availability_views
 from userauths import audit_views
+from userauths import pharmacist_views
+from userauths import lab_views
+from userauths import inventory_views
+from userauths import mch_views
 
 # from store import views as store_views
 # from customer import views as customer_views
@@ -85,6 +89,7 @@ urlpatterns = [
     path('portal/notifications/', patient_portal_views.patient_notifications, name='portal-notifications'),
     path('portal/notifications/read-all/', patient_portal_views.mark_all_notifications_read, name='portal-notifications-read-all'),
     path('portal/notifications/<int:notif_id>/read/', patient_portal_views.mark_notification_read, name='portal-notification-read'),
+    path('portal/medical-history/', patient_portal_views.patient_medical_history, name='portal-medical-history'),
 
     # Doctor dashboard
     path('doctor/dashboard/', doctor_appointment_views.doctor_dashboard, name='doctor-dashboard'),
@@ -98,6 +103,34 @@ urlpatterns = [
     path('doctor/notifications/', doctor_appointment_views.doctor_notifications, name='doctor-notifications'),
     path('doctor/notifications/read-all/', doctor_appointment_views.doctor_mark_all_read, name='doctor-notifications-read-all'),
     path('doctor/notifications/<int:notif_id>/read/', doctor_appointment_views.doctor_mark_notification_read, name='doctor-notification-read'),
+
+    # Pharmacist endpoints
+    path('pharmacist/dashboard/', pharmacist_views.pharmacist_dashboard, name='pharmacist-dashboard'),
+    path('pharmacist/prescriptions/', pharmacist_views.pharmacist_prescriptions, name='pharmacist-prescriptions'),
+    path('pharmacist/prescriptions/<int:note_id>/dispense/', pharmacist_views.pharmacist_dispense, name='pharmacist-dispense'),
+    path('pharmacist/prescriptions/<int:note_id>/undispense/', pharmacist_views.pharmacist_undispense, name='pharmacist-undispense'),
+
+    # Lab Technician endpoints
+    path('lab/dashboard/', lab_views.lab_dashboard, name='lab-dashboard'),
+    path('lab/tests/', lab_views.lab_tests_list, name='lab-tests-list'),
+    path('lab/tests/<int:test_id>/', lab_views.lab_test_detail, name='lab-test-detail'),
+    path('lab/tests/<int:test_id>/collect/', lab_views.lab_collect_sample, name='lab-collect-sample'),
+    path('lab/tests/<int:test_id>/result/', lab_views.lab_record_result, name='lab-record-result'),
+    path('lab/tests/<int:test_id>/notify/', lab_views.lab_notify_doctor, name='lab-notify-doctor'),
+
+    # Drug Inventory endpoints
+    path('pharmacy/inventory/stats/', inventory_views.inventory_stats, name='inventory-stats'),
+    path('pharmacy/inventory/', inventory_views.inventory_list, name='inventory-list'),
+    path('pharmacy/inventory/<int:drug_id>/', inventory_views.inventory_detail, name='inventory-detail'),
+    path('pharmacy/inventory/<int:drug_id>/restock/', inventory_views.inventory_restock, name='inventory-restock'),
+    path('pharmacy/inventory/<int:drug_id>/adjust/', inventory_views.inventory_adjust, name='inventory-adjust'),
+
+    # MCH endpoints
+    path('mch/dashboard/', mch_views.mch_dashboard, name='mch-dashboard'),
+    path('mch/anc/', mch_views.anc_list, name='anc-list'),
+    path('mch/anc/<int:anc_id>/', mch_views.anc_detail, name='anc-detail'),
+    path('mch/immunizations/', mch_views.immunization_list, name='immunization-list'),
+    path('mch/patients/<int:patient_id>/profile/', mch_views.patient_mch_profile, name='patient-mch-profile'),
 
     # Doctor availability / schedule management
     path('doctor/availability/', doctor_availability_views.doctor_availability, name='doctor-availability'),

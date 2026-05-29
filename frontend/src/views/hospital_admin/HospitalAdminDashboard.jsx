@@ -283,6 +283,36 @@ export default function HospitalAdminDashboard() {
         <Card icon="fas fa-building"        label="Departments"          value={ov.total_departments} color="#059669" bg="#d1fae5" link="/admin/departments"              linkLabel="Manage" />
       </div>
 
+      {/* ══ DEPARTMENT QUICK ACCESS ══ */}
+      <div style={{ fontSize: 11, fontWeight: 700, color: '#94a3b8', letterSpacing: '1.5px', textTransform: 'uppercase', marginBottom: 10 }}>CLINICAL DEPARTMENTS</div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(190px, 1fr))', gap: 14, marginBottom: 24 }}>
+        {[
+          { icon: 'fas fa-user-md',        label: 'Doctor',        sub: 'Consultations & Queue',      link: '/doctor/dashboard',             color: '#4361ee', bg: '#eff2ff' },
+          { icon: 'fas fa-pills',          label: 'Pharmacy',      sub: 'Prescriptions & Inventory',  link: '/pharmacy/dashboard',           color: '#7c3aed', bg: '#f3e8ff' },
+          { icon: 'fas fa-user-nurse',     label: 'Nursing & MCH', sub: 'Triage, ANC, Immunization', link: '/nurse/dashboard',              color: '#e11d48', bg: '#ffe4e6' },
+          { icon: 'fas fa-flask',          label: 'Laboratory',    sub: 'Tests & Results',            link: '/lab/dashboard',                color: '#0891b2', bg: '#e0f2fe' },
+          { icon: 'fas fa-heartbeat',      label: 'Triage',        sub: 'Vital Signs & Walk-ins',     link: '/triage',                       color: '#f77f00', bg: '#fff7ed' },
+          { icon: 'fas fa-boxes',          label: 'Drug Inventory',sub: 'Stock Levels & Alerts',      link: '/pharmacy/inventory',           color: '#059669', bg: '#d1fae5' },
+        ].map(dept => (
+          <Link key={dept.label} to={dept.link}
+            style={{ background: '#fff', borderRadius: 14, padding: '18px 18px', boxShadow: '0 2px 12px rgba(0,0,0,0.06)', textDecoration: 'none', display: 'flex', flexDirection: 'column', gap: 10, border: '1.5px solid transparent', transition: 'all 0.15s' }}
+            onMouseEnter={e => { e.currentTarget.style.borderColor = dept.color; e.currentTarget.style.boxShadow = `0 6px 20px ${dept.color}25`; }}
+            onMouseLeave={e => { e.currentTarget.style.borderColor = 'transparent'; e.currentTarget.style.boxShadow = '0 2px 12px rgba(0,0,0,0.06)'; }}
+          >
+            <div style={{ width: 42, height: 42, borderRadius: 11, background: dept.bg, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+              <i className={dept.icon} style={{ color: dept.color, fontSize: 17 }}></i>
+            </div>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontWeight: 700, fontSize: 14, color: '#0f172a' }}>{dept.label}</div>
+              <div style={{ fontSize: 12, color: '#64748b', marginTop: 2 }}>{dept.sub}</div>
+            </div>
+            <div style={{ fontSize: 12, color: dept.color, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 5 }}>
+              Open Department <i className="fas fa-arrow-right" style={{ fontSize: 10 }}></i>
+            </div>
+          </Link>
+        ))}
+      </div>
+
       {/* ══ APPOINTMENTS MINI STRIP ══ */}
       <div style={{ background: 'linear-gradient(90deg,#4361ee11,#7c3aed11)', borderRadius: 12, padding: '16px 24px', marginBottom: 24, display: 'flex', gap: 32, alignItems: 'center' }}>
         <i className="fas fa-calendar-alt" style={{ color: '#4361ee', fontSize: 22 }}></i>

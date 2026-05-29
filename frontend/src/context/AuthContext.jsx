@@ -134,14 +134,24 @@ export const AuthProvider = ({ children }) => {
         };
     };
 
+    const getFreshAccessToken = () => {
+        try {
+            const stored = localStorage.getItem('authTokens');
+            return stored ? JSON.parse(stored).access : authTokens?.access;
+        } catch {
+            return authTokens?.access;
+        }
+    };
+
     const apiCall = useCallback(async (endpoint, options = {}) => {
         const url = `${API_BASE_URL}${endpoint}`;
         const isFormData = options.body instanceof FormData || options.isFormData;
 
-        const buildHeaders = () => {
+        const buildHeaders = (accessToken) => {
+            const token = accessToken ?? getFreshAccessToken();
             const baseAuth = isFormData
-                ? { Authorization: `Bearer ${authTokens?.access}` }
-                : getAuthHeaders();
+                ? { Authorization: `Bearer ${token}` }
+                : { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` };
             return { ...baseAuth, ...options.headers };
         };
 
@@ -154,7 +164,9 @@ export const AuthProvider = ({ children }) => {
             if (response.status === 401) {
                 const refreshed = await refreshToken();
                 if (refreshed) {
-                    response = await fetch(url, { ...fetchOptions, headers: buildHeaders() });
+                    // Read the newly saved token directly — avoids the stale closure
+                    const newToken = getFreshAccessToken();
+                    response = await fetch(url, { ...fetchOptions, headers: buildHeaders(newToken) });
                 } else {
                     throw new Error('Session expired. Please login again.');
                 }

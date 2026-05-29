@@ -218,6 +218,7 @@ function RoleManagement() {
   const [selectedPermissions, setSelectedPermissions] = useState([]);
   const [confirmDelete, setConfirmDelete] = useState({ show: false, id: null });
   const [permViewMode, setPermViewMode] = useState('category'); // 'category' or 'grid'
+  const [viewMode, setViewMode] = useState('grid'); // 'grid' or 'list'
 
   useEffect(() => {
     fetchRoles();
@@ -417,102 +418,280 @@ function RoleManagement() {
     zIndex: 1050
   };
 
+  // Role colour palette
+  const roleAccent = (name) => {
+    const map = {
+      admin: '#6366f1', ministry_admin: '#7c3aed', hospital_admin: '#0891b2',
+      district_admin: '#0891b2', doctor: '#10b981', nurse: '#059669',
+      receptionist: '#f59e0b', lab_technician: '#ef4444', pharmacist: '#8b5cf6',
+      triage: '#f97316', patient: '#64748b',
+    };
+    return map[name?.toLowerCase()] || '#6366f1';
+  };
+
   return (
     <DashboardLayout navItems={navItems} brandTitle="NEHR Admin" roleBadge="Administrator">
-      <div className="container-fluid py-4">
-        <div className="row mb-4">
-          <div className="col-12">
-            <div className="d-flex justify-content-between align-items-center">
-              <div>
-                <h1 className="h3 mb-0">Roles & Permissions</h1>
-                <p className="text-muted">Manage system roles and their permissions</p>
-              </div>
+      <div style={{ padding: '28px 24px' }}>
+
+        {/* ── Page Header ── */}
+        <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:28, flexWrap:'wrap', gap:12 }}>
+          <div>
+            <h1 style={{ fontSize:26, fontWeight:800, color:'#0f172a', margin:0 }}>Roles & Permissions</h1>
+            <p style={{ color:'#64748b', margin:'4px 0 0', fontSize:14 }}>Manage system roles and their permissions</p>
+          </div>
+          <div style={{ display:'flex', alignItems:'center', gap:10 }}>
+            {/* View toggle */}
+            <div style={{ display:'flex', background:'#f1f5f9', borderRadius:10, padding:3 }}>
               <button
-                className="btn btn-primary"
-                onClick={() => { setFormData({ name: '', description: '' }); setShowCreateModal(true); }}
-              >
-                <i className="fas fa-plus me-2"></i>
-                Create New Role
-              </button>
+                onClick={() => setViewMode('grid')}
+                style={{
+                  border:'none', borderRadius:8, padding:'7px 14px', fontSize:12, fontWeight:600,
+                  cursor:'pointer', transition:'all 0.18s',
+                  background: viewMode === 'grid' ? '#fff' : 'transparent',
+                  color: viewMode === 'grid' ? '#0f172a' : '#94a3b8',
+                  boxShadow: viewMode === 'grid' ? '0 1px 4px rgba(0,0,0,0.10)' : 'none',
+                }}
+              ><i className="fas fa-th-large" style={{ marginRight:6 }}></i>Grid</button>
+              <button
+                onClick={() => setViewMode('list')}
+                style={{
+                  border:'none', borderRadius:8, padding:'7px 14px', fontSize:12, fontWeight:600,
+                  cursor:'pointer', transition:'all 0.18s',
+                  background: viewMode === 'list' ? '#fff' : 'transparent',
+                  color: viewMode === 'list' ? '#0f172a' : '#94a3b8',
+                  boxShadow: viewMode === 'list' ? '0 1px 4px rgba(0,0,0,0.10)' : 'none',
+                }}
+              ><i className="fas fa-list" style={{ marginRight:6 }}></i>List</button>
             </div>
+            {/* Create button */}
+            <button
+              onClick={() => { setFormData({ name: '', description: '' }); setShowCreateModal(true); }}
+              style={{
+                display:'inline-flex', alignItems:'center', gap:8,
+                background:'linear-gradient(135deg,#6366f1,#4f46e5)',
+                color:'#fff', border:'none', borderRadius:10,
+                padding:'10px 20px', fontWeight:700, fontSize:14,
+                cursor:'pointer', boxShadow:'0 4px 14px rgba(99,102,241,0.35)',
+              }}
+            >
+              <i className="fas fa-plus" style={{ fontSize:12 }}></i>Create New Role
+            </button>
           </div>
         </div>
 
-        {/* Roles Grid */}
-        <div className="row g-4">
-          {loading ? (
-            <div className="col-12 text-center py-5">
-              <div className="spinner-border text-primary" role="status">
-                <span className="visually-hidden">Loading...</span>
+        {/* ── Stats bar ── */}
+        {!loading && roles.length > 0 && (
+          <div style={{ display:'flex', gap:12, marginBottom:24, flexWrap:'wrap' }}>
+            {[
+              { label:'Total Roles', value: roles.length, icon:'fas fa-user-tag', color:'#6366f1' },
+              { label:'Total Users', value: roles.reduce((s, r) => s + (r.user_count || 0), 0), icon:'fas fa-users', color:'#10b981' },
+              { label:'Total Permissions', value: roles.reduce((s, r) => s + (r.permissions?.length || 0), 0), icon:'fas fa-key', color:'#f59e0b' },
+            ].map(s => (
+              <div key={s.label} style={{ background:'#fff', borderRadius:12, padding:'14px 20px',
+                boxShadow:'0 2px 8px rgba(15,23,42,0.06)', display:'flex', alignItems:'center', gap:12, minWidth:160 }}>
+                <div style={{ width:36, height:36, borderRadius:10, background: s.color+'15',
+                  display:'flex', alignItems:'center', justifyContent:'center' }}>
+                  <i className={s.icon} style={{ color:s.color, fontSize:15 }}></i>
+                </div>
+                <div>
+                  <div style={{ fontSize:20, fontWeight:800, color:'#0f172a', lineHeight:1 }}>{s.value}</div>
+                  <div style={{ fontSize:11, color:'#94a3b8', marginTop:2 }}>{s.label}</div>
+                </div>
               </div>
-            </div>
-          ) : roles.length === 0 ? (
-            <div className="col-12 text-center py-5">
-              <i className="fas fa-user-tag" style={{fontSize: '48px', color: '#dee2e6', marginBottom: '16px', display: 'block'}}></i>
-              <h5 className="text-muted">No roles configured yet</h5>
-              <p className="text-muted">Create your first role to get started</p>
-            </div>
-          ) : (
-            roles.map((role) => (
-              <div key={role.id} className="col-xl-4 col-md-6">
-                <div className="card border-0 shadow-sm h-100">
-                  <div className="card-body">
-                    <div className="d-flex justify-content-between align-items-start mb-3">
-                      <div>
-                        <h5 className="card-title mb-1" style={{textTransform: 'capitalize'}}>{role.name}</h5>
-                        <small className="text-muted">{role.description || 'No description'}</small>
+            ))}
+          </div>
+        )}
+
+        {/* ── Loading / Empty ── */}
+        {loading ? (
+          <div style={{ textAlign:'center', padding:'60px 0' }}>
+            <div className="spinner-border text-primary" role="status"></div>
+          </div>
+        ) : roles.length === 0 ? (
+          <div style={{ textAlign:'center', padding:'60px 0', color:'#94a3b8' }}>
+            <i className="fas fa-user-tag" style={{ fontSize:48, marginBottom:16, display:'block' }}></i>
+            <h5>No roles configured yet</h5>
+            <p>Create your first role to get started</p>
+          </div>
+        ) : viewMode === 'grid' ? (
+
+          /* ══════════════ GRID VIEW ══════════════ */
+          <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill, minmax(280px,1fr))', gap:16 }}>
+            {roles.map(role => {
+              const accent = roleAccent(role.name);
+              const permCount = (role.permissions || []).length;
+              return (
+                <div key={role.id} style={{
+                  background:'#fff', borderRadius:16, overflow:'hidden',
+                  boxShadow:'0 2px 8px rgba(15,23,42,0.07)',
+                  transition:'box-shadow 0.2s, transform 0.2s',
+                }}
+                  onMouseEnter={e => { e.currentTarget.style.transform='translateY(-3px)'; e.currentTarget.style.boxShadow='0 10px 28px rgba(15,23,42,0.12)'; }}
+                  onMouseLeave={e => { e.currentTarget.style.transform='translateY(0)'; e.currentTarget.style.boxShadow='0 2px 8px rgba(15,23,42,0.07)'; }}
+                >
+                  <div style={{ padding:'20px 20px 16px' }}>
+                    {/* Header row */}
+                    <div style={{ display:'flex', alignItems:'flex-start', justifyContent:'space-between', marginBottom:10 }}>
+                      <div style={{ display:'flex', alignItems:'center', gap:10 }}>
+                        <div style={{ width:38, height:38, borderRadius:10, background: accent+'18',
+                          display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
+                          <i className="fas fa-user-tag" style={{ color:accent, fontSize:15 }}></i>
+                        </div>
+                        <div>
+                          <div style={{ fontWeight:800, fontSize:15, color:'#0f172a', textTransform:'capitalize' }}>{role.name}</div>
+                          <div style={{ fontSize:11, color:'#94a3b8', marginTop:1 }}>{role.description || 'No description'}</div>
+                        </div>
                       </div>
-                      <span className="badge bg-primary bg-opacity-10 text-primary">
+                      <span style={{ background: accent+'15', color:accent, fontSize:11, fontWeight:700,
+                        padding:'3px 10px', borderRadius:20, whiteSpace:'nowrap' }}>
                         {role.user_count || 0} users
                       </span>
                     </div>
 
-                    <div className="mb-3">
-                      <small className="text-muted d-block mb-2">
-                        <i className="fas fa-key me-1"></i>
-                        {(role.permissions || []).length} permissions assigned
-                      </small>
-                      <div className="d-flex flex-wrap gap-1">
-                        {(role.permissions || []).slice(0, 4).map((perm, idx) => (
-                          <span key={idx} className="badge bg-light text-dark" style={{fontSize: '11px'}}>
-                            {perm.permission_name || perm.permission_display}
-                          </span>
-                        ))}
-                        {(role.permissions || []).length > 4 && (
-                          <span className="badge bg-light text-muted" style={{fontSize: '11px'}}>
-                            +{role.permissions.length - 4} more
-                          </span>
-                        )}
-                      </div>
+                    {/* Permission count */}
+                    <div style={{ display:'flex', alignItems:'center', gap:6, marginBottom:10 }}>
+                      <i className="fas fa-key" style={{ fontSize:10, color:'#94a3b8' }}></i>
+                      <span style={{ fontSize:12, color:'#64748b' }}>{permCount} permission{permCount !== 1 ? 's' : ''} assigned</span>
                     </div>
 
-                    <div className="d-flex gap-2">
-                      <button
-                        className="btn btn-sm btn-outline-primary flex-fill"
-                        onClick={() => openEditModal(role)}
-                      >
-                        <i className="fas fa-edit me-1"></i>Edit
-                      </button>
-                      <button
-                        className="btn btn-sm btn-outline-info flex-fill"
-                        onClick={() => openPermModal(role)}
-                      >
-                        <i className="fas fa-key me-1"></i>Permissions
-                      </button>
-                      <button
-                        className="btn btn-sm btn-outline-danger"
-                        onClick={() => handleDeleteRole(role.id)}
-                        title="Delete Role"
-                      >
-                        <i className="fas fa-trash"></i>
-                      </button>
+                    {/* Permission chips */}
+                    <div style={{ display:'flex', flexWrap:'wrap', gap:4, marginBottom:16, minHeight:26 }}>
+                      {(role.permissions || []).slice(0, 3).map((perm, idx) => (
+                        <span key={idx} style={{ fontSize:10, background:'#f8fafc', color:'#475569',
+                          padding:'2px 8px', borderRadius:6, fontFamily:'monospace' }}>
+                          {perm.permission_name || perm.permission_display}
+                        </span>
+                      ))}
+                      {permCount > 3 && (
+                        <span style={{ fontSize:10, color:'#94a3b8', padding:'2px 6px' }}>+{permCount - 3} more</span>
+                      )}
+                    </div>
+
+                    {/* Actions */}
+                    <div style={{ display:'flex', gap:8 }}>
+                      <button onClick={() => openEditModal(role)} style={{
+                        flex:1, padding:'8px', borderRadius:8, border:'1px solid #e2e8f0',
+                        background:'#fff', color:'#475569', fontSize:12, fontWeight:600, cursor:'pointer',
+                        display:'flex', alignItems:'center', justifyContent:'center', gap:5,
+                        transition:'all 0.15s',
+                      }}
+                        onMouseEnter={e => { e.currentTarget.style.background='#f8fafc'; }}
+                        onMouseLeave={e => { e.currentTarget.style.background='#fff'; }}
+                      ><i className="fas fa-edit" style={{ fontSize:11 }}></i>Edit</button>
+                      <button onClick={() => openPermModal(role)} style={{
+                        flex:1, padding:'8px', borderRadius:8, border:'none',
+                        background: accent+'18', color:accent, fontSize:12, fontWeight:600, cursor:'pointer',
+                        display:'flex', alignItems:'center', justifyContent:'center', gap:5,
+                        transition:'all 0.15s',
+                      }}
+                        onMouseEnter={e => { e.currentTarget.style.background=accent+'28'; }}
+                        onMouseLeave={e => { e.currentTarget.style.background=accent+'18'; }}
+                      ><i className="fas fa-key" style={{ fontSize:11 }}></i>Permissions</button>
+                      <button onClick={() => handleDeleteRole(role.id)} style={{
+                        width:36, padding:'8px', borderRadius:8, border:'1px solid #fecaca',
+                        background:'#fff', color:'#ef4444', fontSize:12, cursor:'pointer',
+                        display:'flex', alignItems:'center', justifyContent:'center',
+                        transition:'all 0.15s',
+                      }}
+                        onMouseEnter={e => { e.currentTarget.style.background='#fef2f2'; }}
+                        onMouseLeave={e => { e.currentTarget.style.background='#fff'; }}
+                      ><i className="fas fa-trash" style={{ fontSize:11 }}></i></button>
                     </div>
                   </div>
                 </div>
-              </div>
-            ))
-          )}
-        </div>
+              );
+            })}
+          </div>
+
+        ) : (
+
+          /* ══════════════ LIST VIEW ══════════════ */
+          <div style={{ background:'#fff', borderRadius:16, boxShadow:'0 2px 8px rgba(15,23,42,0.07)', overflow:'hidden' }}>
+            {/* Table header */}
+            <div style={{ display:'grid', gridTemplateColumns:'2fr 2fr 1fr 1fr 140px',
+              padding:'12px 20px', background:'#f8fafc',
+              borderBottom:'1px solid #f1f5f9' }}>
+              {['Role', 'Description', 'Users', 'Permissions', 'Actions'].map(h => (
+                <div key={h} style={{ fontSize:11, fontWeight:700, color:'#94a3b8', textTransform:'uppercase', letterSpacing:'0.8px' }}>{h}</div>
+              ))}
+            </div>
+
+            {/* Rows */}
+            {roles.map((role, idx) => {
+              const accent = roleAccent(role.name);
+              const permCount = (role.permissions || []).length;
+              return (
+                <div key={role.id}
+                  style={{
+                    display:'grid', gridTemplateColumns:'2fr 2fr 1fr 1fr 140px',
+                    padding:'14px 20px', alignItems:'center',
+                    borderBottom: idx < roles.length - 1 ? '1px solid #f8fafc' : 'none',
+                    transition:'background 0.15s',
+                  }}
+                  onMouseEnter={e => { e.currentTarget.style.background='#fafbfc'; }}
+                  onMouseLeave={e => { e.currentTarget.style.background='#fff'; }}
+                >
+                  {/* Role name + icon */}
+                  <div style={{ display:'flex', alignItems:'center', gap:10 }}>
+                    <div style={{ width:32, height:32, borderRadius:8, background: accent+'18',
+                      display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
+                      <i className="fas fa-user-tag" style={{ color:accent, fontSize:13 }}></i>
+                    </div>
+                    <span style={{ fontWeight:700, fontSize:14, color:'#0f172a', textTransform:'capitalize' }}>{role.name}</span>
+                  </div>
+
+                  {/* Description */}
+                  <div style={{ fontSize:13, color:'#64748b', paddingRight:12,
+                    overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
+                    {role.description || <span style={{ color:'#cbd5e1', fontStyle:'italic' }}>No description</span>}
+                  </div>
+
+                  {/* User count */}
+                  <div>
+                    <span style={{ background: accent+'15', color:accent, fontSize:12, fontWeight:700,
+                      padding:'3px 10px', borderRadius:20 }}>
+                      {role.user_count || 0}
+                    </span>
+                  </div>
+
+                  {/* Permission count */}
+                  <div style={{ display:'flex', alignItems:'center', gap:5 }}>
+                    <i className="fas fa-key" style={{ fontSize:10, color:'#94a3b8' }}></i>
+                    <span style={{ fontSize:13, color:'#64748b', fontWeight:600 }}>{permCount}</span>
+                  </div>
+
+                  {/* Actions */}
+                  <div style={{ display:'flex', gap:6 }}>
+                    <button onClick={() => openEditModal(role)} style={{
+                      padding:'6px 12px', borderRadius:7, border:'1px solid #e2e8f0',
+                      background:'#fff', color:'#475569', fontSize:12, fontWeight:600, cursor:'pointer',
+                      display:'flex', alignItems:'center', gap:4, transition:'all 0.15s',
+                    }}
+                      onMouseEnter={e => { e.currentTarget.style.background='#f8fafc'; }}
+                      onMouseLeave={e => { e.currentTarget.style.background='#fff'; }}
+                    ><i className="fas fa-edit" style={{ fontSize:10 }}></i>Edit</button>
+                    <button onClick={() => openPermModal(role)} style={{
+                      padding:'6px 12px', borderRadius:7, border:'none',
+                      background: accent+'18', color:accent, fontSize:12, fontWeight:600, cursor:'pointer',
+                      display:'flex', alignItems:'center', gap:4, transition:'all 0.15s',
+                    }}
+                      onMouseEnter={e => { e.currentTarget.style.background=accent+'28'; }}
+                      onMouseLeave={e => { e.currentTarget.style.background=accent+'18'; }}
+                    ><i className="fas fa-key" style={{ fontSize:10 }}></i>Perms</button>
+                    <button onClick={() => handleDeleteRole(role.id)} style={{
+                      padding:'6px 8px', borderRadius:7, border:'1px solid #fecaca',
+                      background:'#fff', color:'#ef4444', fontSize:12, cursor:'pointer',
+                      display:'flex', alignItems:'center', transition:'all 0.15s',
+                    }}
+                      onMouseEnter={e => { e.currentTarget.style.background='#fef2f2'; }}
+                      onMouseLeave={e => { e.currentTarget.style.background='#fff'; }}
+                    ><i className="fas fa-trash" style={{ fontSize:10 }}></i></button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
       </div>
 
       {/* Create Role Modal */}

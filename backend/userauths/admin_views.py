@@ -7,7 +7,7 @@ from django.db.models import Q, Count, Sum, Avg, F
 from django.db.models.functions import TruncMonth, TruncDate
 from django.utils import timezone
 from datetime import timedelta
-from userauths.models import User, Role, Permission, RolePermission, Region, District, Chiefdom, Town, Hospital, Department, PatientVisit, Appointment, AuditLog
+from userauths.models import User, Role, Permission, RolePermission, Region, District, Chiefdom, Town, Hospital, Department, Patient, PatientVisit, Appointment, Message, AuditLog
 from userauths.serializer import (
     UserSerializer, UserCreateSerializer, UserUpdateSerializer,
     RoleSerializer, SimplePermissionSerializer, RolePermissionAssignSerializer,
@@ -415,22 +415,79 @@ def dashboard_overview(request):
     """
     Get comprehensive dashboard overview data.
     """
+    import traceback
     user = request.user
-    
+
     # Check if user has admin privileges
     if not user.role or user.role.name not in ['admin', 'ministry_admin']:
         return Response({
             'error': 'Unauthorized. Admin access required.'
         }, status=status.HTTP_403_FORBIDDEN)
-    
-    # Get statistics
-    total_users = User.objects.count()
-    active_users = User.objects.filter(is_active=True).count()
-    total_roles = Role.objects.count()
-    
+
+    try:
+        now = timezone.now()
+        today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+        week_ago = now - timedelta(days=7)
+        month_ago = now - timedelta(days=30)
+
+        # ── Users ──
+        total_users = User.objects.count()
+        active_users = User.objects.filter(is_active=True).count()
+        total_roles = Role.objects.count()
+        new_users_today = User.objects.filter(date_joined__gte=today_start).count()
+        new_users_week = User.objects.filter(date_joined__gte=week_ago).count()
+
+        # ── Organization ──
+        total_regions    = Region.objects.count()
+        total_districts  = District.objects.count()
+        total_chiefdoms  = Chiefdom.objects.count()
+        total_towns      = Town.objects.count()
+        total_hospitals  = Hospital.objects.count()
+        active_hospitals = Hospital.objects.filter(is_active=True).count()
+        total_departments = Department.objects.count()
+
+        # ── Patients ──
+        total_patients  = Patient.objects.count()
+        active_patients = Patient.objects.filter(status='active').count()
+        patients_today  = Patient.objects.filter(created_at__gte=today_start).count()
+        patients_week   = Patient.objects.filter(created_at__gte=week_ago).count()
+        patients_month  = Patient.objects.filter(created_at__gte=month_ago).count()
+
+        # ── Appointments ──
+        total_appointments     = Appointment.objects.count()
+        pending_appointments   = Appointment.objects.filter(status='pending').count()
+        confirmed_appointments = Appointment.objects.filter(status='scheduled').count()
+        completed_appointments = Appointment.objects.filter(status='completed').count()
+        cancelled_appointments = Appointment.objects.filter(status__in=['cancelled', 'declined']).count()
+        appointments_today     = Appointment.objects.filter(scheduled_at__date=now.date()).count()
+
+        # ── Visits ──
+        total_visits     = PatientVisit.objects.count()
+        visits_today     = PatientVisit.objects.filter(visit_date__gte=today_start).count()
+        visits_this_week = PatientVisit.objects.filter(visit_date__gte=week_ago).count()
+        active_visits    = PatientVisit.objects.filter(status__in=['registered', 'triaged', 'waiting', 'in_progress']).count()
+        completed_visits = PatientVisit.objects.filter(status='completed').count()
+
+        # ── Messages ──
+        total_messages  = Message.objects.count()
+        unread_messages = Message.objects.filter(is_read=False).count()
+
+        # ── Audit ──
+        audit_today = AuditLog.objects.filter(created_at__gte=today_start).count()
+        audit_week  = AuditLog.objects.filter(created_at__gte=week_ago).count()
+
+    except Exception as e:
+        error_details = traceback.format_exc()
+        print(f"DASHBOARD ERROR: {str(e)}")
+        print(f"TRACEBACK: {error_details}")
+        return Response({
+            'error': f'Database query failed: {str(e)}',
+            'traceback': error_details
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
     # Recent users (last 10)
     recent_users = User.objects.all().order_by('-date_joined')[:10]
-    
+
     # Users by role
     role_distribution = []
     for role in Role.objects.all():
@@ -439,16 +496,57 @@ def dashboard_overview(request):
             'role_display': str(role),
             'count': role.users.count()
         })
-    
+
     return Response({
         'overview': {
             'total_users': total_users,
             'active_users': active_users,
             'inactive_users': total_users - active_users,
-            'total_roles': total_roles
+            'total_roles': total_roles,
+            'new_users_today': new_users_today,
+            'new_users_week': new_users_week,
+        },
+        'organization': {
+            'total_regions': total_regions,
+            'total_districts': total_districts,
+            'total_chiefdoms': total_chiefdoms,
+            'total_towns': total_towns,
+            'total_hospitals': total_hospitals,
+            'active_hospitals': active_hospitals,
+            'total_departments': total_departments,
+        },
+        'patients': {
+            'total_patients': total_patients,
+            'active_patients': active_patients,
+            'patients_today': patients_today,
+            'patients_week': patients_week,
+            'patients_month': patients_month,
+        },
+        'appointments': {
+            'total_appointments': total_appointments,
+            'pending_appointments': pending_appointments,
+            'confirmed_appointments': confirmed_appointments,
+            'completed_appointments': completed_appointments,
+            'cancelled_appointments': cancelled_appointments,
+            'appointments_today': appointments_today,
+        },
+        'visits': {
+            'total_visits': total_visits,
+            'visits_today': visits_today,
+            'visits_this_week': visits_this_week,
+            'active_visits': active_visits,
+            'completed_visits': completed_visits,
+        },
+        'communications': {
+            'total_messages': total_messages,
+            'unread_messages': unread_messages,
+        },
+        'audit': {
+            'audit_today': audit_today,
+            'audit_week': audit_week,
         },
         'recent_users': UserSerializer(recent_users, many=True).data,
-        'role_distribution': role_distribution
+        'role_distribution': role_distribution,
     })
 
 

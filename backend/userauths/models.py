@@ -933,6 +933,12 @@ class ClinicalNote(models.Model):
     # Flags
     is_confidential = models.BooleanField(default=False, help_text='Restrict to authorised staff only')
 
+    # Pharmacy dispensing
+    is_dispensed   = models.BooleanField(default=False, help_text='Marked true when pharmacist dispenses medication')
+    dispensed_at   = models.DateTimeField(null=True, blank=True, help_text='When the prescription was dispensed')
+    dispensed_by   = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='dispensed_notes', help_text='Pharmacist who dispensed')
+    pharmacy_note  = models.TextField(blank=True, help_text='Pharmacist notes: substitutions, counselling, stock remarks')
+
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -1052,6 +1058,338 @@ class AuditLog(models.Model):
 
     def __str__(self):
         return f"{self.user_name or 'System'} {self.action} {self.patient_name or 'Patient'} — {self.outcome}"
+
+
+# ═══════════════════════════════════════════════════════════════
+# LABORATORY TESTS
+# ═══════════════════════════════════════════════════════════════
+
+class LabTest(models.Model):
+    """A laboratory test ordered by a doctor for a patient visit."""
+
+    TEST_CATEGORY_CHOICES = [
+        ('haematology',    'Haematology'),
+        ('biochemistry',   'Biochemistry'),
+        ('microbiology',   'Microbiology / Culture & Sensitivity'),
+        ('serology',       'Serology / Immunology'),
+        ('urinalysis',     'Urinalysis'),
+        ('parasitology',   'Parasitology'),
+        ('histopathology', 'Histopathology / Cytology'),
+        ('radiology',      'Radiology / Imaging'),
+        ('other',          'Other'),
+    ]
+    PRIORITY_CHOICES = [
+        ('routine', 'Routine'),
+        ('urgent',  'Urgent'),
+        ('stat',    'STAT — Immediate'),
+    ]
+    SAMPLE_TYPE_CHOICES = [
+        ('blood',         'Blood (Venous)'),
+        ('blood_capillary','Blood (Capillary)'),
+        ('urine',         'Urine'),
+        ('stool',         'Stool'),
+        ('sputum',        'Sputum'),
+        ('swab',          'Swab'),
+        ('csf',           'Cerebrospinal Fluid (CSF)'),
+        ('tissue',        'Tissue Biopsy'),
+        ('other',         'Other'),
+    ]
+    STATUS_CHOICES = [
+        ('ordered',          'Ordered'),
+        ('sample_collected', 'Sample Collected'),
+        ('processing',       'Processing'),
+        ('completed',        'Completed'),
+        ('cancelled',        'Cancelled'),
+    ]
+
+    visit      = models.ForeignKey(PatientVisit, on_delete=models.CASCADE, related_name='lab_tests')
+    patient    = models.ForeignKey(Patient,      on_delete=models.CASCADE, related_name='lab_tests')
+    ordered_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='ordered_lab_tests')
+    hospital   = models.ForeignKey(Hospital,     on_delete=models.CASCADE, related_name='lab_tests')
+
+    test_name     = models.CharField(max_length=200)
+    test_category = models.CharField(max_length=20, choices=TEST_CATEGORY_CHOICES, default='haematology')
+    priority      = models.CharField(max_length=10, choices=PRIORITY_CHOICES, default='routine')
+    status        = models.CharField(max_length=20, choices=STATUS_CHOICES, default='ordered')
+    sample_type   = models.CharField(max_length=20, choices=SAMPLE_TYPE_CHOICES, default='blood')
+    clinical_info = models.TextField(blank=True, help_text='Clinical information from requesting doctor')
+
+    sample_collected_at = models.DateTimeField(null=True, blank=True)
+    sample_collected_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='collected_samples')
+
+    result_value    = models.TextField(blank=True, help_text='Test result(s) — structured or free text')
+    result_unit     = models.CharField(max_length=50, blank=True)
+    reference_range = models.CharField(max_length=200, blank=True)
+    is_critical     = models.BooleanField(default=False, help_text='Flag for critical / panic values')
+    result_notes    = models.TextField(blank=True, help_text='Interpretation and comments')
+
+    completed_by    = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='completed_lab_tests')
+    completed_at    = models.DateTimeField(null=True, blank=True)
+    doctor_notified = models.BooleanField(default=False)
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f"{self.test_name} — {self.patient.full_name} [{self.get_status_display()}]"
+
+
+# ═══════════════════════════════════════════════════════════════
+# PHARMACY — DRUG INVENTORY
+# ═══════════════════════════════════════════════════════════════
+
+class DrugInventory(models.Model):
+    """Tracks drug stock levels per hospital (Sierra Leone Essential Medicines List)."""
+
+    DRUG_CATEGORY_CHOICES = [
+        ('analgesic',       'Analgesics / Pain Relief'),
+        ('antibiotic',      'Antibiotics'),
+        ('antimalarial',    'Antimalarials'),
+        ('antiviral',       'Antivirals / ARVs'),
+        ('antifungal',      'Antifungals'),
+        ('antihypertensive','Antihypertensives'),
+        ('antidiabetic',    'Antidiabetics'),
+        ('antiparasitic',   'Antiparasitics'),
+        ('vitamin',         'Vitamins / Supplements'),
+        ('vaccine',         'Vaccines'),
+        ('iv_fluid',        'IV Fluids'),
+        ('contraceptive',   'Contraceptives / FP'),
+        ('respiratory',     'Respiratory'),
+        ('gastrointestinal','Gastrointestinal'),
+        ('dermatological',  'Dermatological'),
+        ('ophthalmic',      'Ophthalmic'),
+        ('psychiatric',     'Psychiatric / CNS'),
+        ('other',           'Other'),
+    ]
+    UNIT_CHOICES = [
+        ('tablet',   'Tablet(s)'),
+        ('capsule',  'Capsule(s)'),
+        ('ml',       'mL'),
+        ('vial',     'Vial(s)'),
+        ('ampoule',  'Ampoule(s)'),
+        ('sachet',   'Sachet(s)'),
+        ('tube',     'Tube(s)'),
+        ('bottle',   'Bottle(s)'),
+        ('pack',     'Pack(s)'),
+        ('unit',     'Unit(s)'),
+    ]
+
+    hospital      = models.ForeignKey(Hospital, on_delete=models.CASCADE, related_name='drug_inventory')
+    drug_name     = models.CharField(max_length=200, help_text='Generic/INN name')
+    brand_name    = models.CharField(max_length=200, blank=True)
+    drug_category = models.CharField(max_length=30, choices=DRUG_CATEGORY_CHOICES, default='other')
+    strength      = models.CharField(max_length=100, blank=True, help_text='e.g. 500mg, 250mg/5ml')
+    dosage_form   = models.CharField(max_length=100, blank=True, help_text='e.g. Tablet, Oral Syrup, Injection')
+    unit          = models.CharField(max_length=20, choices=UNIT_CHOICES, default='tablet')
+
+    quantity_in_stock = models.PositiveIntegerField(default=0)
+    reorder_level     = models.PositiveIntegerField(default=50, help_text='Alert when stock falls below this level')
+    expiry_date   = models.DateField(null=True, blank=True)
+    batch_number  = models.CharField(max_length=100, blank=True)
+    supplier      = models.CharField(max_length=200, blank=True)
+    unit_cost     = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True, help_text='Cost per unit in NLE')
+
+    is_essential  = models.BooleanField(default=False, help_text='On Sierra Leone Essential Medicines List')
+    is_active     = models.BooleanField(default=True)
+    added_by      = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='added_drugs')
+    created_at    = models.DateTimeField(auto_now_add=True)
+    updated_at    = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering        = ['drug_name']
+        unique_together = [('hospital', 'drug_name', 'strength', 'dosage_form')]
+
+    def __str__(self):
+        return f"{self.drug_name} {self.strength} — {self.hospital.name}"
+
+    @property
+    def is_low_stock(self):
+        return self.quantity_in_stock <= self.reorder_level
+
+    @property
+    def is_expired(self):
+        from django.utils import timezone
+        from datetime import date
+        if not self.expiry_date:
+            return False
+        exp = self.expiry_date if isinstance(self.expiry_date, date) else date.fromisoformat(str(self.expiry_date))
+        return exp < timezone.now().date()
+
+    @property
+    def days_to_expiry(self):
+        from django.utils import timezone
+        from datetime import date
+        if not self.expiry_date:
+            return None
+        exp = self.expiry_date if isinstance(self.expiry_date, date) else date.fromisoformat(str(self.expiry_date))
+        return (exp - timezone.now().date()).days
+
+
+class InventoryTransaction(models.Model):
+    """Immutable ledger of every stock movement for a drug."""
+
+    TRANSACTION_TYPE_CHOICES = [
+        ('in',         'Stock In (Received)'),
+        ('out',        'Stock Out (Dispensed)'),
+        ('adjustment', 'Manual Adjustment'),
+        ('expired',    'Expired / Disposed'),
+        ('returned',   'Returned by Patient'),
+        ('transfer',   'Transfer Out'),
+    ]
+
+    drug             = models.ForeignKey(DrugInventory, on_delete=models.CASCADE, related_name='transactions')
+    clinical_note    = models.ForeignKey(ClinicalNote, on_delete=models.SET_NULL, null=True, blank=True, related_name='inventory_transactions')
+    transaction_type = models.CharField(max_length=20, choices=TRANSACTION_TYPE_CHOICES)
+    quantity         = models.IntegerField(help_text='Positive for stock-in, negative for stock-out')
+    balance_after    = models.PositiveIntegerField(help_text='Stock level after this transaction')
+    reason           = models.TextField(blank=True)
+    performed_by     = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, related_name='inventory_transactions')
+    created_at       = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f"{self.get_transaction_type_display()} — {self.drug.drug_name} qty {self.quantity}"
+
+
+# ═══════════════════════════════════════════════════════════════
+# MATERNAL & CHILD HEALTH
+# ═══════════════════════════════════════════════════════════════
+
+class AntenatalVisit(models.Model):
+    """Antenatal care (ANC) visit record — tracks each ANC contact."""
+
+    HIV_STATUS_CHOICES = [
+        ('positive',   'Positive'),
+        ('negative',   'Negative'),
+        ('not_tested', 'Not Tested'),
+        ('unknown',    'Unknown'),
+    ]
+    SYPHILIS_STATUS_CHOICES = [
+        ('positive',   'Positive'),
+        ('negative',   'Negative'),
+        ('not_tested', 'Not Tested'),
+        ('unknown',    'Unknown'),
+    ]
+    MALARIA_TEST_CHOICES = [
+        ('positive',   'Positive'),
+        ('negative',   'Negative'),
+        ('not_tested', 'Not Tested'),
+        ('unknown',    'Unknown'),
+    ]
+    PRESENTATION_CHOICES = [
+        ('cephalic',     'Cephalic'),
+        ('breech',       'Breech'),
+        ('transverse',   'Transverse / Oblique'),
+        ('not_assessed', 'Not Assessed'),
+    ]
+
+    patient    = models.ForeignKey(Patient,      on_delete=models.CASCADE, related_name='antenatal_visits')
+    hospital   = models.ForeignKey(Hospital,     on_delete=models.CASCADE, related_name='antenatal_visits')
+    visit      = models.OneToOneField(PatientVisit, on_delete=models.SET_NULL, null=True, blank=True, related_name='antenatal_record')
+    visit_date = models.DateField()
+
+    # Obstetric history
+    gravida               = models.PositiveIntegerField(default=1, help_text='Total number of pregnancies')
+    para                  = models.PositiveIntegerField(default=0, help_text='Number of previous deliveries')
+    lmp                   = models.DateField(null=True, blank=True, help_text='Last Menstrual Period')
+    edd                   = models.DateField(null=True, blank=True, help_text='Estimated Due Date')
+    gestational_age_weeks = models.PositiveIntegerField(null=True, blank=True)
+
+    # Vitals
+    weight_kg        = models.DecimalField(max_digits=5, decimal_places=1, null=True, blank=True)
+    blood_pressure   = models.CharField(max_length=20, blank=True, help_text='e.g. 120/80 mmHg')
+    fundal_height_cm = models.DecimalField(max_digits=4, decimal_places=1, null=True, blank=True)
+    fetal_heart_rate = models.PositiveIntegerField(null=True, blank=True, help_text='Fetal HR in BPM')
+    presentation     = models.CharField(max_length=20, choices=PRESENTATION_CHOICES, default='not_assessed')
+    edema            = models.BooleanField(default=False)
+
+    # Screening
+    hb_level        = models.DecimalField(max_digits=4, decimal_places=1, null=True, blank=True, help_text='Haemoglobin g/dL')
+    hiv_status      = models.CharField(max_length=20, choices=HIV_STATUS_CHOICES, default='not_tested')
+    syphilis_status = models.CharField(max_length=20, choices=SYPHILIS_STATUS_CHOICES, default='not_tested')
+    malaria_test    = models.CharField(max_length=20, choices=MALARIA_TEST_CHOICES, default='not_tested')
+
+    # Sierra Leone ANC interventions
+    tt_vaccine_given  = models.BooleanField(default=False, help_text='Tetanus Toxoid vaccine given')
+    iron_folic_given  = models.BooleanField(default=False, help_text='Iron and Folic Acid given')
+    itn_given         = models.BooleanField(default=False, help_text='Insecticide-Treated Net given')
+    sp_given          = models.BooleanField(default=False, help_text='Sulfadoxine-Pyrimethamine (IPTp) given')
+    pmtct_counselled  = models.BooleanField(default=False, help_text='PMTCT counselling provided')
+
+    # Notes
+    counselling_notes = models.TextField(blank=True)
+    next_visit_date   = models.DateField(null=True, blank=True)
+    risk_flags        = models.TextField(blank=True, help_text='High-risk flags e.g. pre-eclampsia, anaemia')
+
+    attended_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='antenatal_attended')
+    created_at  = models.DateTimeField(auto_now_add=True)
+    updated_at  = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-visit_date']
+
+    def __str__(self):
+        return f"ANC — {self.patient.full_name} ({self.visit_date}) G{self.gravida}P{self.para}"
+
+
+class ImmunizationRecord(models.Model):
+    """Child vaccination record — Sierra Leone EPI schedule."""
+
+    VACCINE_CHOICES = [
+        ('bcg',          'BCG'),
+        ('opv0',         'OPV0 (Birth Dose)'),
+        ('opv1',         'OPV1'),
+        ('opv2',         'OPV2'),
+        ('opv3',         'OPV3'),
+        ('penta1',       'Penta 1 (DPT-HepB-Hib)'),
+        ('penta2',       'Penta 2'),
+        ('penta3',       'Penta 3'),
+        ('pcv1',         'PCV 1'),
+        ('pcv2',         'PCV 2'),
+        ('pcv3',         'PCV 3'),
+        ('rota1',        'Rotavirus 1'),
+        ('rota2',        'Rotavirus 2'),
+        ('measles1',     'Measles 1st Dose (9 months)'),
+        ('measles2',     'Measles 2nd Dose (15 months)'),
+        ('yellow_fever', 'Yellow Fever'),
+        ('meningitis_a', 'Meningitis A'),
+        ('tt1',          'TT1 — Tetanus Toxoid'),
+        ('tt2',          'TT2'),
+        ('tt3',          'TT3'),
+        ('tt4',          'TT4'),
+        ('tt5',          'TT5'),
+        ('other',        'Other'),
+    ]
+    STATUS_CHOICES = [
+        ('given',            'Given'),
+        ('missed',           'Missed'),
+        ('deferred',         'Deferred'),
+        ('contraindicated',  'Contraindicated'),
+    ]
+
+    patient      = models.ForeignKey(Patient,  on_delete=models.CASCADE, related_name='immunizations')
+    hospital     = models.ForeignKey(Hospital, on_delete=models.CASCADE, related_name='immunizations')
+    vaccine_name = models.CharField(max_length=50, choices=VACCINE_CHOICES)
+    date_given   = models.DateField()
+    status       = models.CharField(max_length=20, choices=STATUS_CHOICES, default='given')
+    batch_number = models.CharField(max_length=100, blank=True)
+    site         = models.CharField(max_length=100, blank=True, help_text='Injection site e.g. Left deltoid')
+    adverse_reaction = models.TextField(blank=True, help_text='Any adverse reaction noted')
+    next_due_date = models.DateField(null=True, blank=True)
+    notes        = models.TextField(blank=True)
+    given_by     = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, related_name='immunizations_given')
+    created_at   = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-date_given']
+
+    def __str__(self):
+        return f"{self.get_vaccine_name_display()} — {self.patient.full_name} ({self.date_given})"
 
 
 # =====this is use to create a profile when a user is created=====

@@ -34,16 +34,25 @@ class MyTokenObtainPairSerializer(TokenObtainPairSerializer):
         token['hospital_id'] = user.hospital.id if user.hospital else None
         token['hospital_name'] = str(user.hospital.name) if user.hospital else None
         token['district_id'] = user.district.id if user.district else (user.hospital.district.id if user.hospital else None)
+        token['department_id'] = user.department.id if user.department else None
+        token['department_name'] = user.department.name if user.department else None
+        token['department_display'] = user.department.get_name_display() if user.department else None
         try:
             token['vendor_id'] = user.vendor.id
         except:
             token['vendor_id'] = 0
         try:
             profile = user.profile
-            if profile.image and hasattr(profile.image, 'url'):
-                token['photo_url'] = profile.image.url
+            profile_img = profile.image
+            default_img = 'default/default-user.jpg'
+            if profile_img and hasattr(profile_img, 'name') and profile_img.name and profile_img.name != default_img:
+                token['photo_url'] = profile_img.url
             else:
-                token['photo_url'] = None
+                try:
+                    patient = user.patient_record
+                    token['photo_url'] = patient.photo.url if patient.photo else None
+                except Exception:
+                    token['photo_url'] = None
             token['address'] = profile.address or None
         except Exception:
             token['photo_url'] = None
@@ -819,6 +828,41 @@ class ClinicalNoteSerializer(serializers.ModelSerializer):
         return obj.doctor.full_name if obj.doctor else None
 
 
+def _serialize_clinical_note(note, request):
+    """
+    Return a serialized clinical note, redacting sensitive fields when
+    is_confidential=True and the requesting user is not the authoring
+    doctor or a national/system admin.
+    """
+    if note is None:
+        return None
+
+    user = request.user if request else None
+    role = user.role.name if (user and user.role) else None
+    is_admin  = role in ('admin', 'ministry_admin')
+    is_author = user and note.doctor_id == user.id
+
+    data = ClinicalNoteSerializer(note).data
+
+    if note.is_confidential and not (is_admin or is_author):
+        # Redact all clinical fields; preserve dispensing fields for pharmacy workflow
+        REDACTED = '[RESTRICTED — confidential record]'
+        for field in (
+            'diagnosis', 'secondary_diagnoses', 'history_of_presenting_illness',
+            'clinical_findings', 'investigations_ordered', 'investigation_results',
+            'treatment_plan', 'procedures_done', 'patient_education',
+            'follow_up_instructions',
+        ):
+            if data.get(field):
+                data[field] = REDACTED
+        data['_confidential_notice'] = (
+            'This record is marked confidential. Full details are restricted '
+            'to the authoring clinician and system administrators.'
+        )
+
+    return data
+
+
 class PatientVisitListSerializer(serializers.ModelSerializer):
     """Lightweight serializer for list/timeline views."""
     hospital_name    = serializers.SerializerMethodField()
@@ -837,7 +881,7 @@ class PatientVisitListSerializer(serializers.ModelSerializer):
     patient_pk        = serializers.SerializerMethodField()
     vitals_summary    = serializers.SerializerMethodField()
     vitals            = VitalSignsSerializer(read_only=True)
-    clinical_note     = ClinicalNoteSerializer(read_only=True)
+    clinical_note     = serializers.SerializerMethodField()
     referred_to_hospital_name = serializers.SerializerMethodField()
 
     class Meta:
@@ -865,9 +909,22 @@ class PatientVisitListSerializer(serializers.ModelSerializer):
     def get_patient_gender(self, obj):   return obj.patient.gender if obj.patient else None
     def get_patient_pk(self, obj):       return obj.patient.id if obj.patient else None
     def get_referred_to_hospital_name(self, obj): return obj.referred_to_hospital.name if obj.referred_to_hospital else None
+    def get_clinical_note(self, obj):
+        if not hasattr(obj, 'clinical_note'):
+            return None
+        return _serialize_clinical_note(obj.clinical_note, self.context.get('request'))
+
     def get_diagnosis(self, obj):
         if hasattr(obj, 'clinical_note'):
-            return obj.clinical_note.diagnosis
+            note = obj.clinical_note
+            request = self.context.get('request')
+            user = request.user if request else None
+            role = user.role.name if (user and user.role) else None
+            is_admin  = role in ('admin', 'ministry_admin')
+            is_author = user and note.doctor_id == user.id
+            if note.is_confidential and not (is_admin or is_author):
+                return '[RESTRICTED]'
+            return note.diagnosis
         return None
     def get_vitals_summary(self, obj):
         if hasattr(obj, 'vitals'):
@@ -890,7 +947,7 @@ class PatientVisitDetailSerializer(serializers.ModelSerializer):
     visit_type_display = serializers.CharField(source='get_visit_type_display', read_only=True)
     status_display     = serializers.CharField(source='get_status_display',     read_only=True)
     vitals             = VitalSignsSerializer(read_only=True)
-    clinical_note      = ClinicalNoteSerializer(read_only=True)
+    clinical_note      = serializers.SerializerMethodField()
     referred_hospital_name = serializers.SerializerMethodField()
     patient_name       = serializers.SerializerMethodField()
     patient_id_code    = serializers.SerializerMethodField()
@@ -912,6 +969,10 @@ class PatientVisitDetailSerializer(serializers.ModelSerializer):
     def get_patient_phone(self, obj):        return obj.patient.phone if obj.patient else None
     def get_patient_gender(self, obj):       return obj.patient.gender if obj.patient else None
     def get_patient_pk(self, obj):           return obj.patient.id if obj.patient else None
+    def get_clinical_note(self, obj):
+        if not hasattr(obj, 'clinical_note'):
+            return None
+        return _serialize_clinical_note(obj.clinical_note, self.context.get('request'))
 
 
 class PatientVisitCreateSerializer(serializers.ModelSerializer):

@@ -361,174 +361,270 @@ function UserManagement() {
     setPhotoPreview(null);
   };
 
+  // Derived stats from loaded users
+  const totalUsers   = users.length;
+  const activeUsers  = users.filter(u => u.is_active).length;
+  const inactiveUsers = users.filter(u => !u.is_active).length;
+  const roleBreakdown = roles.map(r => ({
+    name: r.display_name || r.name,
+    count: users.filter(u => u.role_display === (r.display_name || r.name) || u.role === r.name).length,
+  })).filter(r => r.count > 0).slice(0, 4);
+
+  const roleAccentColor = (name) => {
+    const map = {
+      admin:'#6366f1', ministry_admin:'#7c3aed', hospital_admin:'#0891b2',
+      doctor:'#10b981', nurse:'#059669', receptionist:'#f59e0b',
+      lab_technician:'#ef4444', pharmacist:'#8b5cf6', triage:'#f97316', patient:'#64748b',
+    };
+    const key = typeof name === 'string' ? name.toLowerCase().replace(/\s+/g, '_') : '';
+    return map[key] || '#6366f1';
+  };
+
+  const getInitials = (name) => (name || '?').split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2);
+
   return (
     <DashboardLayout navItems={getNavForUser(user)} brandTitle={getBrandForUser(user)} roleBadge={getRoleBadge(user)}>
-      <div className="container-fluid py-4">
-        <div className="row mb-4">
-          <div className="col-12">
-            <div className="d-flex justify-content-between align-items-center">
-              <div>
-                <h1 className="h3 mb-0">User Management</h1>
-                <p className="text-muted">Manage system users and their roles</p>
-              </div>
-              {!isReadOnly && (
-                <PrimaryButton icon="fas fa-user-plus" onClick={() => setShowCreateModal(true)}>
-                  Create New User
-                </PrimaryButton>
-              )}
-            </div>
+      <div style={{ padding:'28px 24px' }}>
+
+        {/* ── Page Header ── */}
+        <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:24, flexWrap:'wrap', gap:12 }}>
+          <div>
+            <h1 style={{ fontSize:26, fontWeight:800, color:'#0f172a', margin:0 }}>User Management</h1>
+            <p style={{ color:'#64748b', margin:'4px 0 0', fontSize:14 }}>Manage system users and their roles</p>
           </div>
+          {!isReadOnly && (
+            <PrimaryButton icon="fas fa-user-plus" onClick={() => setShowCreateModal(true)}>
+              Create New User
+            </PrimaryButton>
+          )}
         </div>
 
-        <div className="card border-0 shadow-sm mb-4">
-          <div className="card-body">
-            <div className="row g-3">
-              <div className="col-md-4">
-                <input
-                  type="text"
-                  className="form-control"
-                  placeholder="Search by name, email, or employee ID..."
-                  value={filters.search}
-                  onChange={(e) => setFilters({ ...filters, search: e.target.value })}
-                  autoComplete="off"
-                />
+        {/* ── Stat Cards ── */}
+        <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill, minmax(180px,1fr))', gap:14, marginBottom:24 }}>
+          {[
+            { icon:'fas fa-users',       label:'Total Users',    value: totalUsers,    accent:'#6366f1' },
+            { icon:'fas fa-user-shield', label:'Active Users',   value: activeUsers,   accent:'#10b981' },
+            { icon:'fas fa-user-slash',  label:'Inactive Users', value: inactiveUsers, accent:'#ef4444' },
+            { icon:'fas fa-user-tag',    label:'Total Roles',    value: roles.length,  accent:'#f59e0b' },
+            ...roleBreakdown.map(r => ({
+              icon:'fas fa-user-circle', label: r.name, value: r.count, accent: roleAccentColor(r.name),
+            })),
+          ].map(s => (
+            <div key={s.label} style={{
+              background:'#fff', borderRadius:16, padding:'20px 20px 16px',
+              boxShadow:'0 2px 8px rgba(15,23,42,0.06)', border:'none',
+            }}>
+              <div style={{ width:42, height:42, borderRadius:12, background: s.accent+'15',
+                display:'flex', alignItems:'center', justifyContent:'center', marginBottom:14 }}>
+                <i className={s.icon} style={{ color:s.accent, fontSize:17 }}></i>
               </div>
-              <div className="col-md-3">
-                <select
-                  className="form-select"
-                  value={filters.role}
-                  onChange={(e) => setFilters({ ...filters, role: e.target.value })}
-                >
-                  <option value="">All Roles</option>
-                  {roles.map((role) => (
-                    <option key={role.id} value={role.name}>{role.display_name || role.name}</option>
-                  ))}
-                </select>
+              <div style={{ fontSize:30, fontWeight:800, color:'#0f172a', lineHeight:1, marginBottom:6 }}>
+                {s.value}
               </div>
-              <div className="col-md-3">
-                <select
-                  className="form-select"
-                  value={filters.is_active}
-                  onChange={(e) => setFilters({ ...filters, is_active: e.target.value })}
-                >
-                  <option value="">All Status</option>
-                  <option value="true">Active</option>
-                  <option value="false">Inactive</option>
-                </select>
-              </div>
-              <div className="col-md-2">
-                <button 
-                  className="btn btn-outline-secondary w-100"
-                  onClick={() => setFilters({ search: '', role: '', is_active: '' })}
-                >
-                  Clear Filters
-                </button>
-              </div>
+              <div style={{ fontSize:13, fontWeight:600, color:'#334155', marginBottom:3 }}>{s.label}</div>
             </div>
-          </div>
+          ))}
         </div>
 
-        <div className="card border-0 shadow-sm">
-          <div className="card-body p-0">
-            {loading ? (
-              <div className="text-center py-5">
-                <div className="spinner-border text-primary" role="status">
-                  <span className="visually-hidden">Loading...</span>
-                </div>
-              </div>
-            ) : (
-              <div className="table-responsive">
-                <table className="table table-hover mb-0">
-                  <thead className="bg-light">
-                    <tr>
-                      <th>Name</th>
-                      <th>Email</th>
-                      <th>Role</th>
-                      <th>Status</th>
-                      <th>Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {users.length === 0 ? (
-                      <tr>
-                        <td colSpan="5" className="text-center py-4">
-                          No users found
-                        </td>
-                      </tr>
+        {/* ── Filter Bar ── */}
+        <div style={{ background:'#fff', borderRadius:14, padding:'16px 20px',
+          boxShadow:'0 2px 8px rgba(15,23,42,0.06)', marginBottom:20,
+          display:'flex', gap:12, flexWrap:'wrap', alignItems:'center' }}>
+          {/* Search */}
+          <div style={{ flex:'2 1 220px', position:'relative' }}>
+            <i className="fas fa-search" style={{ position:'absolute', left:12, top:'50%', transform:'translateY(-50%)',
+              color:'#94a3b8', fontSize:13, pointerEvents:'none' }}></i>
+            <input
+              type="text"
+              placeholder="Search by name, email, or employee ID..."
+              value={filters.search}
+              onChange={(e) => setFilters({ ...filters, search: e.target.value })}
+              autoComplete="off"
+              style={{ width:'100%', padding:'9px 12px 9px 34px', borderRadius:10,
+                border:'1px solid #e2e8f0', fontSize:13, color:'#0f172a', outline:'none',
+                background:'#f8fafc', transition:'border 0.15s' }}
+              onFocus={e => e.target.style.borderColor='#6366f1'}
+              onBlur={e => e.target.style.borderColor='#e2e8f0'}
+            />
+          </div>
+          {/* Role filter */}
+          <select
+            value={filters.role}
+            onChange={(e) => setFilters({ ...filters, role: e.target.value })}
+            style={{ flex:'1 1 160px', padding:'9px 12px', borderRadius:10,
+              border:'1px solid #e2e8f0', fontSize:13, color:'#334155',
+              background:'#f8fafc', outline:'none', cursor:'pointer' }}
+          >
+            <option value="">All Roles</option>
+            {roles.map(r => (
+              <option key={r.id} value={r.name}>{r.display_name || r.name}</option>
+            ))}
+          </select>
+          {/* Status filter */}
+          <select
+            value={filters.is_active}
+            onChange={(e) => setFilters({ ...filters, is_active: e.target.value })}
+            style={{ flex:'1 1 140px', padding:'9px 12px', borderRadius:10,
+              border:'1px solid #e2e8f0', fontSize:13, color:'#334155',
+              background:'#f8fafc', outline:'none', cursor:'pointer' }}
+          >
+            <option value="">All Status</option>
+            <option value="true">Active</option>
+            <option value="false">Inactive</option>
+          </select>
+          {/* Clear */}
+          <button
+            onClick={() => setFilters({ search:'', role:'', is_active:'' })}
+            style={{ padding:'9px 18px', borderRadius:10, border:'1px solid #e2e8f0',
+              background:'#fff', color:'#64748b', fontSize:13, fontWeight:600,
+              cursor:'pointer', whiteSpace:'nowrap', transition:'all 0.15s' }}
+            onMouseEnter={e => { e.currentTarget.style.background='#f8fafc'; e.currentTarget.style.borderColor='#cbd5e1'; }}
+            onMouseLeave={e => { e.currentTarget.style.background='#fff'; e.currentTarget.style.borderColor='#e2e8f0'; }}
+          >
+            <i className="fas fa-times" style={{ marginRight:6, fontSize:11 }}></i>Clear
+          </button>
+        </div>
+
+        {/* ── Table ── */}
+        <div style={{ background:'#fff', borderRadius:14, boxShadow:'0 2px 8px rgba(15,23,42,0.06)', overflow:'hidden' }}>
+          {/* Table header */}
+          <div style={{ display:'grid', gridTemplateColumns:'2fr 2fr 1.2fr 0.8fr 1fr',
+            padding:'12px 20px', background:'#f8fafc', borderBottom:'1px solid #f1f5f9' }}>
+            {['User', 'Email', 'Role', 'Status', 'Actions'].map(h => (
+              <div key={h} style={{ fontSize:11, fontWeight:700, color:'#94a3b8',
+                textTransform:'uppercase', letterSpacing:'0.8px' }}>{h}</div>
+            ))}
+          </div>
+
+          {loading ? (
+            <div style={{ textAlign:'center', padding:'60px 0' }}>
+              <div className="spinner-border text-primary" role="status"></div>
+            </div>
+          ) : users.length === 0 ? (
+            <div style={{ textAlign:'center', padding:'60px 0', color:'#94a3b8' }}>
+              <i className="fas fa-users" style={{ fontSize:40, marginBottom:12, display:'block' }}></i>
+              <p>No users found</p>
+            </div>
+          ) : (
+            users.map((u, idx) => {
+              const accent = roleAccentColor(u.role_display || u.role_name || u.role);
+              return (
+                <div key={u.id}
+                  style={{ display:'grid', gridTemplateColumns:'2fr 2fr 1.2fr 0.8fr 1fr',
+                    padding:'14px 20px', alignItems:'center',
+                    borderBottom: idx < users.length - 1 ? '1px solid #f8fafc' : 'none',
+                    transition:'background 0.15s' }}
+                  onMouseEnter={e => e.currentTarget.style.background='#fafbfc'}
+                  onMouseLeave={e => e.currentTarget.style.background='#fff'}
+                >
+                  {/* Name + avatar */}
+                  <div style={{ display:'flex', alignItems:'center', gap:10 }}>
+                    <div style={{ width:36, height:36, borderRadius:'50%', background: accent+'20',
+                      display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0,
+                      fontSize:12, fontWeight:800, color:accent }}>
+                      {getInitials(u.full_name || u.username)}
+                    </div>
+                    <div>
+                      <div style={{ fontWeight:700, fontSize:14, color:'#0f172a' }}>{u.full_name || u.username}</div>
+                      {u.employee_id && <div style={{ fontSize:11, color:'#94a3b8', fontFamily:'monospace' }}>{u.employee_id}</div>}
+                    </div>
+                  </div>
+
+                  {/* Email */}
+                  <div style={{ fontSize:13, color:'#64748b', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', paddingRight:8 }}>
+                    {u.email}
+                  </div>
+
+                  {/* Role badge */}
+                  <div>
+                    <span style={{ background: accent+'15', color:accent, fontSize:11, fontWeight:700,
+                      padding:'3px 10px', borderRadius:20, whiteSpace:'nowrap' }}>
+                      {u.role_display || 'No Role'}
+                    </span>
+                  </div>
+
+                  {/* Status */}
+                  <div>
+                    {u.is_active ? (
+                      <span style={{ background:'#dcfce7', color:'#16a34a', fontSize:11, fontWeight:700,
+                        padding:'3px 10px', borderRadius:20 }}>Active</span>
                     ) : (
-                      users.map((user) => (
-                        <tr key={user.id}>
-                          <td>{user.full_name || user.username}</td>
-                          <td>{user.email}</td>
-                          <td>
-                            <span className="badge bg-primary bg-opacity-10 text-primary">
-                              {user.role_display || 'No Role'}
-                            </span>
-                          </td>
-                          <td>
-                            {user.is_active ? (
-                              <span className="badge bg-success">Active</span>
-                            ) : (
-                              <span className="badge bg-danger">Inactive</span>
-                            )}
-                          </td>
-                          <td>
-                            {isReadOnly ? (
-                              <span className="text-muted small">View only</span>
-                            ) : (
-                            <div className="btn-group btn-group-sm">
-                              <button
-                                className="btn btn-outline-primary"
-                                onClick={() => openEditModal(user)}
-                                title="Edit"
-                              >
-                                <i className="bi bi-pencil"></i>
-                              </button>
-                              <button
-                                className="btn btn-outline-warning"
-                                onClick={() => handleResetPassword(user.id)}
-                                title="Reset Password"
-                              >
-                                <i className="bi bi-key"></i>
-                              </button>
-                              {user.is_active ? (
-                                <button
-                                  className="btn btn-outline-danger"
-                                  onClick={() => handleDeactivateUser(user)}
-                                  title="Deactivate"
-                                >
-                                  <i className="bi bi-x-circle"></i>
-                                </button>
-                              ) : (
-                                <button
-                                  className="btn btn-outline-success"
-                                  onClick={() => handleActivateUser(user.id)}
-                                  title="Activate"
-                                >
-                                  <i className="bi bi-check-circle"></i>
-                                </button>
-                              )}
-                              {/* Permanent Delete - Admin Only */}
-                              {isAdmin && (
-                                <button
-                                  className="btn btn-outline-dark"
-                                  onClick={() => handlePermanentDelete(user)}
-                                  title="Delete Permanently"
-                                >
-                                  <i className="bi bi-trash"></i>
-                                </button>
-                              )}
-                            </div>
-                            )}
-                          </td>
-                        </tr>
-                      ))
+                      <span style={{ background:'#fee2e2', color:'#dc2626', fontSize:11, fontWeight:700,
+                        padding:'3px 10px', borderRadius:20 }}>Inactive</span>
                     )}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </div>
+                  </div>
+
+                  {/* Actions */}
+                  <div style={{ display:'flex', gap:6 }}>
+                    {isReadOnly ? (
+                      <span style={{ fontSize:12, color:'#94a3b8', fontStyle:'italic' }}>View only</span>
+                    ) : (
+                      <>
+                        <button onClick={() => openEditModal(u)} title="Edit"
+                          style={{ width:32, height:32, borderRadius:8, border:'1px solid #e2e8f0',
+                            background:'#fff', color:'#475569', cursor:'pointer', fontSize:12,
+                            display:'flex', alignItems:'center', justifyContent:'center', transition:'all 0.15s' }}
+                          onMouseEnter={e => { e.currentTarget.style.background='#eff6ff'; e.currentTarget.style.color='#6366f1'; e.currentTarget.style.borderColor='#c7d2fe'; }}
+                          onMouseLeave={e => { e.currentTarget.style.background='#fff'; e.currentTarget.style.color='#475569'; e.currentTarget.style.borderColor='#e2e8f0'; }}
+                        ><i className="fas fa-edit" style={{ fontSize:11 }}></i></button>
+
+                        <button onClick={() => handleResetPassword(u.id)} title="Reset Password"
+                          style={{ width:32, height:32, borderRadius:8, border:'1px solid #e2e8f0',
+                            background:'#fff', color:'#475569', cursor:'pointer', fontSize:12,
+                            display:'flex', alignItems:'center', justifyContent:'center', transition:'all 0.15s' }}
+                          onMouseEnter={e => { e.currentTarget.style.background='#fffbeb'; e.currentTarget.style.color='#f59e0b'; e.currentTarget.style.borderColor='#fde68a'; }}
+                          onMouseLeave={e => { e.currentTarget.style.background='#fff'; e.currentTarget.style.color='#475569'; e.currentTarget.style.borderColor='#e2e8f0'; }}
+                        ><i className="fas fa-key" style={{ fontSize:11 }}></i></button>
+
+                        {u.is_active ? (
+                          <button onClick={() => handleDeactivateUser(u)} title="Deactivate"
+                            style={{ width:32, height:32, borderRadius:8, border:'1px solid #e2e8f0',
+                              background:'#fff', color:'#475569', cursor:'pointer', fontSize:12,
+                              display:'flex', alignItems:'center', justifyContent:'center', transition:'all 0.15s' }}
+                            onMouseEnter={e => { e.currentTarget.style.background='#fef2f2'; e.currentTarget.style.color='#ef4444'; e.currentTarget.style.borderColor='#fecaca'; }}
+                            onMouseLeave={e => { e.currentTarget.style.background='#fff'; e.currentTarget.style.color='#475569'; e.currentTarget.style.borderColor='#e2e8f0'; }}
+                          ><i className="fas fa-ban" style={{ fontSize:11 }}></i></button>
+                        ) : (
+                          <button onClick={() => handleActivateUser(u.id)} title="Activate"
+                            style={{ width:32, height:32, borderRadius:8, border:'1px solid #e2e8f0',
+                              background:'#fff', color:'#475569', cursor:'pointer', fontSize:12,
+                              display:'flex', alignItems:'center', justifyContent:'center', transition:'all 0.15s' }}
+                            onMouseEnter={e => { e.currentTarget.style.background='#f0fdf4'; e.currentTarget.style.color='#10b981'; e.currentTarget.style.borderColor='#bbf7d0'; }}
+                            onMouseLeave={e => { e.currentTarget.style.background='#fff'; e.currentTarget.style.color='#475569'; e.currentTarget.style.borderColor='#e2e8f0'; }}
+                          ><i className="fas fa-check-circle" style={{ fontSize:11 }}></i></button>
+                        )}
+
+                        {isAdmin && (
+                          <button onClick={() => handlePermanentDelete(u)} title="Delete Permanently"
+                            style={{ width:32, height:32, borderRadius:8, border:'1px solid #e2e8f0',
+                              background:'#fff', color:'#94a3b8', cursor:'pointer', fontSize:12,
+                              display:'flex', alignItems:'center', justifyContent:'center', transition:'all 0.15s' }}
+                            onMouseEnter={e => { e.currentTarget.style.background='#fef2f2'; e.currentTarget.style.color='#ef4444'; e.currentTarget.style.borderColor='#fecaca'; }}
+                            onMouseLeave={e => { e.currentTarget.style.background='#fff'; e.currentTarget.style.color='#94a3b8'; e.currentTarget.style.borderColor='#e2e8f0'; }}
+                          ><i className="fas fa-trash" style={{ fontSize:11 }}></i></button>
+                        )}
+                      </>
+                    )}
+                  </div>
+                </div>
+              );
+            })
+          )}
+
+          {/* Footer summary */}
+          {!loading && users.length > 0 && (
+            <div style={{ padding:'12px 20px', background:'#f8fafc', borderTop:'1px solid #f1f5f9',
+              display:'flex', alignItems:'center', justifyContent:'space-between' }}>
+              <span style={{ fontSize:12, color:'#94a3b8' }}>
+                Showing <strong style={{ color:'#334155' }}>{users.length}</strong> user{users.length !== 1 ? 's' : ''}
+              </span>
+              <span style={{ fontSize:12, color:'#94a3b8' }}>
+                <span style={{ color:'#10b981', fontWeight:600 }}>{activeUsers} active</span>
+                {' · '}
+                <span style={{ color:'#ef4444', fontWeight:600 }}>{inactiveUsers} inactive</span>
+              </span>
+            </div>
+          )}
         </div>
       </div>
 

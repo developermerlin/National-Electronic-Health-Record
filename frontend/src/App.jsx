@@ -30,10 +30,19 @@ import DoctorCompletedAppointments from './views/doctor/DoctorCompletedAppointme
 import DoctorPatients from './views/doctor/DoctorPatients';
 import PatientPortalDashboard from './views/patient/PatientPortalDashboard';
 import PatientBookAppointment from './views/patient/PatientBookAppointment';
+import PatientMedicalHistory from './views/patient/PatientMedicalHistory';
 import NurseDashboard from './views/nurse/NurseDashboard';
 import NurseTriage from './views/nurse/NurseTriage';
 import TriageDashboard from './views/triage/TriageDashboard';
 import HospitalAdminDashboard from './views/hospital_admin/HospitalAdminDashboard';
+import PharmacistDashboard from './views/pharmacist/PharmacistDashboard';
+import PharmacistPrescriptions from './views/pharmacist/PharmacistPrescriptions';
+import PharmacistQueue from './views/pharmacist/PharmacistQueue';
+import DrugInventory from './views/pharmacist/DrugInventory';
+import PharmacistPatients from './views/pharmacist/PharmacistPatients';
+import MCHDashboard from './views/nurse/MCHDashboard';
+import LabTechnicianDashboard from './views/lab/LabTechnicianDashboard';
+import DistrictAdminDashboard from './views/district/DistrictAdminDashboard';
 import MessagesPage from './views/messages/MessagesPage';
 import LiveChatPage from './views/messages/LiveChatPage';
 import { AuthProvider, useAuth } from './context/AuthContext';
@@ -198,6 +207,11 @@ function AppContent() {
             <PatientBookAppointment />
           </ProtectedRoute>
         } />
+        <Route path="/patient/medical-history" element={
+          <ProtectedRoute allowedRoles={['patient']}>
+            <PatientMedicalHistory />
+          </ProtectedRoute>
+        } />
 
         {/* Nurse Routes */}
         <Route path="/nurse/dashboard" element={
@@ -250,6 +264,75 @@ function AppContent() {
         <Route path="/doctor/patients" element={
           <ProtectedRoute allowedRoles={['doctor', 'admin', 'hospital_admin']}>
             <DoctorPatients />
+          </ProtectedRoute>
+        } />
+
+        {/* Pharmacist Routes */}
+        <Route path="/pharmacy/dashboard" element={
+          <ProtectedRoute allowedRoles={['pharmacist', 'admin', 'hospital_admin']}>
+            <PharmacistDashboard />
+          </ProtectedRoute>
+        } />
+        <Route path="/pharmacy/prescriptions" element={
+          <ProtectedRoute allowedRoles={['pharmacist', 'admin', 'hospital_admin']}>
+            <PharmacistPrescriptions />
+          </ProtectedRoute>
+        } />
+        <Route path="/pharmacy/queue" element={
+          <ProtectedRoute allowedRoles={['pharmacist', 'admin', 'hospital_admin']}>
+            <PharmacistQueue />
+          </ProtectedRoute>
+        } />
+
+        <Route path="/pharmacy/inventory" element={
+          <ProtectedRoute allowedRoles={['pharmacist', 'admin', 'hospital_admin']}>
+            <DrugInventory />
+          </ProtectedRoute>
+        } />
+        <Route path="/pharmacy/patients" element={
+          <ProtectedRoute allowedRoles={['pharmacist', 'admin', 'hospital_admin']}>
+            <PharmacistPatients />
+          </ProtectedRoute>
+        } />
+
+        {/* MCH Routes */}
+        <Route path="/mch/dashboard" element={
+          <ProtectedRoute allowedRoles={['nurse', 'doctor', 'admin', 'hospital_admin']}>
+            <MCHDashboard />
+          </ProtectedRoute>
+        } />
+        <Route path="/mch/anc" element={
+          <ProtectedRoute allowedRoles={['nurse', 'doctor', 'admin', 'hospital_admin']}>
+            <MCHDashboard />
+          </ProtectedRoute>
+        } />
+        <Route path="/mch/immunizations" element={
+          <ProtectedRoute allowedRoles={['nurse', 'doctor', 'admin', 'hospital_admin']}>
+            <MCHDashboard />
+          </ProtectedRoute>
+        } />
+
+        {/* Lab Technician Routes */}
+        <Route path="/lab/dashboard" element={
+          <ProtectedRoute allowedRoles={['lab_technician', 'admin', 'hospital_admin']}>
+            <LabTechnicianDashboard />
+          </ProtectedRoute>
+        } />
+        <Route path="/lab/tests" element={
+          <ProtectedRoute allowedRoles={['lab_technician', 'admin', 'hospital_admin', 'doctor', 'nurse']}>
+            <LabTechnicianDashboard />
+          </ProtectedRoute>
+        } />
+        <Route path="/lab/queue" element={
+          <ProtectedRoute allowedRoles={['lab_technician', 'admin', 'hospital_admin']}>
+            <LabTechnicianDashboard />
+          </ProtectedRoute>
+        } />
+
+        {/* District Admin Routes */}
+        <Route path="/district-admin/dashboard" element={
+          <ProtectedRoute allowedRoles={['district_admin', 'admin', 'ministry_admin']}>
+            <DistrictAdminDashboard />
           </ProtectedRoute>
         } />
       </Routes>

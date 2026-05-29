@@ -16,8 +16,10 @@ function Home() {
         navigate('/admin/dashboard');
       } else if (user.role === 'hospital_admin') {
         navigate('/hospital-admin/dashboard');
-      } else if (user.role === 'ministry_admin' || user.role === 'district_admin') {
+      } else if (user.role === 'ministry_admin') {
         navigate('/ministry/dashboard');
+      } else if (user.role === 'district_admin') {
+        navigate('/district-admin/dashboard');
       } else if (user.role === 'receptionist') {
         navigate('/receptionist/dashboard');
       } else if (user.role === 'doctor') {
@@ -27,9 +29,9 @@ function Home() {
       } else if (user.role === 'triage') {
         navigate('/triage');
       } else if (user.role === 'lab_technician') {
-        navigate('/triage');
+        navigate('/lab/dashboard');
       } else if (user.role === 'pharmacist') {
-        navigate('/triage');
+        navigate('/pharmacy/dashboard');
       } else if (user.role === 'patient') {
         navigate('/patient/dashboard');
       }

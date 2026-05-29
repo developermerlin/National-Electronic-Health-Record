@@ -33,7 +33,7 @@ ALLOWED_HOSTS = []
 # ================================================================================
 
 SIMPLE_JWT = {
-    'ACCESS_TOKEN_LIFETIME': timedelta(minutes=5),
+    'ACCESS_TOKEN_LIFETIME': timedelta(minutes=60),
     'REFRESH_TOKEN_LIFETIME': timedelta(days=50),
     'ROTATE_REFRESH_TOKENS': True,
     'BLACKLIST_AFTER_ROTATION': True,
@@ -154,6 +154,7 @@ DATABASES = {
         'PASSWORD': 'rootadmin1',
         'HOST': 'localhost',
         'PORT': '5432',
+        'CONN_MAX_AGE': 60,
     }
 }
 

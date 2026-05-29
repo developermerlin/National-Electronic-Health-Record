@@ -25,7 +25,7 @@ function Login() {
     const routes = {
       admin: '/admin/dashboard',
       ministry_admin: '/ministry/dashboard',
-      district_admin: '/admin/districts',
+      district_admin: '/district-admin/dashboard',
       hospital_admin: '/hospital-admin/dashboard',
       doctor: '/doctor/dashboard',
       nurse: '/nurse/dashboard',
@@ -215,7 +215,7 @@ function Login() {
         } else if (userRole === 'ministry_admin') {
           navigate('/ministry/dashboard');
         } else if (userRole === 'district_admin') {
-          navigate('/admin/districts');
+          navigate('/district-admin/dashboard');
         } else if (userRole === 'hospital_admin') {
           navigate('/hospital-admin/dashboard');
         } else if (userRole === 'doctor') {

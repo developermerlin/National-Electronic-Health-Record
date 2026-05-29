@@ -118,9 +118,10 @@ class PatientVisitViewSet(viewsets.ModelViewSet):
     def add_clinical_note(self, request, pk=None):
         visit = self.get_object()
 
-        # Only doctors (or admins) can write clinical notes
+        # Only doctors and national/system admins can author clinical notes.
+        # hospital_admin has read-only oversight — they must not write clinical records.
         role = request.user.role.name if request.user.role else None
-        if role not in ('doctor', 'admin', 'hospital_admin', 'ministry_admin'):
+        if role not in ('doctor', 'admin', 'ministry_admin'):
             return Response({'detail': 'Only doctors can write clinical notes.'}, status=status.HTTP_403_FORBIDDEN)
 
         if hasattr(visit, 'clinical_note'):
@@ -176,6 +177,13 @@ class PatientVisitViewSet(viewsets.ModelViewSet):
         qs = PatientVisit.objects.filter(patient_id=patient_id).select_related(
             'hospital', 'department', 'doctor', 'registered_by',
         ).prefetch_related('vitals', 'clinical_note').order_by('-visit_date')
+
+        # Cross-hospital referral access: only show visits at the user's own hospital.
+        # The referring hospital's records remain private — the receiving doctor sees
+        # only the encounters they are directly involved in.
+        if result.get('access_type') == 'cross_hospital' and user.hospital:
+            qs = qs.filter(hospital=user.hospital)
+
         serializer = PatientVisitListSerializer(qs, many=True, context={'request': request})
         return Response(serializer.data)
 

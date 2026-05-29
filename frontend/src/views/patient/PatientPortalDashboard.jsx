@@ -116,8 +116,10 @@ export default function PatientPortalDashboard() {
     </div>
   );
 
+  const today = new Date().toLocaleDateString('en-GB', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' });
+
   return (
-    <DashboardLayout navItems={navItems} brandTitle={brand} roleBadge={roleBadge}>
+    <DashboardLayout navItems={navItems} brandTitle={brand} roleBadge={roleBadge} hideBanner>
 
       {loading ? (
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: '60vh', gap: '16px' }}>
@@ -126,58 +128,108 @@ export default function PatientPortalDashboard() {
         </div>
       ) : (
         <>
-          {/* ── Hero Banner ── */}
+          {/* ── Unified Patient Banner ── */}
           <div style={{
-            background: 'linear-gradient(135deg, #4361ee 0%, #7c3aed 100%)',
-            borderRadius: '16px', padding: '28px 32px', marginBottom: '24px', color: '#fff',
-            display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '16px',
-            boxShadow: '0 8px 32px rgba(67,97,238,0.25)',
+            background: 'linear-gradient(135deg, #0f172a 0%, #1e3a5f 50%, #4361ee 100%)',
+            borderRadius: 16, padding: '22px 28px', marginBottom: 24, color: '#fff',
+            position: 'relative', overflow: 'hidden',
+            boxShadow: '0 6px 28px rgba(67,97,238,0.25)',
           }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '20px' }}>
-              <div style={{ width: '64px', height: '64px', borderRadius: '50%', background: 'rgba(255,255,255,0.2)', border: '3px solid rgba(255,255,255,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, fontSize: '22px', fontWeight: 800, color: '#fff' }}>
-                {(profile?.first_name?.[0] || user?.full_name?.[0] || 'P').toUpperCase()}
-              </div>
-              <div>
-                <div style={{ fontSize: '12px', opacity: 0.8, marginBottom: '2px', letterSpacing: '0.5px', textTransform: 'uppercase' }}>Welcome back</div>
-                <h2 style={{ margin: 0, fontWeight: 800, fontSize: '22px' }}>{profile?.full_name || user?.full_name}</h2>
-                <div style={{ display: 'flex', gap: '20px', marginTop: '8px', flexWrap: 'wrap' }}>
-                  <span style={{ fontSize: '13px', opacity: 0.85 }}>
-                    <i className="fas fa-hospital me-1"></i>{profile?.hospital_name || '—'}
+            {/* Decorative circles */}
+            <div style={{ position:'absolute', right:-50, top:-50, width:200, height:200, borderRadius:'50%', background:'rgba(255,255,255,0.04)', pointerEvents:'none' }}></div>
+            <div style={{ position:'absolute', right:100, bottom:-80, width:160, height:160, borderRadius:'50%', background:'rgba(255,255,255,0.03)', pointerEvents:'none' }}></div>
+
+            {/* Single row: avatar | info | divider | actions */}
+            <div style={{ position:'relative', display:'flex', alignItems:'center', gap:18, minWidth:0 }}>
+
+              {/* Avatar */}
+              <div style={{ width:62, height:62, borderRadius:'50%', flexShrink:0,
+                border:'3px solid rgba(255,255,255,0.35)', overflow:'hidden',
+                background:'rgba(255,255,255,0.15)',
+                display:'flex', alignItems:'center', justifyContent:'center' }}>
+                {profile?.photo_url ? (
+                  <img src={profile.photo_url} alt="patient" style={{ width:'100%', height:'100%', objectFit:'cover' }} />
+                ) : (
+                  <span style={{ fontSize:22, fontWeight:800, color:'#fff' }}>
+                    {(profile?.first_name?.[0] || user?.full_name?.[0] || 'P').toUpperCase()}
                   </span>
+                )}
+              </div>
+
+              {/* Info block — takes all available space */}
+              <div style={{ flex:1, minWidth:0 }}>
+                <div style={{ fontSize:12, color:'rgba(255,255,255,0.55)', fontWeight:600, marginBottom:3, whiteSpace:'nowrap' }}>
+                  Welcome back,{' '}
+                  <span style={{ color:'#93c5fd', fontWeight:700 }}>
+                    {profile?.first_name || (user?.full_name || 'Patient').split(' ')[0]}
+                  </span>
+                  <span style={{ marginLeft:12, color:'rgba(255,255,255,0.35)', fontWeight:400 }}>{today}</span>
+                </div>
+                <div style={{ fontWeight:900, fontSize:21, lineHeight:1.2, letterSpacing:'-0.3px',
+                  overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
+                  {profile?.full_name || user?.full_name}
+                </div>
+                <div style={{ display:'flex', gap:14, marginTop:7, flexWrap:'wrap', alignItems:'center' }}>
+                  {profile?.hospital_name && (
+                    <span style={{ fontSize:12, color:'rgba(255,255,255,0.65)', display:'flex', alignItems:'center', gap:5, whiteSpace:'nowrap' }}>
+                      <i className="fas fa-hospital" style={{ fontSize:11 }}></i>{profile.hospital_name}
+                    </span>
+                  )}
                   {profile?.patient_id && (
-                    <span style={{ fontSize: '13px', opacity: 0.85, fontFamily: 'monospace', background: 'rgba(255,255,255,0.15)', padding: '2px 10px', borderRadius: '6px' }}>
-                      <i className="fas fa-id-card me-1"></i>{profile.patient_id}
+                    <span style={{ fontSize:12, color:'rgba(255,255,255,0.65)', display:'flex', alignItems:'center', gap:5,
+                      fontFamily:'monospace', background:'rgba(255,255,255,0.12)', padding:'2px 9px', borderRadius:6, whiteSpace:'nowrap' }}>
+                      <i className="fas fa-id-card" style={{ fontSize:11 }}></i>{profile.patient_id}
                     </span>
                   )}
                   {profile?.blood_type && profile.blood_type !== 'unknown' && (
-                    <span style={{ fontSize: '13px', opacity: 0.85 }}>
-                      <i className="fas fa-tint me-1"></i>{profile.blood_type_display || profile.blood_type}
+                    <span style={{ fontSize:12, color:'rgba(255,255,255,0.65)', display:'flex', alignItems:'center', gap:5, whiteSpace:'nowrap' }}>
+                      <i className="fas fa-tint" style={{ fontSize:11 }}></i>
+                      {profile.blood_type_display || profile.blood_type}
+                    </span>
+                  )}
+                  {profile?.address && (
+                    <span style={{ fontSize:12, color:'rgba(255,255,255,0.65)', display:'flex', alignItems:'center', gap:5 }}>
+                      <i className="fas fa-map-marker-alt" style={{ fontSize:11 }}></i>{profile.address}
                     </span>
                   )}
                 </div>
               </div>
-            </div>
-            <div style={{ display: 'flex', gap: '12px', alignItems: 'center', flexWrap: 'wrap' }}>
-              {/* Notification bell */}
-              <button
-                onClick={() => setShowNotifPanel(v => !v)}
-                style={{ position:'relative', background:'rgba(255,255,255,0.15)', border:'1px solid rgba(255,255,255,0.3)', borderRadius:'12px', padding:'10px 14px', cursor:'pointer', color:'#fff', fontSize:'16px' }}
-              >
-                <i className="fas fa-bell"></i>
-                {unreadCount > 0 && (
-                  <span style={{ position:'absolute', top:'-6px', right:'-6px', background:'#ef4444', color:'#fff', borderRadius:'50%', width:'18px', height:'18px', fontSize:'10px', fontWeight:800, display:'flex', alignItems:'center', justifyContent:'center' }}>
-                    {unreadCount > 9 ? '9+' : unreadCount}
-                  </span>
-                )}
-              </button>
-              <Link to="/patient/book" style={{
-                background: '#fff', color: '#4361ee', borderRadius: '12px',
-                padding: '12px 22px', fontWeight: 700, fontSize: '14px',
-                textDecoration: 'none', display: 'flex', alignItems: 'center', gap: '8px',
-                flexShrink: 0, boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
-              }}>
-                <i className="fas fa-calendar-plus"></i>Request Appointment
-              </Link>
+
+              {/* Vertical divider */}
+              <div style={{ width:1, height:54, background:'rgba(255,255,255,0.15)', flexShrink:0 }}></div>
+
+              {/* Right actions — Active badge + bell + button, all on one row */}
+              <div style={{ display:'flex', alignItems:'center', gap:10, flexShrink:0 }}>
+                {/* Active badge */}
+                <div style={{ background:'rgba(255,255,255,0.10)', border:'1px solid rgba(255,255,255,0.22)',
+                  borderRadius:20, padding:'5px 13px', display:'flex', alignItems:'center', gap:6, whiteSpace:'nowrap' }}>
+                  <span style={{ width:8, height:8, borderRadius:'50%', background:'#4ade80',
+                    display:'inline-block', boxShadow:'0 0 6px #4ade80', flexShrink:0 }}></span>
+                  <span style={{ fontSize:12, fontWeight:700 }}>Active</span>
+                </div>
+                {/* Notification bell */}
+                <button onClick={() => setShowNotifPanel(v => !v)}
+                  style={{ position:'relative', background:'rgba(255,255,255,0.12)', border:'1px solid rgba(255,255,255,0.25)',
+                    borderRadius:10, padding:'9px 12px', cursor:'pointer', color:'#fff', fontSize:15, flexShrink:0 }}>
+                  <i className="fas fa-bell"></i>
+                  {unreadCount > 0 && (
+                    <span style={{ position:'absolute', top:-6, right:-6, background:'#ef4444', color:'#fff',
+                      borderRadius:'50%', width:18, height:18, fontSize:10, fontWeight:800,
+                      display:'flex', alignItems:'center', justifyContent:'center' }}>
+                      {unreadCount > 9 ? '9+' : unreadCount}
+                    </span>
+                  )}
+                </button>
+                {/* Request Appointment */}
+                <Link to="/patient/book" style={{
+                  background:'#fff', color:'#4361ee', borderRadius:10,
+                  padding:'10px 18px', fontWeight:700, fontSize:13,
+                  textDecoration:'none', display:'flex', alignItems:'center', gap:7,
+                  boxShadow:'0 4px 12px rgba(0,0,0,0.15)', flexShrink:0, whiteSpace:'nowrap',
+                }}>
+                  <i className="fas fa-calendar-plus"></i>Request Appointment
+                </Link>
+              </div>
             </div>
           </div>
 
