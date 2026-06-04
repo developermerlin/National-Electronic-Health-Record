@@ -3,6 +3,7 @@ import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import showToast from '../../utils/toast';
 import { useGoogleLogin } from '@react-oauth/google';
+import { getHomeDashboard } from '../../utils/navItems';
 
 function Login() {
   const [formData, setFormData] = useState({
@@ -21,21 +22,8 @@ function Login() {
   const navigate = useNavigate();
   const [socialLoading, setSocialLoading] = useState('');
 
-  const navigateByRole = useCallback((role) => {
-    const routes = {
-      admin: '/admin/dashboard',
-      ministry_admin: '/ministry/dashboard',
-      district_admin: '/district-admin/dashboard',
-      hospital_admin: '/hospital-admin/dashboard',
-      doctor: '/doctor/dashboard',
-      nurse: '/nurse/dashboard',
-      receptionist: '/receptionist/dashboard',
-      triage: '/triage',
-      lab_technician: '/lab/dashboard',
-      pharmacist: '/pharmacy/dashboard',
-      patient: '/patient/dashboard',
-    };
-    navigate(routes[role] || '/');
+  const navigateByRole = useCallback((user) => {
+    navigate(getHomeDashboard(user));
   }, [navigate]);
 
   const handleSocialLogin = useCallback(async (provider, accessToken) => {
@@ -45,7 +33,7 @@ function Login() {
       const result = await socialLogin(provider, accessToken);
       if (result.success) {
         showToast.success(`Signed in with ${provider}!`);
-        navigateByRole(result.user.role);
+        navigateByRole(result.user);
       } else {
         setServerError(result.error || `${provider} login failed`);
       }
@@ -208,31 +196,7 @@ function Login() {
       const result = await login(formData.email, formData.password);
       
       if (result.success) {
-        const userRole = result.user.role;
-        
-        if (userRole === 'admin') {
-          navigate('/admin/dashboard');
-        } else if (userRole === 'ministry_admin') {
-          navigate('/ministry/dashboard');
-        } else if (userRole === 'district_admin') {
-          navigate('/district-admin/dashboard');
-        } else if (userRole === 'hospital_admin') {
-          navigate('/hospital-admin/dashboard');
-        } else if (userRole === 'doctor') {
-          navigate('/doctor/dashboard');
-        } else if (userRole === 'nurse') {
-          navigate('/nurse/dashboard');
-        } else if (userRole === 'receptionist') {
-          navigate('/receptionist/dashboard');
-        } else if (userRole === 'lab_technician') {
-          navigate('/lab/dashboard');
-        } else if (userRole === 'pharmacist') {
-          navigate('/pharmacy/dashboard');
-        } else if (userRole === 'patient') {
-          navigate('/patient/dashboard');
-        } else {
-          navigate('/');
-        }
+        navigate(getHomeDashboard(result.user));
       } else {
         const errorMsg = result.error || '';
         if (errorMsg.toLowerCase().includes('no active account') || errorMsg.toLowerCase().includes('not found')) {

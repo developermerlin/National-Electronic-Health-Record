@@ -14,6 +14,7 @@ import ChiefdomManagement from './views/admin/ChiefdomManagement';
 import TownManagement from './views/admin/TownManagement';
 import HospitalManagement from './views/admin/HospitalManagement';
 import DepartmentManagement from './views/admin/DepartmentManagement';
+import AuditLogDashboard from './views/admin/AuditLogDashboard';
 import MinistryDashboard from './views/ministry/MinistryDashboard';
 import ProfilePage from './views/admin/ProfilePage';
 import ReceptDashboard from './views/auth/ReceptDashboard';
@@ -28,13 +29,25 @@ import DoctorAppointmentRequests from './views/doctor/DoctorAppointmentRequests'
 import DoctorAvailability from './views/doctor/DoctorAvailability';
 import DoctorCompletedAppointments from './views/doctor/DoctorCompletedAppointments';
 import DoctorPatients from './views/doctor/DoctorPatients';
+import DoctorLabResults from './views/doctor/DoctorLabResults';
 import PatientPortalDashboard from './views/patient/PatientPortalDashboard';
 import PatientBookAppointment from './views/patient/PatientBookAppointment';
 import PatientMedicalHistory from './views/patient/PatientMedicalHistory';
+import PatientPortalBilling from './views/patient/PatientPortalBilling';
+import PatientPortalLabResults from './views/patient/PatientPortalLabResults';
 import NurseDashboard from './views/nurse/NurseDashboard';
 import NurseTriage from './views/nurse/NurseTriage';
 import TriageDashboard from './views/triage/TriageDashboard';
 import HospitalAdminDashboard from './views/hospital_admin/HospitalAdminDashboard';
+import HospitalAdminDoctorView from './views/hospital_admin/HospitalAdminDoctorView';
+import WardManagement from './views/hospital_admin/WardManagement';
+import PrescriptionManagement from './views/hospital_admin/PrescriptionManagement';
+import AnalyticsDashboard from './views/hospital_admin/AnalyticsDashboard';
+import NotificationCenter from './views/hospital_admin/NotificationCenter';
+import TelemedicineDashboard from './views/telemedicine/TelemedicineDashboard';
+import VideoConsultation from './views/telemedicine/VideoConsultation';
+import NHIAClaimsDashboard from './views/billing/NHIAClaimsDashboard';
+import AuditComplianceDashboard from './views/admin/AuditComplianceDashboard';
 import PharmacistDashboard from './views/pharmacist/PharmacistDashboard';
 import PharmacistPrescriptions from './views/pharmacist/PharmacistPrescriptions';
 import PharmacistQueue from './views/pharmacist/PharmacistQueue';
@@ -42,7 +55,14 @@ import DrugInventory from './views/pharmacist/DrugInventory';
 import PharmacistPatients from './views/pharmacist/PharmacistPatients';
 import MCHDashboard from './views/nurse/MCHDashboard';
 import LabTechnicianDashboard from './views/lab/LabTechnicianDashboard';
+import IPDDashboard from './views/ipd/IPDDashboard';
 import DistrictAdminDashboard from './views/district/DistrictAdminDashboard';
+import BillingDashboard from './views/billing/BillingDashboard';
+import MultiHospitalDashboard from './views/ministry/MultiHospitalDashboard';
+import FinancialReport from './views/billing/FinancialReport';
+import LeaveManagement from './views/hospital_admin/LeaveManagement';
+import DoctorBilling from './views/doctor/DoctorBilling';
+import InsuranceClaims from './views/billing/InsuranceClaims';
 import MessagesPage from './views/messages/MessagesPage';
 import LiveChatPage from './views/messages/LiveChatPage';
 import { AuthProvider, useAuth } from './context/AuthContext';
@@ -86,6 +106,56 @@ function AppContent() {
         <Route path="/hospital-admin/dashboard" element={
           <ProtectedRoute allowedRoles={['hospital_admin', 'admin']}>
             <HospitalAdminDashboard />
+          </ProtectedRoute>
+        } />
+        <Route path="/hospital-admin/doctors" element={
+          <ProtectedRoute allowedRoles={['hospital_admin']}>
+            <HospitalAdminDoctorView />
+          </ProtectedRoute>
+        } />
+        <Route path="/hospital-admin/wards" element={
+          <ProtectedRoute allowedRoles={['hospital_admin', 'admin']}>
+            <WardManagement />
+          </ProtectedRoute>
+        } />
+        <Route path="/hospital-admin/prescriptions" element={
+          <ProtectedRoute allowedRoles={['hospital_admin', 'admin', 'doctor', 'nurse']}>
+            <PrescriptionManagement />
+          </ProtectedRoute>
+        } />
+        <Route path="/hospital-admin/analytics" element={
+          <ProtectedRoute allowedRoles={['hospital_admin', 'admin', 'ministry_admin', 'district_admin']}>
+            <AnalyticsDashboard />
+          </ProtectedRoute>
+        } />
+        <Route path="/ministry/multi-hospital" element={
+          <ProtectedRoute allowedRoles={['admin', 'ministry_admin', 'district_admin']}>
+            <MultiHospitalDashboard />
+          </ProtectedRoute>
+        } />
+        <Route path="/hospital-admin/notifications" element={
+          <ProtectedRoute allowedRoles={['hospital_admin', 'admin', 'ministry_admin']}>
+            <NotificationCenter />
+          </ProtectedRoute>
+        } />
+        <Route path="/telemedicine/dashboard" element={
+          <ProtectedRoute allowedRoles={['doctor', 'patient', 'hospital_admin', 'receptionist']}>
+            <TelemedicineDashboard />
+          </ProtectedRoute>
+        } />
+        <Route path="/telemedicine/consultation/:appointmentId" element={
+          <ProtectedRoute allowedRoles={['doctor', 'patient']}>
+            <VideoConsultation />
+          </ProtectedRoute>
+        } />
+        <Route path="/billing/nhia-claims" element={
+          <ProtectedRoute allowedRoles={['hospital_admin', 'admin', 'cashier']}>
+            <NHIAClaimsDashboard />
+          </ProtectedRoute>
+        } />
+        <Route path="/admin/audit-compliance" element={
+          <ProtectedRoute allowedRoles={['admin', 'hospital_admin', 'ministry_admin']}>
+            <AuditComplianceDashboard />
           </ProtectedRoute>
         } />
 
@@ -133,6 +203,36 @@ function AppContent() {
         <Route path="/admin/departments" element={
           <ProtectedRoute allowedRoles={['admin', 'ministry_admin', 'hospital_admin']}>
             <DepartmentManagement />
+          </ProtectedRoute>
+        } />
+        <Route path="/audit/logs" element={
+          <ProtectedRoute allowedRoles={['admin', 'ministry_admin', 'hospital_admin', 'district_admin']}>
+            <AuditLogDashboard />
+          </ProtectedRoute>
+        } />
+        <Route path="/billing" element={
+          <ProtectedRoute allowedRoles={['admin', 'ministry_admin', 'hospital_admin', 'receptionist', 'nurse', 'doctor']}>
+            <BillingDashboard />
+          </ProtectedRoute>
+        } />
+        <Route path="/billing/reports" element={
+          <ProtectedRoute allowedRoles={['admin', 'ministry_admin', 'hospital_admin', 'district_admin']}>
+            <FinancialReport />
+          </ProtectedRoute>
+        } />
+        <Route path="/billing/insurance" element={
+          <ProtectedRoute allowedRoles={['admin', 'ministry_admin', 'hospital_admin', 'district_admin', 'receptionist', 'nurse', 'doctor']}>
+            <InsuranceClaims />
+          </ProtectedRoute>
+        } />
+        <Route path="/doctor/billing" element={
+          <ProtectedRoute allowedRoles={['admin', 'ministry_admin', 'hospital_admin', 'district_admin', 'doctor']}>
+            <DoctorBilling />
+          </ProtectedRoute>
+        } />
+        <Route path="/hospital-admin/leave" element={
+          <ProtectedRoute allowedRoles={['admin', 'ministry_admin', 'hospital_admin', 'district_admin', 'doctor', 'nurse', 'receptionist', 'pharmacist', 'lab_technician', 'triage']}>
+            <LeaveManagement />
           </ProtectedRoute>
         } />
 
@@ -212,6 +312,16 @@ function AppContent() {
             <PatientMedicalHistory />
           </ProtectedRoute>
         } />
+        <Route path="/patient/billing" element={
+          <ProtectedRoute allowedRoles={['patient']}>
+            <PatientPortalBilling />
+          </ProtectedRoute>
+        } />
+        <Route path="/patient/lab-results" element={
+          <ProtectedRoute allowedRoles={['patient']}>
+            <PatientPortalLabResults />
+          </ProtectedRoute>
+        } />
 
         {/* Nurse Routes */}
         <Route path="/nurse/dashboard" element={
@@ -230,7 +340,7 @@ function AppContent() {
           </ProtectedRoute>
         } />
         <Route path="/triage" element={
-          <ProtectedRoute allowedRoles={['nurse', 'receptionist', 'triage', 'admin', 'hospital_admin']}>
+          <ProtectedRoute allowedRoles={['nurse', 'receptionist', 'triage', 'doctor', 'admin', 'hospital_admin']}>
             <TriageDashboard />
           </ProtectedRoute>
         } />
@@ -264,6 +374,11 @@ function AppContent() {
         <Route path="/doctor/patients" element={
           <ProtectedRoute allowedRoles={['doctor', 'admin', 'hospital_admin']}>
             <DoctorPatients />
+          </ProtectedRoute>
+        } />
+        <Route path="/doctor/lab-results" element={
+          <ProtectedRoute allowedRoles={['doctor', 'admin', 'hospital_admin']}>
+            <DoctorLabResults />
           </ProtectedRoute>
         } />
 
@@ -316,6 +431,13 @@ function AppContent() {
         <Route path="/lab/dashboard" element={
           <ProtectedRoute allowedRoles={['lab_technician', 'admin', 'hospital_admin']}>
             <LabTechnicianDashboard />
+          </ProtectedRoute>
+        } />
+
+        {/* IPD Routes */}
+        <Route path="/ipd/dashboard" element={
+          <ProtectedRoute allowedRoles={['doctor', 'nurse', 'admin', 'hospital_admin', 'receptionist']}>
+            <IPDDashboard />
           </ProtectedRoute>
         } />
         <Route path="/lab/tests" element={

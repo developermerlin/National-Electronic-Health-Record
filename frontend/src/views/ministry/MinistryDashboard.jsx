@@ -35,9 +35,14 @@ function MinistryDashboard() {
   const { apiCall, user } = useAuth();
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [reportModal, setReportModal] = useState(null); // { type: 'hospital'|'district', id, data }
+  const [reportLoading, setReportLoading] = useState(false);
+  const [districts, setDistricts] = useState([]);
 
   useEffect(() => {
     fetchDashboard();
+    fetchDistrictsList();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const fetchDashboard = async () => {
@@ -54,6 +59,50 @@ function MinistryDashboard() {
       setLoading(false);
     }
   };
+
+  const fetchDistrictsList = async () => {
+    try {
+      const res = await apiCall('/admin/districts/');
+      if (res.ok) {
+        const result = await res.json();
+        setDistricts(result.results || result || []);
+      }
+    } catch {
+      console.error('Error fetching districts');
+    }
+  };
+
+  const fetchHospitalReport = async (hospitalId) => {
+    setReportLoading(true);
+    try {
+      const res = await apiCall(`/admin/ministry-reports/hospital/${hospitalId}/`);
+      if (res.ok) {
+        const report = await res.json();
+        setReportModal({ type: 'hospital', id: hospitalId, data: report });
+      }
+    } catch {
+      console.error('Error fetching hospital report');
+    } finally {
+      setReportLoading(false);
+    }
+  };
+
+  const fetchDistrictReport = async (districtId) => {
+    setReportLoading(true);
+    try {
+      const res = await apiCall(`/admin/ministry-reports/district/${districtId}/`);
+      if (res.ok) {
+        const report = await res.json();
+        setReportModal({ type: 'district', id: districtId, data: report });
+      }
+    } catch {
+      console.error('Error fetching district report');
+    } finally {
+      setReportLoading(false);
+    }
+  };
+
+  const formatMoney = (val) => new Intl.NumberFormat('en-SL', { style: 'currency', currency: 'SLE' }).format(val || 0);
 
   if (loading) {
     return (
@@ -648,7 +697,10 @@ function MinistryDashboard() {
                           #{idx + 1}
                         </div>
                         <div style={{flex: 1, minWidth: 0}}>
-                          <div style={{fontWeight: 600, fontSize: '13px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis'}}>{h.name}</div>
+                          <div style={{fontWeight: 600, fontSize: '13px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', cursor: 'pointer', color: '#4361ee'}}
+                            onClick={() => fetchHospitalReport(h.id)} title="Click to view report">
+                            {h.name} <i className="fas fa-external-link-alt" style={{fontSize: 9, opacity: 0.6}}></i>
+                          </div>
                           <small className="text-muted" style={{fontSize: '11px'}}>{h.region}</small>
                         </div>
                         <div className="text-end">
@@ -697,6 +749,38 @@ function MinistryDashboard() {
           </div>
         )}
 
+        {/* Districts */}
+        {districts.length > 0 && (
+          <div className="row mt-4">
+            <div className="col-12">
+              <div className="card border-0 shadow-sm">
+                <div className="card-header bg-white border-0 d-flex justify-content-between align-items-center">
+                  <div>
+                    <h5 className="mb-0">
+                      <i className="fas fa-map-marked-alt me-2 text-primary"></i>
+                      Districts
+                    </h5>
+                  </div>
+                  <Link to="/admin/districts" className="btn btn-outline-primary btn-sm">
+                    View All Districts
+                  </Link>
+                </div>
+                <div className="card-body">
+                  <div className="d-flex flex-wrap gap-2">
+                    {districts.map(d => (
+                      <button key={d.id} onClick={() => fetchDistrictReport(d.id)}
+                        className="btn btn-outline-secondary btn-sm"
+                        style={{ borderRadius: 20, fontSize: 12 }}>
+                        {d.name} <i className="fas fa-chart-line ms-1" style={{fontSize: 10}}></i>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Recent Hospitals */}
         <div className="row mt-4">
           <div className="col-12">
@@ -734,8 +818,8 @@ function MinistryDashboard() {
                           </td>
                         </tr>
                       ) : recentHospitals.map((h) => (
-                        <tr key={h.id}>
-                          <td><strong>{h.name}</strong></td>
+                        <tr key={h.id} style={{ cursor: 'pointer' }} onClick={() => fetchHospitalReport(h.id)}>
+                          <td><strong style={{ color: '#4361ee' }}>{h.name}</strong> <i className="fas fa-external-link-alt" style={{fontSize: 9, opacity: 0.5}}></i></td>
                           <td>
                             <span className="badge" style={{
                               backgroundColor: (typeColors[h.hospital_type] || '#6c757d') + '20',
@@ -765,6 +849,129 @@ function MinistryDashboard() {
           </div>
         </div>
       </div>
+
+      {/* Drill-down Report Modal */}
+      {reportModal && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.55)', backdropFilter: 'blur(3px)', zIndex: 9999,
+          display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }} onClick={() => setReportModal(null)}>
+          <div style={{ background: '#fff', borderRadius: 16, width: '100%', maxWidth: 720, maxHeight: '90vh', overflowY: 'auto', padding: 28 }}
+            onClick={e => e.stopPropagation()}>
+            {reportLoading ? (
+              <div className="text-center py-5"><div className="spinner-border text-primary"></div></div>
+            ) : reportModal.type === 'hospital' && reportModal.data ? (
+              <>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
+                  <div>
+                    <h3 style={{ margin: 0, fontSize: 20, fontWeight: 800 }}>{reportModal.data.hospital?.name}</h3>
+                    <p style={{ margin: '4px 0 0', fontSize: 13, color: '#64748b' }}>
+                      {reportModal.data.hospital?.type} · {reportModal.data.hospital?.district} · {reportModal.data.hospital?.region}
+                    </p>
+                  </div>
+                  <button onClick={() => setReportModal(null)} style={{ border: 'none', background: 'none', fontSize: 24, color: '#94a3b8', cursor: 'pointer' }}>&times;</button>
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))', gap: 12, marginBottom: 24 }}>
+                  {[
+                    { label: 'Patients', value: reportModal.data.patients?.total || 0, color: '#4361ee' },
+                    { label: 'New This Month', value: reportModal.data.patients?.new_this_month || 0, color: '#0891b2' },
+                    { label: 'Total Visits', value: reportModal.data.visits?.total || 0, color: '#7c3aed' },
+                    { label: 'Visits Today', value: reportModal.data.visits?.today || 0, color: '#059669' },
+                    { label: 'Appointments', value: reportModal.data.appointments?.total || 0, color: '#f59e0b' },
+                    { label: 'Completed', value: reportModal.data.appointments?.completed || 0, color: '#10b981' },
+                    { label: 'Revenue', value: formatMoney(reportModal.data.revenue?.total_revenue), color: '#0ea5e9' },
+                    { label: 'Outstanding', value: formatMoney(reportModal.data.revenue?.outstanding), color: '#ef4444' },
+                    { label: 'Admissions', value: reportModal.data.admissions?.total || 0, color: '#8b5cf6' },
+                    { label: 'Current Inpatients', value: reportModal.data.admissions?.current || 0, color: '#dc2626' },
+                    { label: 'Staff', value: reportModal.data.staff?.total || 0, color: '#64748b' },
+                    { label: 'Doctors', value: reportModal.data.staff?.doctors || 0, color: '#e63946' },
+                  ].map(s => (
+                    <div key={s.label} style={{ background: s.color + '08', border: `1px solid ${s.color}25`, borderRadius: 12, padding: '14px 16px', textAlign: 'center' }}>
+                      <div style={{ fontSize: 20, fontWeight: 800, color: s.color }}>{s.value}</div>
+                      <div style={{ fontSize: 11, fontWeight: 600, color: '#64748b', marginTop: 4 }}>{s.label}</div>
+                    </div>
+                  ))}
+                </div>
+                {reportModal.data.wards?.length > 0 && (
+                  <div>
+                    <h5 style={{ fontSize: 14, fontWeight: 700, marginBottom: 12 }}>Ward Occupancy</h5>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                      {reportModal.data.wards.map(w => (
+                        <div key={w.id} style={{ background: '#f8fafc', borderRadius: 10, padding: '10px 14px' }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <strong style={{ fontSize: 13 }}>{w.name}</strong>
+                            <span style={{ fontSize: 11, color: w.occupancy_rate > 90 ? '#ef4444' : w.occupancy_rate > 70 ? '#f59e0b' : '#10b981', fontWeight: 700 }}>{w.occupancy_rate}%</span>
+                          </div>
+                          <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 4 }}>
+                            {w.beds_occupied}/{w.beds_total} occupied · {w.beds_available} available
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </>
+            ) : reportModal.type === 'district' && reportModal.data ? (
+              <>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
+                  <div>
+                    <h3 style={{ margin: 0, fontSize: 20, fontWeight: 800 }}>{reportModal.data.district?.name}</h3>
+                    <p style={{ margin: '4px 0 0', fontSize: 13, color: '#64748b' }}>
+                      {reportModal.data.district?.region} · {reportModal.data.hospitals_count} hospitals
+                    </p>
+                  </div>
+                  <button onClick={() => setReportModal(null)} style={{ border: 'none', background: 'none', fontSize: 24, color: '#94a3b8', cursor: 'pointer' }}>&times;</button>
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))', gap: 12, marginBottom: 24 }}>
+                  {[
+                    { label: 'Patients', value: reportModal.data.patients?.total || 0, color: '#4361ee' },
+                    { label: 'Total Visits', value: reportModal.data.visits?.total || 0, color: '#7c3aed' },
+                    { label: 'Visits This Month', value: reportModal.data.visits?.this_month || 0, color: '#0891b2' },
+                    { label: 'Appointments', value: reportModal.data.appointments?.total || 0, color: '#f59e0b' },
+                    { label: 'Completed', value: reportModal.data.appointments?.completed || 0, color: '#10b981' },
+                    { label: 'Revenue', value: formatMoney(reportModal.data.revenue?.total_revenue), color: '#0ea5e9' },
+                    { label: 'Admissions', value: reportModal.data.admissions?.total || 0, color: '#8b5cf6' },
+                    { label: 'Current Inpatients', value: reportModal.data.admissions?.current || 0, color: '#dc2626' },
+                    { label: 'Staff', value: reportModal.data.staff?.total || 0, color: '#64748b' },
+                  ].map(s => (
+                    <div key={s.label} style={{ background: s.color + '08', border: `1px solid ${s.color}25`, borderRadius: 12, padding: '14px 16px', textAlign: 'center' }}>
+                      <div style={{ fontSize: 20, fontWeight: 800, color: s.color }}>{s.value}</div>
+                      <div style={{ fontSize: 11, fontWeight: 600, color: '#64748b', marginTop: 4 }}>{s.label}</div>
+                    </div>
+                  ))}
+                </div>
+                {reportModal.data.hospital_breakdown?.length > 0 && (
+                  <div>
+                    <h5 style={{ fontSize: 14, fontWeight: 700, marginBottom: 12 }}>Hospital Breakdown</h5>
+                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+                      <thead>
+                        <tr style={{ background: '#f8fafc' }}>
+                          <th style={{ padding: '8px 12px', textAlign: 'left', fontSize: 11 }}>Hospital</th>
+                          <th style={{ padding: '8px 12px', textAlign: 'right', fontSize: 11 }}>Patients</th>
+                          <th style={{ padding: '8px 12px', textAlign: 'right', fontSize: 11 }}>Visits</th>
+                          <th style={{ padding: '8px 12px', textAlign: 'right', fontSize: 11 }}>Appts</th>
+                          <th style={{ padding: '8px 12px', textAlign: 'right', fontSize: 11 }}>Revenue</th>
+                          <th style={{ padding: '8px 12px', textAlign: 'right', fontSize: 11 }}>Staff</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {reportModal.data.hospital_breakdown.map(h => (
+                          <tr key={h.id} style={{ borderBottom: '1px solid #f1f5f9', cursor: 'pointer' }} onClick={() => { setReportModal(null); fetchHospitalReport(h.id); }}>
+                            <td style={{ padding: '8px 12px', fontWeight: 600, color: '#4361ee' }}>{h.name}</td>
+                            <td style={{ padding: '8px 12px', textAlign: 'right' }}>{h.patients}</td>
+                            <td style={{ padding: '8px 12px', textAlign: 'right' }}>{h.visits}</td>
+                            <td style={{ padding: '8px 12px', textAlign: 'right' }}>{h.appointments}</td>
+                            <td style={{ padding: '8px 12px', textAlign: 'right', fontWeight: 600 }}>{formatMoney(h.revenue)}</td>
+                            <td style={{ padding: '8px 12px', textAlign: 'right' }}>{h.staff}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </>
+            ) : null}
+          </div>
+        </div>
+      )}
     </DashboardLayout>
   );
 }

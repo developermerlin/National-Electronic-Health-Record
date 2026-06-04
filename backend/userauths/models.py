@@ -5,6 +5,7 @@ TO EXTEND THE DEFAULT DJANGO USER MODEL.
 
 from django.db import models
 from django.contrib.auth.models import AbstractUser
+from django.utils import timezone
 from shortuuid.django_fields import ShortUUIDField #it is used to create a unique id for each profile
 from django.db.models.signals import post_save #it is used to create a profile when a user is created
 # Create your models here.
@@ -806,6 +807,48 @@ class DoctorUnavailableDate(models.Model):
         return f"Dr. {self.doctor.full_name} unavailable on {self.date}"
 
 
+class StaffLeave(models.Model):
+    """Staff leave / unavailability request."""
+
+    LEAVE_TYPE_CHOICES = [
+        ('annual',      'Annual Leave'),
+        ('sick',        'Sick Leave'),
+        ('maternity',   'Maternity Leave'),
+        ('paternity',   'Paternity Leave'),
+        ('emergency',   'Emergency Leave'),
+        ('unpaid',      'Unpaid Leave'),
+        ('other',       'Other'),
+    ]
+    STATUS_CHOICES = [
+        ('pending',   'Pending'),
+        ('approved',  'Approved'),
+        ('rejected',  'Rejected'),
+        ('cancelled', 'Cancelled'),
+    ]
+
+    staff       = models.ForeignKey(User,     on_delete=models.CASCADE,    related_name='leave_requests')
+    hospital    = models.ForeignKey(Hospital, on_delete=models.CASCADE,    related_name='leave_requests', null=True, blank=True)
+    leave_type  = models.CharField(max_length=20, choices=LEAVE_TYPE_CHOICES)
+    start_date  = models.DateField()
+    end_date    = models.DateField()
+    reason      = models.TextField(blank=True)
+    status      = models.CharField(max_length=20, choices=STATUS_CHOICES, default='pending')
+    approved_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='approved_leaves')
+    rejection_reason = models.TextField(blank=True)
+    created_at  = models.DateTimeField(auto_now_add=True)
+    updated_at  = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-created_at']
+
+    @property
+    def days(self):
+        return (self.end_date - self.start_date).days + 1
+
+    def __str__(self):
+        return f"{self.staff.full_name} — {self.leave_type} ({self.start_date} to {self.end_date}) [{self.status}]"
+
+
 # ═══════════════════════════════════════════════════════════════
 # PATIENT VISITS / ENCOUNTERS
 # ═══════════════════════════════════════════════════════════════
@@ -845,6 +888,10 @@ class PatientVisit(models.Model):
     chief_complaint = models.TextField(help_text='Primary reason for this visit')
     visit_date      = models.DateTimeField(help_text='Date and time of visit')
     status          = models.CharField(max_length=20, choices=STATUS_CHOICES, default='registered')
+
+    # Queue / token number (auto-generated on creation)
+    queue_number = models.CharField(max_length=20, blank=True, null=True,
+                                    help_text='Auto-generated queue token e.g. OPD-001')
 
     # Discharge / referral
     discharge_date       = models.DateTimeField(null=True, blank=True)
@@ -944,6 +991,89 @@ class ClinicalNote(models.Model):
 
     def __str__(self):
         return f"Note: {self.visit.patient.full_name} — {self.visit.visit_date:%Y-%m-%d}"
+
+
+# ═══════════════════════════════════════════════════════════════
+# STRUCTURED PRESCRIPTIONS
+# ═══════════════════════════════════════════════════════════════
+
+class Prescription(models.Model):
+    """Structured prescription header — one per visit, written by the doctor."""
+
+    STATUS_CHOICES = [
+        ('pending',    'Pending Dispensing'),
+        ('dispensed',  'Dispensed'),
+        ('partial',    'Partially Dispensed'),
+        ('cancelled',  'Cancelled'),
+    ]
+
+    visit        = models.OneToOneField(PatientVisit,  on_delete=models.CASCADE,  related_name='prescription')
+    clinical_note = models.OneToOneField(ClinicalNote, on_delete=models.CASCADE,  related_name='structured_prescription', null=True, blank=True)
+    prescribed_by = models.ForeignKey(User,            on_delete=models.SET_NULL, null=True, blank=True, related_name='prescriptions_written')
+    hospital      = models.ForeignKey(Hospital,        on_delete=models.CASCADE,  related_name='prescriptions')
+    status        = models.CharField(max_length=20, choices=STATUS_CHOICES, default='pending')
+    notes         = models.TextField(blank=True, help_text='General prescription notes / patient counselling')
+    dispensed_by  = models.ForeignKey(User,            on_delete=models.SET_NULL, null=True, blank=True, related_name='prescriptions_dispensed')
+    dispensed_at  = models.DateTimeField(null=True, blank=True)
+    created_at    = models.DateTimeField(auto_now_add=True)
+    updated_at    = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f"Rx — {self.visit.patient.full_name} ({self.visit.visit_date:%Y-%m-%d})"
+
+
+class PrescriptionItem(models.Model):
+    """Individual drug line on a prescription."""
+
+    ROUTE_CHOICES = [
+        ('oral',        'Oral (PO)'),
+        ('iv',          'Intravenous (IV)'),
+        ('im',          'Intramuscular (IM)'),
+        ('sc',          'Subcutaneous (SC)'),
+        ('topical',     'Topical'),
+        ('inhalation',  'Inhalation'),
+        ('rectal',      'Rectal (PR)'),
+        ('sublingual',  'Sublingual (SL)'),
+        ('ophthalmic',  'Ophthalmic (Eye)'),
+        ('otic',        'Otic (Ear)'),
+        ('nasal',       'Nasal'),
+        ('other',       'Other'),
+    ]
+    FREQUENCY_CHOICES = [
+        ('once',       'Once (stat)'),
+        ('od',         'Once daily (OD)'),
+        ('bd',         'Twice daily (BD)'),
+        ('tds',        'Three times daily (TDS)'),
+        ('qid',        'Four times daily (QID)'),
+        ('nocte',      'At night (Nocte)'),
+        ('prn',        'As needed (PRN)'),
+        ('weekly',     'Once weekly'),
+        ('other',      'Other / See notes'),
+    ]
+
+    prescription  = models.ForeignKey(Prescription, on_delete=models.CASCADE, related_name='items')
+    drug          = models.ForeignKey('DrugInventory', on_delete=models.SET_NULL, null=True, blank=True, related_name='prescription_items', help_text='Link to inventory drug if available')
+    drug_name     = models.CharField(max_length=200, help_text='Drug name (free text fallback if not in inventory)')
+    strength      = models.CharField(max_length=100, blank=True, help_text='e.g. 500mg')
+    dosage_form   = models.CharField(max_length=100, blank=True, help_text='e.g. Tablet, Syrup')
+    dose          = models.CharField(max_length=100, help_text='e.g. 1 tablet, 5ml')
+    route         = models.CharField(max_length=20, choices=ROUTE_CHOICES, default='oral')
+    frequency     = models.CharField(max_length=20, choices=FREQUENCY_CHOICES, default='bd')
+    duration_days = models.PositiveIntegerField(null=True, blank=True, help_text='Duration in days')
+    quantity      = models.PositiveIntegerField(default=1, help_text='Total quantity to dispense')
+    instructions  = models.TextField(blank=True, help_text='Special instructions, e.g. take with food')
+    is_dispensed  = models.BooleanField(default=False)
+    dispensed_qty = models.PositiveIntegerField(default=0)
+    created_at    = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['id']
+
+    def __str__(self):
+        return f"{self.drug_name} {self.strength} — {self.dose} {self.get_frequency_display()}"
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -1390,6 +1520,352 @@ class ImmunizationRecord(models.Model):
 
     def __str__(self):
         return f"{self.get_vaccine_name_display()} — {self.patient.full_name} ({self.date_given})"
+
+
+
+class Ward(models.Model):
+    """A ward / unit within a hospital (e.g. Male Ward, Maternity, ICU)."""
+    WARD_TYPE_CHOICES = [
+        ('general_male',   'General Male Ward'),
+        ('general_female', 'General Female Ward'),
+        ('pediatric',      'Pediatric Ward'),
+        ('maternity',      'Maternity Ward'),
+        ('icu',            'Intensive Care Unit (ICU)'),
+        ('nicu',           'Neonatal ICU'),
+        ('surgical',       'Surgical Ward'),
+        ('isolation',      'Isolation Ward'),
+        ('private',        'Private Ward'),
+        ('other',          'Other'),
+    ]
+    STATUS_CHOICES = [
+        ('active',    'Active'),
+        ('inactive',  'Inactive'),
+        ('renovation','Under Renovation'),
+    ]
+
+    hospital     = models.ForeignKey(Hospital, on_delete=models.CASCADE, related_name='wards')
+    name         = models.CharField(max_length=200, help_text='e.g. Male Medical Ward 1')
+    ward_type    = models.CharField(max_length=20, choices=WARD_TYPE_CHOICES, default='general_male')
+    department   = models.ForeignKey(Department, on_delete=models.SET_NULL, null=True, blank=True, related_name='wards')
+    capacity     = models.PositiveIntegerField(default=0, help_text='Maximum beds in this ward')
+    floor        = models.CharField(max_length=50, blank=True, help_text='e.g. 1st Floor')
+    phone        = models.CharField(max_length=50, blank=True)
+    status       = models.CharField(max_length=15, choices=STATUS_CHOICES, default='active')
+    is_active    = models.BooleanField(default=True)
+    created_by   = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='wards_created')
+    created_at   = models.DateTimeField(auto_now_add=True)
+    updated_at   = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['hospital__name', 'name']
+        unique_together = [('hospital', 'name')]
+
+    def __str__(self):
+        return f"{self.name} — {self.hospital.name}"
+
+    @property
+    def occupancy_count(self):
+        return self.beds.filter(status='occupied').count()
+
+    @property
+    def available_count(self):
+        return self.beds.filter(status='available').count()
+
+
+class Bed(models.Model):
+    """An individual bed within a ward."""
+    BED_TYPE_CHOICES = [
+        ('standard',   'Standard'),
+        ('electric',   'Electric'),
+        ('icu',        'ICU Bed'),
+        ('pediatric',  'Pediatric Cot'),
+        ('bassinet',   'Bassinet'),
+        ('isolation',  'Isolation Bed'),
+        ('delivery',   'Delivery Bed'),
+        ('recovery',   'Recovery Bed'),
+        ('other',      'Other'),
+    ]
+    STATUS_CHOICES = [
+        ('available',   'Available'),
+        ('occupied',    'Occupied'),
+        ('reserved',    'Reserved'),
+        ('maintenance', 'Maintenance'),
+        ('cleaning',    'Cleaning'),
+    ]
+
+    ward       = models.ForeignKey(Ward, on_delete=models.CASCADE, related_name='beds')
+    bed_number = models.CharField(max_length=50, help_text='e.g. A-01, Bed 3')
+    bed_type   = models.CharField(max_length=15, choices=BED_TYPE_CHOICES, default='standard')
+    status     = models.CharField(max_length=15, choices=STATUS_CHOICES, default='available')
+    notes      = models.TextField(blank=True, help_text='Special equipment, isolation precautions, etc.')
+    is_active  = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['ward__name', 'bed_number']
+        unique_together = [('ward', 'bed_number')]
+
+    def __str__(self):
+        return f"{self.bed_number} ({self.ward.name})"
+
+
+class InpatientAdmission(models.Model):
+    """Tracks admission of a patient to a bed for inpatient care."""
+    DISCHARGE_TYPE_CHOICES = [
+        ('discharged',    'Discharged — improved'),
+        ('discharged_ama','Discharged — against medical advice'),
+        ('transferred',   'Transferred to another facility'),
+        ('referred',      'Referred to specialist'),
+        ('absconded',     'Absconded'),
+        ('died',          'Died'),
+        ('other',         'Other'),
+    ]
+    ADMISSION_STATUS_CHOICES = [
+        ('admitted',   'Currently Admitted'),
+        ('discharged', 'Discharged'),
+        ('transferred','Transferred'),
+    ]
+
+    visit           = models.OneToOneField(PatientVisit, on_delete=models.CASCADE, related_name='admission')
+    bed             = models.ForeignKey(Bed, on_delete=models.SET_NULL, null=True, blank=True, related_name='admissions')
+    ward            = models.ForeignKey(Ward, on_delete=models.SET_NULL, null=True, blank=True, related_name='admissions')
+    hospital        = models.ForeignKey(Hospital, on_delete=models.CASCADE, related_name='admissions')
+
+    # Admission details
+    admission_date  = models.DateTimeField(default=timezone.now, help_text='When patient was formally admitted to bed')
+    admitted_by     = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='admissions_created')
+    admission_notes = models.TextField(blank=True, help_text='Reason for admission, referral note, etc.')
+    care_team       = models.ManyToManyField(User, blank=True, related_name='admissions_care_team', help_text='Doctors and nurses assigned')
+
+    # Discharge details
+    discharge_date  = models.DateTimeField(null=True, blank=True)
+    discharged_by   = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='discharges_done')
+    discharge_type  = models.CharField(max_length=20, choices=DISCHARGE_TYPE_CHOICES, blank=True)
+    discharge_summary = models.TextField(blank=True, help_text='Final diagnosis, procedures, outcome')
+    discharge_medications = models.TextField(blank=True, help_text='Medications on discharge')
+    follow_up_date  = models.DateField(null=True, blank=True)
+    follow_up_instructions = models.TextField(blank=True)
+
+    status          = models.CharField(max_length=15, choices=ADMISSION_STATUS_CHOICES, default='admitted')
+    created_at      = models.DateTimeField(auto_now_add=True)
+    updated_at      = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-admission_date']
+        indexes = [
+            models.Index(fields=['hospital', 'status', '-admission_date']),
+            models.Index(fields=['bed', 'status']),
+        ]
+
+    def __str__(self):
+        return f"Admission: {self.visit.patient.full_name} @ {self.bed or '—'} ({self.status})"
+
+    def save(self, *args, **kwargs):
+        # Auto-set ward from bed if not set
+        if self.bed and not self.ward_id:
+            self.ward = self.bed.ward
+        if self.bed and not self.hospital_id:
+            self.hospital = self.bed.ward.hospital
+        super().save(*args, **kwargs)
+
+        # Sync bed status
+        if self.status == 'admitted' and self.bed:
+            Bed.objects.filter(pk=self.bed_id).update(status='occupied')
+        elif self.status in ('discharged', 'transferred') and self.bed:
+            Bed.objects.filter(pk=self.bed_id).update(status='available')
+
+    @property
+    def length_of_stay_days(self):
+        from datetime import date
+        end = self.discharge_date.date() if self.discharge_date else timezone.now().date()
+        start = self.admission_date.date() if self.admission_date else timezone.now().date()
+        return max(0, (end - start).days)
+
+
+# ═══════════════════════════════════════════════════════════════
+# NURSING NOTES (IPD)
+# ═══════════════════════════════════════════════════════════════
+
+class NursingNote(models.Model):
+    """Shift nursing note for an admitted inpatient."""
+
+    SHIFT_CHOICES = [
+        ('morning',   'Morning (6am–2pm)'),
+        ('afternoon', 'Afternoon (2pm–10pm)'),
+        ('night',     'Night (10pm–6am)'),
+    ]
+
+    admission           = models.ForeignKey(InpatientAdmission, on_delete=models.CASCADE, related_name='nursing_notes')
+    nurse               = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, related_name='nursing_notes_written')
+    shift               = models.CharField(max_length=15, choices=SHIFT_CHOICES, default='morning')
+    note_date           = models.DateField(default=timezone.now)
+
+    # Vitals at time of note
+    temperature_celsius = models.DecimalField(max_digits=4, decimal_places=1, null=True, blank=True)
+    blood_pressure      = models.CharField(max_length=20, blank=True)
+    heart_rate          = models.PositiveIntegerField(null=True, blank=True)
+    respiratory_rate    = models.PositiveIntegerField(null=True, blank=True)
+    oxygen_saturation   = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True)
+    pain_score          = models.PositiveSmallIntegerField(null=True, blank=True, help_text='0–10 scale')
+
+    # Fluid balance
+    iv_fluids_given     = models.TextField(blank=True)
+    oral_intake         = models.TextField(blank=True)
+    urine_output        = models.TextField(blank=True)
+
+    # Nursing care delivered
+    medications_given   = models.TextField(blank=True)
+    wound_care          = models.TextField(blank=True)
+    patient_education   = models.TextField(blank=True)
+
+    # Narrative
+    nursing_assessment  = models.TextField(blank=True, help_text='Subjective & objective findings')
+    nursing_plan        = models.TextField(blank=True, help_text='Interventions and plan')
+    handover_notes      = models.TextField(blank=True)
+
+    created_at          = models.DateTimeField(auto_now_add=True)
+    updated_at          = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-note_date', '-created_at']
+
+    def __str__(self):
+        return f"Nursing Note — {self.admission.visit.patient.full_name} ({self.note_date}, {self.shift})"
+
+
+class Invoice(models.Model):
+    """Patient invoice for services rendered."""
+    STATUS_CHOICES = [
+        ('draft', 'Draft'),
+        ('pending', 'Pending Payment'),
+        ('partial', 'Partially Paid'),
+        ('paid', 'Paid'),
+        ('cancelled', 'Cancelled'),
+    ]
+    invoice_number = models.CharField(max_length=50, unique=True, db_index=True)
+    patient = models.ForeignKey(Patient, on_delete=models.CASCADE, related_name='invoices')
+    visit = models.ForeignKey(PatientVisit, on_delete=models.SET_NULL, null=True, blank=True, related_name='invoices')
+    hospital = models.ForeignKey(Hospital, on_delete=models.CASCADE, related_name='invoices')
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='draft')
+    subtotal = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    discount = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    tax = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    total = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    amount_paid = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    balance_due = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    notes = models.TextField(blank=True)
+    doctor     = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='doctor_invoices', help_text='Attending / ordering doctor for this invoice')
+    created_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, related_name='invoices_created')
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f"{self.invoice_number} — {self.patient.full_name}"
+
+    def recalculate_totals(self):
+        self.subtotal = sum(item.line_total for item in self.items.all())
+        self.total = self.subtotal - self.discount + self.tax
+        self.balance_due = self.total - self.amount_paid
+        self.save(update_fields=['subtotal', 'total', 'balance_due'])
+
+
+class InvoiceItem(models.Model):
+    """Individual line items on an invoice."""
+    invoice = models.ForeignKey(Invoice, on_delete=models.CASCADE, related_name='items')
+    description = models.CharField(max_length=255)
+    quantity = models.PositiveIntegerField(default=1)
+    unit_price = models.DecimalField(max_digits=12, decimal_places=2)
+    line_total = models.DecimalField(max_digits=12, decimal_places=2)
+    category = models.CharField(max_length=50, blank=True, help_text='e.g. consultation, lab, pharmacy, bed')
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def save(self, *args, **kwargs):
+        self.line_total = self.quantity * self.unit_price
+        super().save(*args, **kwargs)
+
+    class Meta:
+        ordering = ['created_at']
+
+
+class Payment(models.Model):
+    """Payment record linked to an invoice."""
+    METHOD_CHOICES = [
+        ('cash', 'Cash'),
+        ('card', 'Card / POS'),
+        ('mobile_money', 'Mobile Money'),
+        ('bank_transfer', 'Bank Transfer'),
+        ('insurance', 'Insurance'),
+        ('waived', 'Waived'),
+    ]
+    invoice = models.ForeignKey(Invoice, on_delete=models.CASCADE, related_name='payments')
+    amount = models.DecimalField(max_digits=12, decimal_places=2)
+    method = models.CharField(max_length=20, choices=METHOD_CHOICES)
+    reference = models.CharField(max_length=100, blank=True, help_text='Transaction ID, cheque number, etc.')
+    received_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, related_name='payments_received')
+    notes = models.TextField(blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f"Payment {self.amount} on {self.invoice.invoice_number}"
+
+
+class InsuranceClaim(models.Model):
+    """Insurance / NHIA claim filed against an invoice."""
+
+    SCHEME_CHOICES = [
+        ('nhia',          'NHIA (National Health Insurance)'),
+        ('slesha',        'SLeSHA'),
+        ('employer',      'Employer / Occupational'),
+        ('private',       'Private Insurance'),
+        ('other',         'Other'),
+    ]
+    STATUS_CHOICES = [
+        ('draft',      'Draft'),
+        ('submitted',  'Submitted'),
+        ('under_review', 'Under Review'),
+        ('approved',   'Approved'),
+        ('rejected',   'Rejected'),
+        ('paid',       'Paid by Insurer'),
+        ('closed',     'Closed'),
+    ]
+
+    claim_number  = models.CharField(max_length=60, unique=True, editable=False)
+    patient       = models.ForeignKey(Patient,  on_delete=models.CASCADE,    related_name='insurance_claims')
+    invoice       = models.ForeignKey(Invoice,  on_delete=models.SET_NULL,   related_name='insurance_claims', null=True, blank=True)
+    hospital      = models.ForeignKey(Hospital, on_delete=models.CASCADE,    related_name='insurance_claims')
+    scheme        = models.CharField(max_length=30, choices=SCHEME_CHOICES, default='nhia')
+    provider_name = models.CharField(max_length=200, help_text='Insurance company / scheme name')
+    member_id     = models.CharField(max_length=100, blank=True, help_text='Patient membership / policy number')
+    claim_amount  = models.DecimalField(max_digits=12, decimal_places=2)
+    approved_amount = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    status        = models.CharField(max_length=20, choices=STATUS_CHOICES, default='draft')
+    submitted_at  = models.DateTimeField(null=True, blank=True)
+    notes         = models.TextField(blank=True)
+    rejection_reason = models.TextField(blank=True)
+    created_by    = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, related_name='claims_created')
+    created_at    = models.DateTimeField(auto_now_add=True)
+    updated_at    = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-created_at']
+
+    def save(self, *args, **kwargs):
+        if not self.claim_number:
+            import datetime, random, string
+            date_str = datetime.date.today().strftime('%Y%m%d')
+            suffix   = ''.join(random.choices(string.ascii_uppercase + string.digits, k=5))
+            self.claim_number = f'CLM-{date_str}-{suffix}'
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        return f"{self.claim_number} — {self.patient.full_name} [{self.status}]"
 
 
 # =====this is use to create a profile when a user is created=====

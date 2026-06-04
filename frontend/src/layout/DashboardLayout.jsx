@@ -472,6 +472,24 @@ function DashboardLayout({ children, navItems = [], brandTitle = 'NEHR', roleBad
             const isDoctor  = (user.role_display || user.role || '').toLowerCase().includes('doctor');
             const greeting  = isDoctor ? `Dr. ${lastName}` : firstName;
             const today     = new Date().toLocaleDateString('en-GB', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' });
+            const deptName  = user.department_name;
+            const deptLabels = {
+              triage: { label: 'Triage Department',        icon: 'fas fa-procedures',       color: '#f87171' },
+              opd:    { label: 'Out-Patient Department',   icon: 'fas fa-clinic-medical',   color: '#60a5fa' },
+              ipd:    { label: 'In-Patient Department',    icon: 'fas fa-bed',              color: '#a78bfa' },
+              emergency: { label: 'Emergency Department',  icon: 'fas fa-ambulance',        color: '#fb923c' },
+              maternity: { label: 'Maternity Department',  icon: 'fas fa-baby',             color: '#f472b6' },
+              pediatrics:{ label: 'Pediatrics Department', icon: 'fas fa-child',            color: '#34d399' },
+              surgery:   { label: 'Surgery Department',    icon: 'fas fa-cut',              color: '#e879f9' },
+              ward:      { label: 'Ward Department',       icon: 'fas fa-hospital-user',    color: '#94a3b8' },
+              pharmacy:  { label: 'Pharmacy Department',   icon: 'fas fa-pills',            color: '#22d3ee' },
+              laboratory:{ label: 'Laboratory Department', icon: 'fas fa-flask',            color: '#fbbf24' },
+              radiology: { label: 'Radiology Department',  icon: 'fas fa-x-ray',            color: '#c084fc' },
+              dental:    { label: 'Dental Department',     icon: 'fas fa-tooth',            color: '#67e8f9' },
+              eye_clinic:{ label: 'Eye Clinic',            icon: 'fas fa-eye',              color: '#86efac' },
+              physiotherapy:{ label: 'Physiotherapy Dept', icon: 'fas fa-running',          color: '#fdba74' },
+            };
+            const dept = deptName ? (deptLabels[deptName] || { label: deptName.replace(/_/g,' ').replace(/\b\w/g,c=>c.toUpperCase()) + ' Department', icon: 'fas fa-layer-group', color: '#93c5fd' }) : null;
             return (
               <div style={{
                 background: 'linear-gradient(135deg, #0f172a 0%, #1e3a5f 55%, #4361ee 100%)',
@@ -504,13 +522,28 @@ function DashboardLayout({ children, navItems = [], brandTitle = 'NEHR', roleBad
                       Welcome back, <span style={{ color: '#93c5fd', fontWeight: 700 }}>{greeting}</span>
                       <span style={{ marginLeft: 14, color: 'rgba(255,255,255,0.35)', fontWeight: 400 }}>{today}</span>
                     </div>
-                    {/* Hospital name */}
-                    <div style={{
-                      color: '#fff', fontWeight: 900, fontSize: 21,
-                      lineHeight: 1.15, letterSpacing: '-0.3px',
-                      overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                    }}>
-                      {user.hospital_name}
+                    {/* Hospital name + department badge */}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                      <div style={{
+                        color: '#fff', fontWeight: 900, fontSize: 21,
+                        lineHeight: 1.15, letterSpacing: '-0.3px',
+                        overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                      }}>
+                        {user.hospital_name}
+                      </div>
+                      {dept && (
+                        <span style={{
+                          display: 'inline-flex', alignItems: 'center', gap: 5,
+                          background: `${dept.color}20`,
+                          border: `1px solid ${dept.color}55`,
+                          borderRadius: 20, padding: '3px 10px',
+                          fontSize: 11, fontWeight: 700, color: dept.color,
+                          whiteSpace: 'nowrap', flexShrink: 0,
+                        }}>
+                          <i className={dept.icon} style={{ fontSize: 10 }}></i>
+                          {dept.label}
+                        </span>
+                      )}
                     </div>
                     {/* Sub-info chips */}
                     <div style={{ display: 'flex', gap: 16, marginTop: 8, flexWrap: 'wrap' }}>

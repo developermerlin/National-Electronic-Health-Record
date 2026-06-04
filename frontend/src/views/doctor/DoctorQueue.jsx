@@ -20,6 +20,238 @@ function DoctorQueue() {
   const [filterStatus, setFilterStatus] = useState('all');
   const [viewMode, setViewMode] = useState(() => localStorage.getItem('doctorQueueView') || 'card');
 
+  // ── Prescription modal state ──────────────────────────────
+  const [rxModal, setRxModal]             = useState(false);
+  const [rxApt, setRxApt]                 = useState(null);
+  const [rxLoading, setRxLoading]         = useState(false);
+  const [rxSaving, setRxSaving]           = useState(false);
+  const [rxDrugSearch, setRxDrugSearch]   = useState('');
+  const [rxDrugResults, setRxDrugResults] = useState([]);
+  const [rxNotes, setRxNotes]             = useState('');
+  const [rxItems, setRxItems]             = useState([]);
+  const EMPTY_ITEM = { drug: null, drug_name: '', strength: '', dosage_form: '', dose: '', route: 'oral', frequency: 'bd', duration_days: '', quantity: 1, instructions: '' };
+
+  // ── Admit modal state ────────────────────────────────────
+  const [admitModal, setAdmitModal]         = useState(false);
+  const [admitApt, setAdmitApt]             = useState(null);
+  const [wards, setWards]                   = useState([]);
+  const [availBeds, setAvailBeds]           = useState([]);
+  const [admitWard, setAdmitWard]           = useState('');
+  const [admitBed, setAdmitBed]             = useState('');
+  const [admitNotes, setAdmitNotes]         = useState('');
+  const [admitSaving, setAdmitSaving]       = useState(false);
+
+  // ── Lab order modal state ──────────────────────────────
+  const [labModal, setLabModal]             = useState(false);
+  const [labApt, setLabApt]                 = useState(null);
+  const [labTests, setLabTests]             = useState([]);
+  const [labForm, setLabForm]               = useState({ test_name: '', test_category: 'haematology', priority: 'routine', sample_type: 'blood', clinical_info: '' });
+  const [labSaving, setLabSaving]           = useState(false);
+
+  const openRxModal = async (apt) => {
+    setRxApt(apt);
+    setRxItems([{ ...EMPTY_ITEM }]);
+    setRxNotes('');
+    setRxDrugSearch('');
+    setRxDrugResults([]);
+    setRxLoading(true);
+    setRxModal(true);
+    if (apt.visit_id) {
+      try {
+        const res = await apiCall(`/visits/${apt.visit_id}/prescription/`);
+        if (res.ok) {
+          const data = await res.json();
+          if (data && data.items && data.items.length > 0) {
+            setRxItems(data.items.map(i => ({ drug: i.drug, drug_name: i.drug_name, strength: i.strength, dosage_form: i.dosage_form, dose: i.dose, route: i.route, frequency: i.frequency, duration_days: i.duration_days || '', quantity: i.quantity, instructions: i.instructions })));
+            setRxNotes(data.notes || '');
+          }
+        }
+      } catch { /* ignore */ }
+    }
+    setRxLoading(false);
+  };
+
+  const searchDrugs = async (q) => {
+    setRxDrugSearch(q);
+    if (q.length < 2) { setRxDrugResults([]); return; }
+    try {
+      const res = await apiCall(`/pharmacy/inventory/search/?q=${encodeURIComponent(q)}`);
+      if (res.ok) setRxDrugResults(await res.json());
+    } catch { setRxDrugResults([]); }
+  };
+
+  const addRxItem = () => setRxItems(p => [...p, { ...EMPTY_ITEM }]);
+  const removeRxItem = (i) => setRxItems(p => p.filter((_, idx) => idx !== i));
+  const updateRxItem = (i, field, val) => setRxItems(p => p.map((it, idx) => idx === i ? { ...it, [field]: val } : it));
+  const selectDrug = (itemIdx, drug) => {
+    setRxItems(p => p.map((it, idx) => idx === itemIdx ? { ...it, drug: drug.id, drug_name: drug.drug_name, strength: drug.strength, dosage_form: drug.dosage_form } : it));
+    setRxDrugSearch('');
+    setRxDrugResults([]);
+  };
+
+  const printPrescription = () => {
+    const patient = rxApt?.patient_name || rxApt?.patient || 'Patient';
+    const patientId = rxApt?.patient_id_code || '';
+    const doctorName = rxApt?.doctor_name || '';
+    const hospital = rxApt?.hospital_name || 'Hospital';
+    const visitDate = rxApt?.scheduled_at ? new Date(rxApt.scheduled_at).toLocaleDateString('en-GB') : new Date().toLocaleDateString('en-GB');
+    const validItems = rxItems.filter(i => i.drug_name.trim());
+    const FREQ_LABELS = { od: 'Once daily', bd: 'Twice daily', tds: 'Three times daily', qds: 'Four times daily', nocte: 'At night', prn: 'As needed', stat: 'Immediately (stat)', weekly: 'Once a week' };
+    const ROUTE_LABELS = { oral: 'Oral', im: 'IM', iv: 'IV', sc: 'SC', topical: 'Topical', sublingual: 'Sublingual', rectal: 'Rectal', inhaled: 'Inhaled', nasal: 'Nasal', optic: 'Optic', otic: 'Otic' };
+    const rows = validItems.map((item, i) => `
+      <tr>
+        <td style='padding:8px 10px;border-bottom:1px solid #eee;font-weight:600'>${i + 1}. ${item.drug_name}${item.strength ? ` ${item.strength}` : ''}${item.dosage_form ? ` (${item.dosage_form})` : ''}</td>
+        <td style='padding:8px 10px;border-bottom:1px solid #eee'>${item.dose || '—'}</td>
+        <td style='padding:8px 10px;border-bottom:1px solid #eee'>${ROUTE_LABELS[item.route] || item.route || '—'}</td>
+        <td style='padding:8px 10px;border-bottom:1px solid #eee'>${FREQ_LABELS[item.frequency] || item.frequency || '—'}</td>
+        <td style='padding:8px 10px;border-bottom:1px solid #eee'>${item.duration_days ? `${item.duration_days} day(s)` : '—'}</td>
+        <td style='padding:8px 10px;border-bottom:1px solid #eee'>${item.quantity || 1}</td>
+        <td style='padding:8px 10px;border-bottom:1px solid #eee;color:#555'>${item.instructions || '—'}</td>
+      </tr>`).join('');
+    const html = `<!DOCTYPE html><html><head><title>Prescription</title><style>
+      body{font-family:Arial,sans-serif;margin:0;padding:30px;color:#111;}
+      .header{text-align:center;border-bottom:3px double #333;padding-bottom:16px;margin-bottom:18px;}
+      .header h1{font-size:20px;margin:0 0 4px;} .header h2{font-size:15px;margin:0;color:#555;font-style:italic;}
+      .meta{display:grid;grid-template-columns:1fr 1fr;gap:8px 20px;margin-bottom:18px;font-size:13px;}
+      .meta .label{font-size:11px;font-weight:700;color:#888;display:block;} .meta .value{font-weight:600;}
+      table{width:100%;border-collapse:collapse;font-size:12px;}
+      thead th{background:#f4f4f4;padding:8px 10px;text-align:left;font-weight:700;border-bottom:2px solid #ccc;font-size:11px;text-transform:uppercase;letter-spacing:.6px;}
+      .rx-symbol{font-size:32px;font-weight:900;color:#333;margin-bottom:8px;display:block;}
+      .notes{background:#f9f9f9;border:1px solid #ddd;border-radius:6px;padding:10px 14px;margin-top:16px;font-size:13px;}
+      .footer{text-align:center;font-size:11px;color:#888;margin-top:30px;padding-top:10px;border-top:1px solid #ddd;}
+      .sig{margin-top:36px;display:grid;grid-template-columns:1fr 1fr;gap:40px;}
+      .sig-line{border-top:1px solid #333;padding-top:5px;font-size:12px;text-align:center;}
+      @media print{body{padding:15px;}}
+    </style></head><body>
+      <div class='header'>
+        <h1>${hospital}</h1>
+        <h2>PRESCRIPTION</h2>
+      </div>
+      <div class='meta'>
+        <div><span class='label'>Patient Name</span><span class='value'>${patient}</span></div>
+        <div><span class='label'>Patient ID</span><span class='value'>${patientId || '—'}</span></div>
+        <div><span class='label'>Date</span><span class='value'>${visitDate}</span></div>
+        <div><span class='label'>Prescribing Doctor</span><span class='value'>${doctorName || '—'}</span></div>
+      </div>
+      <span class='rx-symbol'>&#x211E;</span>
+      <table>
+        <thead><tr><th>Drug</th><th>Dose</th><th>Route</th><th>Frequency</th><th>Duration</th><th>Qty</th><th>Instructions</th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+      ${rxNotes ? `<div class='notes'><strong>Notes:</strong> ${rxNotes}</div>` : ''}
+      <div class='sig'>
+        <div class='sig-line'>Doctor's Signature / Stamp</div>
+        <div class='sig-line'>Date</div>
+      </div>
+      <div class='footer'>${hospital} — National Electronic Health Record — Printed ${new Date().toLocaleString()}</div>
+    </body></html>`;
+    const win = window.open('', '_blank');
+    win.document.write(html);
+    win.document.close();
+    win.focus();
+    setTimeout(() => win.print(), 500);
+  };
+
+  const saveRx = async () => {
+    if (!rxApt?.visit_id) { showToast.error('No visit linked to this appointment.'); return; }
+    const validItems = rxItems.filter(i => i.drug_name.trim() && i.dose.trim());
+    if (!validItems.length) { showToast.error('Add at least one drug with name and dose.'); return; }
+    setRxSaving(true);
+    try {
+      const res = await apiCall(`/visits/${rxApt.visit_id}/prescription/`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ notes: rxNotes, items: validItems.map(i => ({ ...i, duration_days: i.duration_days || null })) }),
+      });
+      if (res.ok) {
+        showToast.success('Prescription saved successfully');
+        setRxModal(false);
+      } else {
+        const err = await res.json();
+        showToast.error(err.detail || 'Failed to save prescription');
+      }
+    } catch { showToast.error('Failed to save prescription'); }
+    setRxSaving(false);
+  };
+
+  // ── Admit handlers ─────────────────────────────────────
+  const openAdmitModal = async (apt) => {
+    setAdmitApt(apt);
+    setAdmitWard(''); setAdmitBed(''); setAdmitNotes(''); setAvailBeds([]);
+    setAdmitModal(true);
+    try {
+      const res = await apiCall('/ipd/wards/');
+      if (res.ok) setWards(await res.json());
+    } catch { setWards([]); }
+  };
+
+  const fetchAvailBeds = async (wardId) => {
+    if (!wardId) { setAvailBeds([]); return; }
+    try {
+      const res = await apiCall(`/ipd/beds/available/?ward=${wardId}`);
+      if (res.ok) setAvailBeds(await res.json());
+      else setAvailBeds([]);
+    } catch { setAvailBeds([]); }
+  };
+
+  const doAdmit = async () => {
+    if (!admitApt?.visit_id) { showToast.error('No visit linked.'); return; }
+    if (!admitBed) { showToast.error('Select a bed.'); return; }
+    setAdmitSaving(true);
+    try {
+      const res = await apiCall('/ipd/admissions/', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ visit: admitApt.visit_id, bed: admitBed, ward: admitWard, admission_notes: admitNotes }),
+      });
+      if (res.ok) {
+        showToast.success('Patient admitted successfully');
+        setAdmitModal(false);
+      } else {
+        const err = await res.json();
+        showToast.error(err.detail || 'Failed to admit');
+      }
+    } catch { showToast.error('Failed to admit patient'); }
+    setAdmitSaving(false);
+  };
+
+  // ── Lab order handlers ───────────────────────────────────
+  const openLabModal = async (apt) => {
+    setLabApt(apt);
+    setLabForm({ test_name: '', test_category: 'haematology', priority: 'routine', sample_type: 'blood', clinical_info: '' });
+    setLabModal(true);
+    if (apt.visit_id) {
+      try {
+        const res = await apiCall(`/lab/tests/?visit_id=${apt.visit_id}`);
+        if (res.ok) setLabTests(await res.json());
+        else setLabTests([]);
+      } catch { setLabTests([]); }
+    }
+  };
+
+  const doOrderLab = async () => {
+    if (!labApt?.visit_id) { showToast.error('No visit linked.'); return; }
+    if (!labForm.test_name.trim()) { showToast.error('Test name is required.'); return; }
+    setLabSaving(true);
+    try {
+      const res = await apiCall('/lab/tests/', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ visit_id: labApt.visit_id, ...labForm }),
+      });
+      if (res.ok) {
+        showToast.success('Lab test ordered');
+        setLabForm({ test_name: '', test_category: 'haematology', priority: 'routine', sample_type: 'blood', clinical_info: '' });
+        const refresh = await apiCall(`/lab/tests/?visit_id=${labApt.visit_id}`);
+        if (refresh.ok) setLabTests(await refresh.json());
+      } else {
+        const err = await res.json();
+        showToast.error(err.error || 'Failed to order test');
+      }
+    } catch { showToast.error('Failed to order lab test'); }
+    setLabSaving(false);
+  };
+
   const setView = (mode) => {
     setViewMode(mode);
     localStorage.setItem('doctorQueueView', mode);
@@ -521,9 +753,20 @@ function DoctorQueue() {
                                 </div>
                               )}
                             </div>
-                            <button className="btn btn-success w-100" onClick={() => handleComplete(apt.id)}>
-                              <i className="fas fa-check-double me-2"></i>Complete Now
-                            </button>
+                            <div className="d-flex gap-2 w-100">
+                              <button className="btn btn-primary flex-fill" onClick={() => openRxModal(apt)}>
+                                <i className="fas fa-prescription me-1"></i>Write Rx
+                              </button>
+                              <button className="btn btn-outline-warning flex-fill" onClick={() => openLabModal(apt)}>
+                                <i className="fas fa-flask me-1"></i>Order Lab
+                              </button>
+                              <button className="btn btn-outline-primary flex-fill" onClick={() => openAdmitModal(apt)}>
+                                <i className="fas fa-bed me-1"></i>Admit
+                              </button>
+                              <button className="btn btn-success flex-fill" onClick={() => handleComplete(apt.id)}>
+                                <i className="fas fa-check-double me-1"></i>Complete
+                              </button>
+                            </div>
                           </>
                         )}
                       </div>
@@ -643,9 +886,20 @@ function DoctorQueue() {
                               </>
                             )}
                             {apt.status === 'in_consultation' && (
-                              <button className="btn btn-sm btn-success" onClick={() => handleComplete(apt.id)} title="Complete">
-                                <i className="fas fa-check-double"></i>
-                              </button>
+                              <>
+                                <button className="btn btn-sm btn-primary" onClick={() => openRxModal(apt)} title="Write Prescription">
+                                  <i className="fas fa-prescription"></i>
+                                </button>
+                                <button className="btn btn-sm btn-outline-warning" onClick={() => openLabModal(apt)} title="Order Lab Test">
+                                  <i className="fas fa-flask"></i>
+                                </button>
+                                <button className="btn btn-sm btn-outline-primary" onClick={() => openAdmitModal(apt)} title="Admit Patient">
+                                  <i className="fas fa-bed"></i>
+                                </button>
+                                <button className="btn btn-sm btn-success" onClick={() => handleComplete(apt.id)} title="Complete">
+                                  <i className="fas fa-check-double"></i>
+                                </button>
+                              </>
                             )}
                           </div>
                         </td>
@@ -658,6 +912,324 @@ function DoctorQueue() {
           </div>
         )}
       </div>
+
+      {/* ═════════════════ PRESCRIPTION MODAL ═════════════════ */}
+      {rxModal && rxApt && (
+        <div className="modal" style={{ display: 'block', background: 'rgba(0,0,0,0.4)' }} onClick={() => { if (!rxSaving) setRxModal(false); }}>
+          <div className="modal-dialog modal-lg modal-dialog-scrollable" onClick={e => e.stopPropagation()}>
+            <div className="modal-content" style={{ borderRadius: 16 }}>
+              <div className="modal-header" style={{ background: 'linear-gradient(135deg,#4361ee,#7c3aed)', borderRadius: '16px 16px 0 0', border: 'none' }}>
+                <h5 className="modal-title text-white">
+                  <i className="fas fa-prescription me-2"></i>Write Prescription
+                </h5>
+                <button type="button" className="btn-close btn-close-white" onClick={() => setRxModal(false)} disabled={rxSaving}></button>
+              </div>
+              <div className="modal-body">
+                {rxLoading && (
+                  <div className="text-center py-4">
+                    <div className="spinner-border text-primary" style={{ width: 32, height: 32 }}></div>
+                    <p className="text-muted small mt-2">Loading existing prescription…</p>
+                  </div>
+                )}
+
+                {!rxLoading && (
+                  <>
+                    {/* Patient strip */}
+                    <div className="d-flex align-items-center gap-2 mb-3 p-2" style={{ background: '#f8fafc', borderRadius: 10 }}>
+                      <div style={{ width: 36, height: 36, borderRadius: '50%', background: '#e0e7ff', color: '#4361ee', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14, fontWeight: 700 }}>
+                        {(rxApt.patient?.full_name || 'P').charAt(0).toUpperCase()}
+                      </div>
+                      <div>
+                        <div className="fw-bold" style={{ fontSize: 13 }}>{rxApt.patient?.full_name || 'Patient'}</div>
+                        <div className="text-muted small">{rxApt.hospital} · {rxApt.department || '—'}</div>
+                      </div>
+                    </div>
+
+                    {/* Drug autocomplete */}
+                    <div className="mb-3 position-relative">
+                      <label className="form-label small fw-bold">Search Drug from Inventory</label>
+                      <div className="input-group input-group-sm">
+                        <span className="input-group-text"><i className="fas fa-search text-muted"></i></span>
+                        <input
+                          type="text"
+                          className="form-control form-control-sm"
+                          placeholder="Type at least 2 letters…"
+                          value={rxDrugSearch}
+                          onChange={e => searchDrugs(e.target.value)}
+                        />
+                      </div>
+                      {rxDrugResults.length > 0 && (
+                        <div className="position-absolute w-100 mt-1 shadow-sm" style={{ zIndex: 1000, background: '#fff', border: '1px solid #e2e8f0', borderRadius: 8, maxHeight: 200, overflowY: 'auto' }}>
+                          {rxDrugResults.map(d => (
+                            <button key={d.id} className="d-block w-100 text-start border-0 px-3 py-2 small"
+                              style={{ background: 'none', cursor: 'pointer', borderBottom: '1px solid #f1f5f9' }}
+                              onMouseEnter={e => e.currentTarget.style.background = '#f8fafc'}
+                              onMouseLeave={e => e.currentTarget.style.background = 'none'}
+                              onClick={() => { if (rxItems.length > 0) selectDrug(rxItems.length - 1, d); else { addRxItem(); setTimeout(() => selectDrug(0, d), 0); } }}>
+                              <strong style={{ color: '#1e293b', fontSize: 12 }}>{d.drug_name} {d.strength}</strong>
+                              <span className="text-muted ms-2" style={{ fontSize: 11 }}>{d.dosage_form} · Stock: {d.quantity_in_stock} {d.unit}</span>
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Items table */}
+                    <div className="mb-3">
+                      <div className="d-flex justify-content-between align-items-center mb-2">
+                        <label className="form-label small fw-bold mb-0">Prescription Items</label>
+                        <button className="btn btn-sm btn-outline-primary" onClick={addRxItem}>
+                          <i className="fas fa-plus me-1"></i>Add Drug
+                        </button>
+                      </div>
+                      {rxItems.map((item, idx) => (
+                        <div key={idx} className="p-2 mb-2" style={{ background: '#f8fafc', borderRadius: 10, border: '1px solid #e2e8f0' }}>
+                          <div className="d-flex justify-content-between align-items-center mb-2">
+                            <span className="badge bg-secondary" style={{ fontSize: 10 }}>#{idx + 1}</span>
+                            <button className="btn btn-sm btn-outline-danger" style={{ padding: '2px 6px', fontSize: 11 }} onClick={() => removeRxItem(idx)} disabled={rxItems.length === 1}>
+                              <i className="fas fa-trash"></i>
+                            </button>
+                          </div>
+                          <div className="row g-2">
+                            <div className="col-md-4">
+                              <input className="form-control form-control-sm" placeholder="Drug name" value={item.drug_name}
+                                onChange={e => updateRxItem(idx, 'drug_name', e.target.value)} />
+                            </div>
+                            <div className="col-md-2">
+                              <input className="form-control form-control-sm" placeholder="Strength" value={item.strength}
+                                onChange={e => updateRxItem(idx, 'strength', e.target.value)} />
+                            </div>
+                            <div className="col-md-2">
+                              <input className="form-control form-control-sm" placeholder="Form" value={item.dosage_form}
+                                onChange={e => updateRxItem(idx, 'dosage_form', e.target.value)} />
+                            </div>
+                            <div className="col-md-2">
+                              <input className="form-control form-control-sm" placeholder="Dose" value={item.dose}
+                                onChange={e => updateRxItem(idx, 'dose', e.target.value)} />
+                            </div>
+                            <div className="col-md-2">
+                              <input className="form-control form-control-sm" placeholder="Qty" type="number" min="1" value={item.quantity}
+                                onChange={e => updateRxItem(idx, 'quantity', parseInt(e.target.value) || 1)} />
+                            </div>
+                            <div className="col-md-3">
+                              <select className="form-select form-select-sm" value={item.route}
+                                onChange={e => updateRxItem(idx, 'route', e.target.value)}>
+                                <option value="oral">Oral</option>
+                                <option value="iv">IV</option>
+                                <option value="im">IM</option>
+                                <option value="sc">SC</option>
+                                <option value="topical">Topical</option>
+                                <option value="inhalation">Inhalation</option>
+                                <option value="rectal">Rectal</option>
+                                <option value="sublingual">Sublingual</option>
+                                <option value="ophthalmic">Ophthalmic</option>
+                                <option value="otic">Otic</option>
+                                <option value="nasal">Nasal</option>
+                                <option value="other">Other</option>
+                              </select>
+                            </div>
+                            <div className="col-md-3">
+                              <select className="form-select form-select-sm" value={item.frequency}
+                                onChange={e => updateRxItem(idx, 'frequency', e.target.value)}>
+                                <option value="once">Stat</option>
+                                <option value="od">OD (Once daily)</option>
+                                <option value="bd">BD (Twice daily)</option>
+                                <option value="tds">TDS (3x daily)</option>
+                                <option value="qid">QID (4x daily)</option>
+                                <option value="nocte">Nocte</option>
+                                <option value="prn">PRN (As needed)</option>
+                                <option value="weekly">Weekly</option>
+                                <option value="other">Other</option>
+                              </select>
+                            </div>
+                            <div className="col-md-3">
+                              <input className="form-control form-control-sm" placeholder="Duration (days)" type="number" min="1"
+                                value={item.duration_days} onChange={e => updateRxItem(idx, 'duration_days', e.target.value)} />
+                            </div>
+                            <div className="col-md-3">
+                              <input className="form-control form-control-sm" placeholder="Instructions" value={item.instructions}
+                                onChange={e => updateRxItem(idx, 'instructions', e.target.value)} />
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+
+                    {/* Notes */}
+                    <div className="mb-2">
+                      <label className="form-label small fw-bold">General Notes / Counselling</label>
+                      <textarea className="form-control form-control-sm" rows={2} value={rxNotes}
+                        onChange={e => setRxNotes(e.target.value)} placeholder="e.g. Take with food, avoid alcohol…" />
+                    </div>
+                  </>
+                )}
+              </div>
+              <div className="modal-footer" style={{ borderRadius: '0 0 16px 16px', border: 'none' }}>
+                <button className="btn btn-secondary btn-sm" onClick={() => setRxModal(false)} disabled={rxSaving}>
+                  Cancel
+                </button>
+                <button className="btn btn-outline-secondary btn-sm" onClick={printPrescription} disabled={rxSaving || rxLoading}>
+                  <i className="fas fa-print me-1"></i>Print
+                </button>
+                <button className="btn btn-primary btn-sm" onClick={saveRx} disabled={rxSaving}>
+                  {rxSaving ? <><span className="spinner-border spinner-border-sm me-1" style={{ width: 14, height: 14 }}></span>Saving…</> : <><i className="fas fa-save me-1"></i>Save Prescription</>}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Admit Modal ── */}
+      {admitModal && (
+        <div className="modal" style={{ display: 'block', background: 'rgba(0,0,0,0.4)' }} onClick={() => setAdmitModal(false)}>
+          <div className="modal-dialog modal-dialog-scrollable" onClick={e => e.stopPropagation()}>
+            <div className="modal-content" style={{ borderRadius: 16 }}>
+              <div className="modal-header" style={{ background: 'linear-gradient(135deg,#4361ee,#7c3aed)', borderRadius: '16px 16px 0 0', border: 'none' }}>
+                <h5 className="modal-title text-white"><i className="fas fa-bed me-2"></i>Admit Patient</h5>
+                <button className="btn-close btn-close-white" onClick={() => setAdmitModal(false)}></button>
+              </div>
+              <div className="modal-body">
+                <div className="mb-3 p-2" style={{ background: '#f8fafc', borderRadius: 10 }}>
+                  <div className="fw-bold small">{admitApt?.patient_name}</div>
+                  <div className="text-muted small">Visit #{admitApt?.visit_id}</div>
+                </div>
+                <div className="mb-3">
+                  <label className="form-label small fw-bold">Ward</label>
+                  <select className="form-select form-select-sm" value={admitWard}
+                    onChange={e => { const w = e.target.value; setAdmitWard(w); setAdmitBed(''); fetchAvailBeds(w); }}>
+                    <option value="">— Select Ward —</option>
+                    {wards.map(w => <option key={w.id} value={w.id}>{w.name}</option>)}
+                  </select>
+                </div>
+                <div className="mb-3">
+                  <label className="form-label small fw-bold">Bed</label>
+                  <select className="form-select form-select-sm" value={admitBed}
+                    onChange={e => setAdmitBed(e.target.value)}>
+                    <option value="">— Select Bed —</option>
+                    {availBeds.map(b => <option key={b.id} value={b.id}>{b.bed_number} ({b.bed_type_display})</option>)}
+                  </select>
+                  {admitWard && availBeds.length === 0 && (
+                    <div className="text-danger small mt-1"><i className="fas fa-exclamation-circle me-1"></i>No available beds.</div>
+                  )}
+                </div>
+                <div className="mb-3">
+                  <label className="form-label small fw-bold">Admission Notes</label>
+                  <textarea className="form-control form-control-sm" rows={2} value={admitNotes}
+                    onChange={e => setAdmitNotes(e.target.value)} placeholder="Reason for admission…" />
+                </div>
+              </div>
+              <div className="modal-footer" style={{ borderRadius: '0 0 16px 16px', border: 'none' }}>
+                <button className="btn btn-secondary btn-sm" onClick={() => setAdmitModal(false)} disabled={admitSaving}>Cancel</button>
+                <button className="btn btn-primary btn-sm" onClick={doAdmit} disabled={admitSaving}>
+                  {admitSaving ? <><span className="spinner-border spinner-border-sm me-1" style={{ width: 14, height: 14 }}></span>Admitting…</> : <><i className="fas fa-save me-1"></i>Admit</>}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Lab Order Modal ── */}
+      {labModal && (
+        <div className="modal" style={{ display: 'block', background: 'rgba(0,0,0,0.4)' }} onClick={() => setLabModal(false)}>
+          <div className="modal-dialog modal-dialog-scrollable" onClick={e => e.stopPropagation()}>
+            <div className="modal-content" style={{ borderRadius: 16 }}>
+              <div className="modal-header" style={{ background: 'linear-gradient(135deg,#f59e0b,#f97316)', borderRadius: '16px 16px 0 0', border: 'none' }}>
+                <h5 className="modal-title text-white"><i className="fas fa-flask me-2"></i>Order Lab Test</h5>
+                <button className="btn-close btn-close-white" onClick={() => setLabModal(false)}></button>
+              </div>
+              <div className="modal-body">
+                <div className="mb-3 p-2" style={{ background: '#f8fafc', borderRadius: 10 }}>
+                  <div className="fw-bold small">{labApt?.patient_name}</div>
+                  <div className="text-muted small">Visit #{labApt?.visit_id}</div>
+                </div>
+                <div className="mb-3">
+                  <label className="form-label small fw-bold">Test Name</label>
+                  <input className="form-control form-control-sm" placeholder="e.g. Full Blood Count, LFT, Creatinine…" value={labForm.test_name}
+                    onChange={e => setLabForm(p => ({ ...p, test_name: e.target.value }))} />
+                </div>
+                <div className="row g-2 mb-3">
+                  <div className="col-md-4">
+                    <label className="form-label small fw-bold">Category</label>
+                    <select className="form-select form-select-sm" value={labForm.test_category}
+                      onChange={e => setLabForm(p => ({ ...p, test_category: e.target.value }))}>
+                      <option value="haematology">Haematology</option>
+                      <option value="biochemistry">Biochemistry</option>
+                      <option value="microbiology">Microbiology</option>
+                      <option value="serology">Serology</option>
+                      <option value="urinalysis">Urinalysis</option>
+                      <option value="parasitology">Parasitology</option>
+                      <option value="histopathology">Histopathology</option>
+                      <option value="radiology">Radiology</option>
+                      <option value="other">Other</option>
+                    </select>
+                  </div>
+                  <div className="col-md-4">
+                    <label className="form-label small fw-bold">Priority</label>
+                    <select className="form-select form-select-sm" value={labForm.priority}
+                      onChange={e => setLabForm(p => ({ ...p, priority: e.target.value }))}>
+                      <option value="routine">Routine</option>
+                      <option value="urgent">Urgent</option>
+                      <option value="stat">STAT</option>
+                    </select>
+                  </div>
+                  <div className="col-md-4">
+                    <label className="form-label small fw-bold">Sample</label>
+                    <select className="form-select form-select-sm" value={labForm.sample_type}
+                      onChange={e => setLabForm(p => ({ ...p, sample_type: e.target.value }))}>
+                      <option value="blood">Blood (Venous)</option>
+                      <option value="blood_capillary">Blood (Capillary)</option>
+                      <option value="urine">Urine</option>
+                      <option value="stool">Stool</option>
+                      <option value="sputum">Sputum</option>
+                      <option value="swab">Swab</option>
+                      <option value="csf">CSF</option>
+                      <option value="tissue">Tissue Biopsy</option>
+                      <option value="other">Other</option>
+                    </select>
+                  </div>
+                </div>
+                <div className="mb-3">
+                  <label className="form-label small fw-bold">Clinical Info</label>
+                  <textarea className="form-control form-control-sm" rows={2} value={labForm.clinical_info}
+                    onChange={e => setLabForm(p => ({ ...p, clinical_info: e.target.value }))}
+                    placeholder="Indication, relevant history…" />
+                </div>
+
+                {labTests.length > 0 && (
+                  <div className="mt-3">
+                    <h6 className="small fw-bold text-muted mb-2"><i className="fas fa-list me-1"></i>Tests for this visit</h6>
+                    <div className="table-responsive">
+                      <table className="table table-sm mb-0">
+                        <thead style={{ background: '#f8fafc' }}>
+                          <tr><th className="small text-muted">Test</th><th className="small text-muted">Status</th><th className="small text-muted">Result</th></tr>
+                        </thead>
+                        <tbody>
+                          {labTests.map(t => (
+                            <tr key={t.id}>
+                              <td className="small">{t.test_name} <span className="text-muted">({t.test_category_display})</span></td>
+                              <td className="small"><span className="badge" style={{ fontSize: 9, background: t.status === 'completed' ? '#d1fae5' : '#fef3c7', color: t.status === 'completed' ? '#065f46' : '#92400e' }}>{t.status_display}</span></td>
+                              <td className="small">{t.status === 'completed' ? <strong>{t.result_value}</strong> : <span className="text-muted">—</span>}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                )}
+              </div>
+              <div className="modal-footer" style={{ borderRadius: '0 0 16px 16px', border: 'none' }}>
+                <button className="btn btn-secondary btn-sm" onClick={() => setLabModal(false)} disabled={labSaving}>Cancel</button>
+                <button className="btn btn-warning btn-sm text-white" onClick={doOrderLab} disabled={labSaving}>
+                  {labSaving ? <><span className="spinner-border spinner-border-sm me-1" style={{ width: 14, height: 14 }}></span>Ordering…</> : <><i className="fas fa-plus me-1"></i>Order Test</>}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
     </DashboardLayout>
   );
 }

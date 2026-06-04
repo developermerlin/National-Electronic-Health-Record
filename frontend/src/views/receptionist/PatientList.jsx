@@ -381,6 +381,9 @@ function PatientList() {
           <p className="text-muted mb-0">Manage and search registered patients</p>
         </div>
         <div className="d-flex gap-2">
+          <button className="btn btn-outline-secondary" onClick={() => window.open(`${import.meta.env.VITE_API_URL}/patients/csv_export/`, '_blank')}>
+            <i className="fas fa-file-csv me-2"></i>Export CSV
+          </button>
           <button className="btn btn-outline-success" onClick={() => { setShowImportModal(true); setImportFile(null); setImportResult(null); }}>
             <i className="fas fa-file-excel me-2"></i>Import Excel
           </button>

@@ -1,9 +1,11 @@
+import csv
 from rest_framework import viewsets, status
 from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from django.db.models import Q, Count
 from django.utils import timezone
+from django.http import HttpResponse
 from datetime import timedelta
 
 from django.contrib.auth.password_validation import validate_password
@@ -643,3 +645,34 @@ class PatientViewSet(viewsets.ModelViewSet):
         old_user.delete()
 
         return Response({'message': 'Portal account revoked.'}, status=status.HTTP_200_OK)
+
+    @action(detail=False, methods=['get'], url_path='csv_export')
+    def csv_export(self, request):
+        """Export patient list as CSV."""
+        queryset = self.get_queryset()
+        response = HttpResponse(content_type='text/csv')
+        response['Content-Disposition'] = 'attachment; filename="patients.csv"'
+        writer = csv.writer(response)
+        writer.writerow([
+            'ID', 'Full Name', 'Date of Birth', 'Gender', 'Phone',
+            'Email', 'Address', 'City', 'District', 'Hospital',
+            'Blood Type', 'Allergies', 'Emergency Contact', 'Created At',
+        ])
+        for p in queryset.select_related('hospital', 'district').iterator():
+            writer.writerow([
+                p.id,
+                p.full_name,
+                p.date_of_birth or '',
+                p.get_gender_display() if p.gender else '',
+                p.phone or '',
+                p.email or '',
+                p.address or '',
+                p.city or '',
+                p.district.name if p.district else '',
+                p.hospital.name if p.hospital else '',
+                p.blood_type or '',
+                p.allergies or '',
+                f"{p.emergency_contact_name or ''} ({p.emergency_contact_phone or ''})",
+                p.created_at.strftime('%Y-%m-%d') if p.created_at else '',
+            ])
+        return response

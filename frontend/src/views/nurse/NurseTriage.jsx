@@ -595,14 +595,35 @@ export default function NurseTriage() {
 
           {/* ══ STEP 4: SUCCESS ══ */}
           {step === 4 && selected && successData && (
-            <div className="dash-card" style={{ textAlign:'center', padding:'48px 32px' }}>
-              <div style={{ width:'80px', height:'80px', borderRadius:'50%', background:'linear-gradient(135deg,#22c55e,#16a34a)', display:'flex', alignItems:'center', justifyContent:'center', margin:'0 auto 20px' }}>
-                <i className="fas fa-check" style={{ color:'#fff', fontSize:'32px' }}></i>
+            <div className="dash-card" style={{ textAlign:'center', padding:'40px 32px' }}>
+              <div style={{ width:'72px', height:'72px', borderRadius:'50%', background:'linear-gradient(135deg,#22c55e,#16a34a)', display:'flex', alignItems:'center', justifyContent:'center', margin:'0 auto 16px' }}>
+                <i className="fas fa-check" style={{ color:'#fff', fontSize:'28px' }}></i>
               </div>
-              <h5 style={{ fontWeight:800, color:'#166534', marginBottom:'8px' }}>Triage Complete!</h5>
+              <h5 style={{ fontWeight:800, color:'#166534', marginBottom:'6px' }}>Triage Complete!</h5>
               <p style={{ color:'#6c757d', fontSize:'14px', marginBottom:'24px' }}>
-                <strong>{selected.full_name}</strong> has been successfully triaged and is now in the queue for consultation.
+                <strong>{selected.full_name}</strong> has been successfully triaged and is now in the queue.
               </p>
+
+              {/* ── Queue Token Card ── */}
+              {successData.visit?.queue_number && (
+                <div style={{ background:'linear-gradient(135deg,#0f172a 0%,#1e3a5f 55%,#4361ee 100%)', borderRadius:16, padding:'22px 28px', marginBottom:24, position:'relative', overflow:'hidden', maxWidth:360, margin:'0 auto 24px' }}>
+                  <div style={{ position:'absolute', right:-30, top:-30, width:130, height:130, borderRadius:'50%', background:'rgba(255,255,255,0.04)' }}/>
+                  <div style={{ position:'absolute', left:-20, bottom:-40, width:100, height:100, borderRadius:'50%', background:'rgba(255,255,255,0.03)' }}/>
+                  <div style={{ position:'relative', zIndex:1 }}>
+                    <div style={{ fontSize:11, fontWeight:700, letterSpacing:2, textTransform:'uppercase', color:'rgba(255,255,255,0.55)', marginBottom:8 }}>
+                      Queue Token
+                    </div>
+                    <div style={{ fontSize:52, fontWeight:900, color:'#fff', letterSpacing:'-1px', lineHeight:1 }}>
+                      {successData.visit.queue_number}
+                    </div>
+                    <div style={{ fontSize:12, color:'rgba(255,255,255,0.65)', marginTop:10, display:'flex', alignItems:'center', justifyContent:'center', gap:12, flexWrap:'wrap' }}>
+                      <span><i className="fas fa-user me-1"></i>{selected.full_name}</span>
+                      <span><i className="fas fa-calendar me-1"></i>{new Date().toLocaleDateString('en-GB')}</span>
+                      <span><i className="fas fa-clock me-1"></i>{new Date().toLocaleTimeString([], { hour:'2-digit', minute:'2-digit' })}</span>
+                    </div>
+                  </div>
+                </div>
+              )}
 
               {/* Vitals recap */}
               {successData.vitals && (

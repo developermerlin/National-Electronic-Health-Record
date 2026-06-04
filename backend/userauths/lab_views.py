@@ -128,6 +128,7 @@ def lab_tests_list(request):
         search        = request.query_params.get('search', '').strip()
         date_from     = request.query_params.get('date_from')
         date_to       = request.query_params.get('date_to')
+        visit_id      = request.query_params.get('visit_id')
 
         if status_filter:
             qs = qs.filter(status=status_filter)
@@ -135,6 +136,8 @@ def lab_tests_list(request):
             qs = qs.filter(priority=priority)
         if category:
             qs = qs.filter(test_category=category)
+        if visit_id:
+            qs = qs.filter(visit_id=visit_id)
         if search:
             from django.db.models import Q
             qs = qs.filter(
@@ -259,6 +262,20 @@ def lab_record_result(request, test_id):
         test.sample_collected_by = user
 
     test.save()
+
+    # Notify patient via SMS when results are ready
+    try:
+        from userauths.sms_service import send_sms
+        patient = test.patient
+        if patient and patient.phone:
+            body = (
+                f"[NEHR] Hi {patient.full_name}, your {test.test_name} lab result is ready. "
+                f"Please visit {test.hospital.name if test.hospital else 'the hospital'} to collect it or check your patient portal."
+            )
+            send_sms(patient.phone, body)
+    except Exception:
+        pass
+
     return Response(_serialize_test(test))
 
 

@@ -2,31 +2,9 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import DashboardLayout from '../../layout/DashboardLayout';
 import showToast from '../../utils/toast';
+import { getNavForUser, getBrandForUser, getRoleBadge } from '../../utils/navItems';
 
 const ACCENT = '#8b5cf6';
-
-const navItems = [
-  { label: 'Dashboard', items: [
-    { path: '/pharmacy/dashboard', icon: 'fas fa-tachometer-alt', text: 'Overview' },
-  ]},
-  { label: 'Dispensing', items: [
-    { path: '/pharmacy/prescriptions', icon: 'fas fa-file-prescription', text: 'All Prescriptions' },
-    { path: '/pharmacy/queue',         icon: 'fas fa-list-ol',           text: 'Dispense Queue' },
-  ]},
-  { label: 'Inventory', items: [
-    { path: '/pharmacy/inventory', icon: 'fas fa-boxes', text: 'Drug Inventory' },
-  ]},
-  { label: 'Patients', items: [
-    { path: '/pharmacy/patients', icon: 'fas fa-user-injured', text: 'Patient Lookup' },
-  ]},
-  { label: 'Communication', items: [
-    { path: '/chat',     icon: 'fas fa-comments', text: 'Live Chat' },
-    { path: '/messages', icon: 'fas fa-envelope',  text: 'Messages' },
-  ]},
-  { label: 'Account', items: [
-    { path: '/admin/profile', icon: 'fas fa-user-circle', text: 'My Profile' },
-  ]},
-];
 
 // ── Dispense Modal ────────────────────────────────────────────
 function DispenseModal({ note, onClose, onDispensed }) {
@@ -325,17 +303,28 @@ function PharmacistDashboard() {
   const [search,       setSearch]      = useState('');
   const [filterStatus, setFilterStatus] = useState('all');
   const [filterDoctor, setFilterDoctor] = useState('');
+  const [invStats,     setInvStats]     = useState(null);
+  const [lowStockList, setLowStockList] = useState([]);
+  const [expiringList, setExpiringList] = useState([]);
 
   const fetchData = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await apiCall('/pharmacist/dashboard/');
-      if (res.ok) {
-        const data = await res.json();
+      const [dashRes, statsRes, lowRes, expRes] = await Promise.all([
+        apiCall('/pharmacist/dashboard/'),
+        apiCall('/pharmacy/inventory/stats/'),
+        apiCall('/pharmacy/inventory/?low_stock=true'),
+        apiCall('/pharmacy/inventory/?expiring=true'),
+      ]);
+      if (dashRes.ok) {
+        const data = await dashRes.json();
         setStats(data.stats);
         setPending(data.pending_queue || []);
         setDispensed(data.recent_dispensed || []);
       }
+      if (statsRes.ok) setInvStats(await statsRes.json());
+      if (lowRes.ok) setLowStockList(await lowRes.json());
+      if (expRes.ok) setExpiringList(await expRes.json());
     } catch (e) {
       console.error(e);
     } finally {
@@ -404,7 +393,7 @@ function PharmacistDashboard() {
   );
 
   return (
-    <DashboardLayout navItems={navItems} brandTitle="NEHR Pharmacy" roleBadge="Pharmacist">
+    <DashboardLayout navItems={getNavForUser(user)} brandTitle={getBrandForUser(user)} roleBadge={getRoleBadge(user)}>
       <div style={{ padding: '28px 24px' }}>
 
         {/* Header */}
@@ -437,6 +426,79 @@ function PharmacistDashboard() {
             </div>
           ))}
         </div>
+
+        {/* Inventory Alerts */}
+        {invStats && (
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))', gap: 12, marginBottom: 24 }}>
+            {[
+              { icon: 'fas fa-exclamation-triangle', label: 'Low Stock', value: invStats.low_stock || 0, color: '#f59e0b', bg: '#fffbeb', border: '#fde68a' },
+              { icon: 'fas fa-times-circle', label: 'Out of Stock', value: invStats.out_of_stock || 0, color: '#ef4444', bg: '#fef2f2', border: '#fecaca' },
+              { icon: 'fas fa-calendar-times', label: 'Expiring Soon', value: invStats.expiring_soon || 0, color: '#f97316', bg: '#fff7ed', border: '#fed7aa' },
+              { icon: 'fas fa-skull-crossbones', label: 'Expired', value: invStats.expired || 0, color: '#dc2626', bg: '#fef2f2', border: '#fecaca' },
+              { icon: 'fas fa-star-of-life', label: 'Essential Drugs', value: invStats.essential_drugs || 0, color: '#0891b2', bg: '#e0f2fe', border: '#bae6fd' },
+            ].map(a => (
+              <div key={a.label} style={{ background: a.bg, border: `1px solid ${a.border}`, borderRadius: 12, padding: '14px 16px', display: 'flex', alignItems: 'center', gap: 12 }}>
+                <div style={{ width: 36, height: 36, borderRadius: 10, background: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                  <i className={a.icon} style={{ color: a.color, fontSize: 15 }}></i>
+                </div>
+                <div>
+                  <div style={{ fontSize: '20px', fontWeight: 800, color: a.color, lineHeight: 1 }}>{a.value}</div>
+                  <div style={{ fontSize: '11px', fontWeight: 600, color: '#64748b', marginTop: 2 }}>{a.label}</div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Low Stock & Expiring Tables */}
+        {(lowStockList.length > 0 || expiringList.length > 0) && (
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 24 }}>
+            {lowStockList.length > 0 && (
+              <div style={{ background: '#fff', borderRadius: 14, boxShadow: '0 2px 8px rgba(15,23,42,0.06)', overflow: 'hidden' }}>
+                <div style={{ padding: '14px 18px', borderBottom: '1px solid #f1f5f9', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <h6 style={{ margin: 0, fontWeight: 700, fontSize: 13, color: '#0f172a' }}><i className="fas fa-exclamation-triangle me-2" style={{ color: '#f59e0b' }}></i>Low Stock Items</h6>
+                  <span style={{ fontSize: 11, color: '#6c757d', fontWeight: 600 }}>{lowStockList.length} items</span>
+                </div>
+                <div style={{ maxHeight: 260, overflowY: 'auto' }}>
+                  {lowStockList.slice(0, 8).map(d => (
+                    <div key={d.id} style={{ padding: '10px 18px', borderBottom: '1px solid #f8fafc', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <div>
+                        <div style={{ fontWeight: 600, fontSize: 13, color: '#0f172a' }}>{d.drug_name}</div>
+                        <div style={{ fontSize: 11, color: '#94a3b8' }}>{d.strength} · {d.dosage_form}</div>
+                      </div>
+                      <div style={{ textAlign: 'right' }}>
+                        <div style={{ fontSize: 13, fontWeight: 700, color: d.quantity_in_stock === 0 ? '#ef4444' : '#f59e0b' }}>{d.quantity_in_stock} {d.unit_display}</div>
+                        <div style={{ fontSize: 10, color: '#94a3b8' }}>reorder: {d.reorder_level}</div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+            {expiringList.length > 0 && (
+              <div style={{ background: '#fff', borderRadius: 14, boxShadow: '0 2px 8px rgba(15,23,42,0.06)', overflow: 'hidden' }}>
+                <div style={{ padding: '14px 18px', borderBottom: '1px solid #f1f5f9', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <h6 style={{ margin: 0, fontWeight: 700, fontSize: 13, color: '#0f172a' }}><i className="fas fa-calendar-times me-2" style={{ color: '#f97316' }}></i>Expiring Soon</h6>
+                  <span style={{ fontSize: 11, color: '#6c757d', fontWeight: 600 }}>{expiringList.length} items</span>
+                </div>
+                <div style={{ maxHeight: 260, overflowY: 'auto' }}>
+                  {expiringList.slice(0, 8).map(d => (
+                    <div key={d.id} style={{ padding: '10px 18px', borderBottom: '1px solid #f8fafc', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <div>
+                        <div style={{ fontWeight: 600, fontSize: 13, color: '#0f172a' }}>{d.drug_name}</div>
+                        <div style={{ fontSize: 11, color: '#94a3b8' }}>{d.strength} · {d.dosage_form}</div>
+                      </div>
+                      <div style={{ textAlign: 'right' }}>
+                        <div style={{ fontSize: 13, fontWeight: 700, color: d.is_expired ? '#dc2626' : '#f97316' }}>{d.is_expired ? 'Expired' : `${d.days_to_expiry} days`}</div>
+                        <div style={{ fontSize: 10, color: '#94a3b8' }}>{d.expiry_date}</div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Pharmacist Role Banner */}
         <div style={{ background: `linear-gradient(135deg, ${ACCENT}12, #7c3aed08)`,

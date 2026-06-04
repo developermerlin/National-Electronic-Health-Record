@@ -6,12 +6,15 @@ from django.db.models import Q
 from django.utils import timezone
 from datetime import datetime, timedelta
 
-from userauths.models import Appointment, Notification, Patient, DoctorAvailability, DoctorUnavailableDate, PatientVisit
+from userauths.models import Appointment, Notification, Patient, DoctorAvailability, DoctorUnavailableDate, PatientVisit, User
 from userauths.serializer import AppointmentSerializer, NotificationSerializer
 
 
 def _is_doctor(user):
     return user.role and user.role.name == 'doctor'
+
+def _is_hospital_admin(user):
+    return user.role and user.role.name == 'hospital_admin'
 
 
 def _find_overlaps(doctor, scheduled_at, duration_minutes, exclude_id=None):
@@ -311,9 +314,60 @@ def doctor_mark_all_read(request):
 # ─────────────────────────────────────────────
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
+def hospital_admin_doctors(request):
+    """List all doctors in the hospital admin's hospital."""
+    if not _is_hospital_admin(request.user):
+        return Response({'error': 'Not authorized.'}, status=status.HTTP_403_FORBIDDEN)
+    hospital = request.user.hospital
+    if not hospital:
+        return Response({'error': 'No hospital assigned.'}, status=400)
+    doctors = User.objects.filter(
+        hospital=hospital, role__name='doctor', is_active=True
+    ).select_related('profile', 'department', 'role').order_by('full_name')
+    data = []
+    for d in doctors:
+        profile = getattr(d, 'profile', None)
+        specialization = (profile.specialization or '') if profile else ''
+        qualification = (profile.qualification or '') if profile else ''
+        photo_url = None
+        if profile and profile.image and profile.image.name not in ('', 'default/default-user.jpg'):
+            try:
+                photo_url = profile.image.url
+            except Exception:
+                pass
+        data.append({
+            'id': d.id,
+            'full_name': d.full_name or d.email,
+            'employee_id': d.employee_id or '',
+            'specialization': specialization,
+            'qualification': qualification,
+            'department': d.department.get_name_display() if d.department else '',
+            'photo_url': photo_url,
+        })
+    return Response({'count': len(data), 'doctors': data})
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
 def doctor_dashboard(request):
     """Single endpoint that returns all data needed for the doctor dashboard."""
-    if not _is_doctor(request.user):
+    user = request.user
+    role = user.role.name if user.role else None
+
+    # Hospital admins may view any doctor's dashboard via ?doctor_id=
+    if role == 'hospital_admin':
+        doctor_id = request.query_params.get('doctor_id')
+        if not doctor_id:
+            return Response({'error': 'Provide ?doctor_id= to view a doctor dashboard.'}, status=status.HTTP_400_BAD_REQUEST)
+        try:
+            doctor = User.objects.select_related('hospital', 'role').get(
+                pk=doctor_id, role__name='doctor', hospital=user.hospital
+            )
+        except User.DoesNotExist:
+            return Response({'error': 'Doctor not found in your hospital.'}, status=status.HTTP_404_NOT_FOUND)
+    elif _is_doctor(user):
+        doctor = user
+    else:
         return Response({'error': 'Not authorized.'}, status=status.HTTP_403_FORBIDDEN)
 
     # Allow viewing dashboard for a specific date (default to today)
@@ -325,8 +379,6 @@ def doctor_dashboard(request):
             today = timezone.now().date()
     else:
         today = timezone.now().date()
-
-    doctor = request.user
 
     # Repair orphaned triaged visits (no linked appointment) for this doctor today
     orphaned_visits = PatientVisit.objects.filter(

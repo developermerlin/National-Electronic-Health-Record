@@ -6,7 +6,7 @@ from django.contrib.auth.password_validation import validate_password
 from django.core.exceptions import ValidationError
 from datetime import datetime
 
-from userauths.models import User, Role, Patient, Hospital, Appointment, Department, Notification, PatientVisit
+from userauths.models import User, Role, Patient, Hospital, Appointment, Department, Notification, PatientVisit, LabTest
 from userauths.serializer import PatientSerializer, AppointmentSerializer, NotificationSerializer
 
 
@@ -346,3 +346,43 @@ def patient_medical_history(request):
         })
 
     return Response(history)
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def patient_lab_tests(request):
+    if not _is_patient(request.user):
+        return Response({'error': 'Not authorized.'}, status=status.HTTP_403_FORBIDDEN)
+    try:
+        patient = request.user.patient_record
+    except Patient.DoesNotExist:
+        return Response({'error': 'Patient record not found.'}, status=status.HTTP_404_NOT_FOUND)
+
+    qs = LabTest.objects.filter(patient=patient).select_related('visit', 'ordered_by', 'completed_by', 'sample_collected_by', 'hospital').order_by('-created_at')
+    data = []
+    for t in qs:
+        data.append({
+            'id': t.id,
+            'test_name': t.test_name,
+            'test_category': t.test_category,
+            'test_category_display': t.get_test_category_display(),
+            'priority': t.priority,
+            'priority_display': t.get_priority_display(),
+            'status': t.status,
+            'status_display': t.get_status_display(),
+            'sample_type': t.sample_type,
+            'sample_type_display': t.get_sample_type_display(),
+            'clinical_info': t.clinical_info,
+            'result_value': t.result_value,
+            'result_unit': t.result_unit,
+            'reference_range': t.reference_range,
+            'result_notes': t.result_notes,
+            'is_critical': t.is_critical,
+            'doctor_notified': t.doctor_notified,
+            'sample_collected_at': t.sample_collected_at.isoformat() if t.sample_collected_at else None,
+            'completed_at': t.completed_at.isoformat() if t.completed_at else None,
+            'created_at': t.created_at.isoformat(),
+            'hospital_name': t.hospital.name if t.hospital else None,
+            'ordered_by_name': t.ordered_by.get_full_name() or t.ordered_by.username if t.ordered_by else None,
+        })
+    return Response(data)

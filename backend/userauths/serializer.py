@@ -1,4 +1,4 @@
-from userauths.models import Profile, User, Role, Permission, RolePermission, Region, District, Chiefdom, Town, Hospital, Department, Patient, Message, Appointment, PatientVisit, VitalSigns, ClinicalNote, Notification, DoctorAvailability, DoctorUnavailableDate, AuditLog
+from userauths.models import Profile, User, Role, Permission, RolePermission, Region, District, Chiefdom, Town, Hospital, Department, Patient, Message, Appointment, PatientVisit, VitalSigns, ClinicalNote, Notification, DoctorAvailability, DoctorUnavailableDate, AuditLog, Prescription, PrescriptionItem, Ward, Bed, InpatientAdmission, Invoice, InvoiceItem, Payment, StaffLeave, InsuranceClaim
 
 # ===import jwt serializers for token===
 from django.contrib.auth.password_validation import validate_password
@@ -882,18 +882,21 @@ class PatientVisitListSerializer(serializers.ModelSerializer):
     vitals_summary    = serializers.SerializerMethodField()
     vitals            = VitalSignsSerializer(read_only=True)
     clinical_note     = serializers.SerializerMethodField()
+    prescription      = serializers.SerializerMethodField()
+    admission         = serializers.SerializerMethodField()
+    lab_tests         = serializers.SerializerMethodField()
     referred_to_hospital_name = serializers.SerializerMethodField()
 
     class Meta:
         model  = PatientVisit
         fields = [
-            'id', 'visit_date', 'visit_type', 'visit_type_display',
+            'id', 'visit_date', 'visit_type', 'visit_type_display', 'queue_number',
             'chief_complaint', 'status', 'status_display',
             'hospital_name', 'department_name', 'doctor_name', 'registered_by_name',
             'discharge_date', 'referred_to_doctor', 'referred_to_hospital_name',
             'has_vitals', 'has_clinical_note', 'diagnosis',
             'patient_name', 'patient_id_code', 'patient_phone', 'patient_gender', 'patient_pk',
-            'vitals_summary', 'vitals', 'clinical_note',
+            'vitals_summary', 'vitals', 'clinical_note', 'prescription', 'admission', 'lab_tests',
             'created_at',
         ]
 
@@ -926,6 +929,33 @@ class PatientVisitListSerializer(serializers.ModelSerializer):
                 return '[RESTRICTED]'
             return note.diagnosis
         return None
+
+    def get_prescription(self, obj):
+        if hasattr(obj, 'prescription'):
+            from userauths.serializer import PrescriptionSerializer
+            return PrescriptionSerializer(obj.prescription).data
+        return None
+    def get_admission(self, obj):
+        if hasattr(obj, 'admission') and obj.admission:
+            from userauths.serializer import InpatientAdmissionSerializer
+            return InpatientAdmissionSerializer(obj.admission).data
+        return None
+    def get_lab_tests(self, obj):
+        tests = getattr(obj, 'lab_tests', None)
+        if tests is not None:
+            return [{'id': t.id, 'test_name': t.test_name, 'test_category': t.test_category,
+                     'test_category_display': t.get_test_category_display(), 'priority': t.priority,
+                     'priority_display': t.get_priority_display(), 'status': t.status,
+                     'status_display': t.get_status_display(), 'sample_type': t.sample_type,
+                     'sample_type_display': t.get_sample_type_display(), 'clinical_info': t.clinical_info,
+                     'is_critical': t.is_critical, 'doctor_notified': t.doctor_notified,
+                     'result_value': t.result_value, 'result_unit': t.result_unit,
+                     'reference_range': t.reference_range, 'result_notes': t.result_notes,
+                     'sample_collected_at': t.sample_collected_at.isoformat() if t.sample_collected_at else None,
+                     'completed_at': t.completed_at.isoformat() if t.completed_at else None,
+                     'created_at': t.created_at.isoformat()} for t in tests.all()]
+        return []
+
     def get_vitals_summary(self, obj):
         if hasattr(obj, 'vitals'):
             v = obj.vitals
@@ -948,6 +978,9 @@ class PatientVisitDetailSerializer(serializers.ModelSerializer):
     status_display     = serializers.CharField(source='get_status_display',     read_only=True)
     vitals             = VitalSignsSerializer(read_only=True)
     clinical_note      = serializers.SerializerMethodField()
+    prescription       = serializers.SerializerMethodField()
+    admission          = serializers.SerializerMethodField()
+    lab_tests          = serializers.SerializerMethodField()
     referred_hospital_name = serializers.SerializerMethodField()
     patient_name       = serializers.SerializerMethodField()
     patient_id_code    = serializers.SerializerMethodField()
@@ -973,6 +1006,26 @@ class PatientVisitDetailSerializer(serializers.ModelSerializer):
         if not hasattr(obj, 'clinical_note'):
             return None
         return _serialize_clinical_note(obj.clinical_note, self.context.get('request'))
+    def get_admission(self, obj):
+        if hasattr(obj, 'admission') and obj.admission:
+            from userauths.serializer import InpatientAdmissionSerializer
+            return InpatientAdmissionSerializer(obj.admission).data
+        return None
+    def get_lab_tests(self, obj):
+        tests = getattr(obj, 'lab_tests', None)
+        if tests is not None:
+            return [{'id': t.id, 'test_name': t.test_name, 'test_category': t.test_category,
+                     'test_category_display': t.get_test_category_display(), 'priority': t.priority,
+                     'priority_display': t.get_priority_display(), 'status': t.status,
+                     'status_display': t.get_status_display(), 'sample_type': t.sample_type,
+                     'sample_type_display': t.get_sample_type_display(), 'clinical_info': t.clinical_info,
+                     'is_critical': t.is_critical, 'doctor_notified': t.doctor_notified,
+                     'result_value': t.result_value, 'result_unit': t.result_unit,
+                     'reference_range': t.reference_range, 'result_notes': t.result_notes,
+                     'sample_collected_at': t.sample_collected_at.isoformat() if t.sample_collected_at else None,
+                     'completed_at': t.completed_at.isoformat() if t.completed_at else None,
+                     'created_at': t.created_at.isoformat()} for t in tests.all()]
+        return []
 
 
 class PatientVisitCreateSerializer(serializers.ModelSerializer):
@@ -1057,3 +1110,324 @@ class AuditLogSerializer(serializers.ModelSerializer):
             'created_at',
         ]
         read_only_fields = fields
+
+
+# ═══════════════════════════════════════════════════════════════
+# STRUCTURED PRESCRIPTION SERIALIZERS
+# ═══════════════════════════════════════════════════════════════
+
+class PrescriptionItemSerializer(serializers.ModelSerializer):
+    route_display     = serializers.CharField(source='get_route_display',     read_only=True)
+    frequency_display = serializers.CharField(source='get_frequency_display', read_only=True)
+    drug_name_display = serializers.SerializerMethodField()
+
+    class Meta:
+        model  = PrescriptionItem
+        fields = [
+            'id', 'drug', 'drug_name', 'drug_name_display', 'strength', 'dosage_form',
+            'dose', 'route', 'route_display', 'frequency', 'frequency_display',
+            'duration_days', 'quantity', 'instructions',
+            'is_dispensed', 'dispensed_qty', 'created_at',
+        ]
+        read_only_fields = ['is_dispensed', 'dispensed_qty', 'created_at']
+
+    def get_drug_name_display(self, obj):
+        if obj.drug:
+            return f"{obj.drug.drug_name} {obj.drug.strength}".strip()
+        return obj.drug_name
+
+
+class PrescriptionSerializer(serializers.ModelSerializer):
+    items              = PrescriptionItemSerializer(many=True, read_only=True)
+    status_display     = serializers.CharField(source='get_status_display', read_only=True)
+    prescribed_by_name = serializers.SerializerMethodField()
+    dispensed_by_name  = serializers.SerializerMethodField()
+    patient_name       = serializers.SerializerMethodField()
+    visit_date         = serializers.SerializerMethodField()
+
+    class Meta:
+        model  = Prescription
+        fields = [
+            'id', 'visit', 'clinical_note', 'hospital',
+            'prescribed_by', 'prescribed_by_name',
+            'status', 'status_display',
+            'notes',
+            'dispensed_by', 'dispensed_by_name', 'dispensed_at',
+            'patient_name', 'visit_date',
+            'items', 'created_at', 'updated_at',
+        ]
+        read_only_fields = ['created_at', 'updated_at', 'dispensed_at']
+
+    def get_prescribed_by_name(self, obj):
+        return obj.prescribed_by.full_name if obj.prescribed_by else None
+
+    def get_dispensed_by_name(self, obj):
+        return obj.dispensed_by.full_name if obj.dispensed_by else None
+
+    def get_patient_name(self, obj):
+        return obj.visit.patient.full_name if obj.visit and obj.visit.patient else None
+
+    def get_visit_date(self, obj):
+        return obj.visit.visit_date.isoformat() if obj.visit else None
+
+
+class PrescriptionWriteSerializer(serializers.ModelSerializer):
+    items = PrescriptionItemSerializer(many=True)
+
+    class Meta:
+        model  = Prescription
+        fields = ['notes', 'items']
+
+    def create(self, validated_data):
+        items_data = validated_data.pop('items', [])
+        prescription = Prescription.objects.create(**validated_data)
+        for item in items_data:
+            PrescriptionItem.objects.create(prescription=prescription, **item)
+        return prescription
+
+    def update(self, instance, validated_data):
+        items_data = validated_data.pop('items', None)
+        instance.notes = validated_data.get('notes', instance.notes)
+        instance.save()
+        if items_data is not None:
+            instance.items.all().delete()
+            for item in items_data:
+                PrescriptionItem.objects.create(prescription=instance, **item)
+        return instance
+
+
+class WardSerializer(serializers.ModelSerializer):
+    ward_type_display = serializers.CharField(source='get_ward_type_display', read_only=True)
+    status_display    = serializers.CharField(source='get_status_display', read_only=True)
+    hospital_name     = serializers.CharField(source='hospital.name', read_only=True)
+    department_name   = serializers.CharField(source='department.get_name_display', read_only=True)
+    occupancy_count   = serializers.IntegerField(read_only=True)
+    available_count   = serializers.IntegerField(read_only=True)
+    created_by_name   = serializers.CharField(source='created_by.full_name', read_only=True)
+
+    class Meta:
+        model  = Ward
+        fields = [
+            'id', 'hospital', 'hospital_name', 'name', 'ward_type', 'ward_type_display',
+            'department', 'department_name', 'capacity', 'floor', 'phone',
+            'status', 'status_display', 'is_active', 'occupancy_count', 'available_count',
+            'created_by', 'created_by_name', 'created_at', 'updated_at',
+        ]
+
+
+class BedSerializer(serializers.ModelSerializer):
+    bed_type_display  = serializers.CharField(source='get_bed_type_display', read_only=True)
+    status_display    = serializers.CharField(source='get_status_display', read_only=True)
+    ward_name         = serializers.CharField(source='ward.name', read_only=True)
+    hospital_name     = serializers.CharField(source='ward.hospital.name', read_only=True)
+
+    class Meta:
+        model  = Bed
+        fields = [
+            'id', 'ward', 'ward_name', 'hospital_name', 'bed_number', 'bed_type', 'bed_type_display',
+            'status', 'status_display', 'notes', 'is_active', 'created_at', 'updated_at',
+        ]
+
+
+class InpatientAdmissionSerializer(serializers.ModelSerializer):
+    status_display        = serializers.CharField(source='get_status_display', read_only=True)
+    discharge_type_display = serializers.CharField(source='get_discharge_type_display', read_only=True)
+    patient_name          = serializers.CharField(source='visit.patient.full_name', read_only=True)
+    patient_id_code       = serializers.CharField(source='visit.patient.patient_id', read_only=True)
+    patient_gender        = serializers.CharField(source='visit.patient.gender', read_only=True)
+    visit_type_display    = serializers.CharField(source='visit.get_visit_type_display', read_only=True)
+    bed_info              = BedSerializer(source='bed', read_only=True)
+    ward_info             = WardSerializer(source='ward', read_only=True)
+    hospital_name         = serializers.CharField(source='hospital.name', read_only=True)
+    admitted_by_name      = serializers.CharField(source='admitted_by.full_name', read_only=True)
+    discharged_by_name    = serializers.CharField(source='discharged_by.full_name', read_only=True)
+    care_team_names       = serializers.SerializerMethodField()
+    length_of_stay_days   = serializers.IntegerField(read_only=True)
+
+    class Meta:
+        model  = InpatientAdmission
+        fields = [
+            'id', 'visit', 'visit_type_display',
+            'bed', 'bed_info', 'ward', 'ward_info', 'hospital', 'hospital_name',
+            'admission_date', 'admitted_by', 'admitted_by_name', 'admission_notes',
+            'care_team', 'care_team_names',
+            'discharge_date', 'discharged_by', 'discharged_by_name',
+            'discharge_type', 'discharge_type_display', 'discharge_summary',
+            'discharge_medications', 'follow_up_date', 'follow_up_instructions',
+            'status', 'status_display', 'length_of_stay_days',
+            'created_at', 'updated_at',
+        ]
+
+    def get_care_team_names(self, obj):
+        return [u.full_name for u in obj.care_team.all()]
+
+
+class InpatientAdmissionWriteSerializer(serializers.ModelSerializer):
+    class Meta:
+        model  = InpatientAdmission
+        fields = [
+            'visit', 'bed', 'ward', 'hospital', 'admission_date',
+            'admission_notes', 'care_team', 'status',
+            'discharge_date', 'discharged_by', 'discharge_type',
+            'discharge_summary', 'discharge_medications',
+            'follow_up_date', 'follow_up_instructions',
+        ]
+
+
+# ═══════════════════════════════════════════════════════════
+# BILLING SERIALIZERS
+# ═══════════════════════════════════════════════════════════
+
+class InvoiceItemSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = InvoiceItem
+        fields = ['id', 'invoice', 'description', 'quantity', 'unit_price', 'line_total', 'category', 'created_at']
+        read_only_fields = ['line_total', 'created_at']
+
+
+class PaymentSerializer(serializers.ModelSerializer):
+    method_display = serializers.CharField(source='get_method_display', read_only=True)
+    received_by_name = serializers.CharField(source='received_by.full_name', read_only=True)
+
+    class Meta:
+        model = Payment
+        fields = ['id', 'invoice', 'amount', 'method', 'method_display', 'reference', 'received_by', 'received_by_name', 'notes', 'created_at']
+        read_only_fields = ['created_at']
+
+
+class InvoiceSerializer(serializers.ModelSerializer):
+    status_display  = serializers.CharField(source='get_status_display', read_only=True)
+    patient_name    = serializers.CharField(source='patient.full_name',   read_only=True)
+    patient_code    = serializers.CharField(source='patient.patient_id',  read_only=True)
+    hospital_name   = serializers.CharField(source='hospital.name',       read_only=True)
+    created_by_name = serializers.CharField(source='created_by.full_name', read_only=True, default=None)
+    doctor_name     = serializers.CharField(source='doctor.full_name',    read_only=True, default=None)
+    items    = InvoiceItemSerializer(many=True, read_only=True)
+    payments = PaymentSerializer(many=True, read_only=True)
+
+    class Meta:
+        model = Invoice
+        fields = [
+            'id', 'invoice_number', 'patient', 'patient_name', 'patient_code',
+            'visit', 'hospital', 'hospital_name', 'status', 'status_display',
+            'subtotal', 'discount', 'tax', 'total', 'amount_paid', 'balance_due',
+            'notes', 'items', 'payments',
+            'doctor', 'doctor_name',
+            'created_by', 'created_by_name',
+            'created_at', 'updated_at',
+        ]
+        read_only_fields = ['subtotal', 'total', 'amount_paid', 'balance_due', 'created_at', 'updated_at']
+
+
+class InvoiceCreateSerializer(serializers.ModelSerializer):
+    items = InvoiceItemSerializer(many=True, write_only=True)
+
+    class Meta:
+        model = Invoice
+        fields = [
+            'id', 'invoice_number', 'patient', 'visit', 'hospital',
+            'status', 'discount', 'tax', 'notes', 'doctor', 'items',
+        ]
+
+    def create(self, validated_data):
+        items_data = validated_data.pop('items', [])
+        invoice = Invoice.objects.create(**validated_data)
+        for item in items_data:
+            InvoiceItem.objects.create(invoice=invoice, **item)
+        invoice.recalculate_totals()
+        return invoice
+
+
+class PaymentCreateSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Payment
+        fields = ['id', 'invoice', 'amount', 'method', 'reference', 'notes']
+
+    def create(self, validated_data):
+        payment = Payment.objects.create(**validated_data)
+        invoice = payment.invoice
+        invoice.amount_paid = sum(p.amount for p in invoice.payments.all())
+        invoice.balance_due = invoice.total - invoice.amount_paid
+        if invoice.balance_due <= 0:
+            invoice.status = 'paid'
+        elif invoice.amount_paid > 0:
+            invoice.status = 'partial'
+        else:
+            invoice.status = 'pending'
+        invoice.save(update_fields=['amount_paid', 'balance_due', 'status'])
+        return payment
+
+
+# ═══════════════════════════════════════════════════════════
+# STAFF LEAVE SERIALIZERS
+# ═══════════════════════════════════════════════════════════
+
+class StaffLeaveSerializer(serializers.ModelSerializer):
+    staff_name       = serializers.CharField(source='staff.full_name',       read_only=True)
+    staff_role       = serializers.CharField(source='staff.role.name',        read_only=True, default=None)
+    hospital_name    = serializers.CharField(source='hospital.name',          read_only=True, default=None)
+    approved_by_name = serializers.CharField(source='approved_by.full_name',  read_only=True, default=None)
+    leave_type_display = serializers.CharField(source='get_leave_type_display', read_only=True)
+    status_display     = serializers.CharField(source='get_status_display',     read_only=True)
+    days               = serializers.IntegerField(read_only=True)
+
+    class Meta:
+        model  = StaffLeave
+        fields = [
+            'id', 'staff', 'staff_name', 'staff_role',
+            'hospital', 'hospital_name',
+            'leave_type', 'leave_type_display',
+            'start_date', 'end_date', 'days',
+            'reason', 'status', 'status_display',
+            'approved_by', 'approved_by_name', 'rejection_reason',
+            'created_at', 'updated_at',
+        ]
+        read_only_fields = ['approved_by', 'status', 'rejection_reason', 'created_at', 'updated_at']
+
+
+class StaffLeaveCreateSerializer(serializers.ModelSerializer):
+    class Meta:
+        model  = StaffLeave
+        fields = ['leave_type', 'start_date', 'end_date', 'reason']
+
+    def validate(self, data):
+        if data['end_date'] < data['start_date']:
+            raise serializers.ValidationError({'end_date': 'End date must be on or after start date.'})
+        return data
+
+
+# ═══════════════════════════════════════════════════════════
+# INSURANCE / NHIA SERIALIZERS
+# ═══════════════════════════════════════════════════════════
+
+class InsuranceClaimSerializer(serializers.ModelSerializer):
+    patient_name     = serializers.CharField(source='patient.full_name',    read_only=True)
+    patient_code     = serializers.CharField(source='patient.patient_id',   read_only=True)
+    hospital_name    = serializers.CharField(source='hospital.name',         read_only=True)
+    invoice_number   = serializers.CharField(source='invoice.invoice_number', read_only=True, default=None)
+    created_by_name  = serializers.CharField(source='created_by.full_name',  read_only=True, default=None)
+    scheme_display   = serializers.CharField(source='get_scheme_display',    read_only=True)
+    status_display   = serializers.CharField(source='get_status_display',    read_only=True)
+
+    class Meta:
+        model  = InsuranceClaim
+        fields = [
+            'id', 'claim_number',
+            'patient', 'patient_name', 'patient_code',
+            'invoice', 'invoice_number',
+            'hospital', 'hospital_name',
+            'scheme', 'scheme_display',
+            'provider_name', 'member_id',
+            'claim_amount', 'approved_amount',
+            'status', 'status_display',
+            'submitted_at', 'notes', 'rejection_reason',
+            'created_by', 'created_by_name',
+            'created_at', 'updated_at',
+        ]
+        read_only_fields = ['claim_number', 'created_at', 'updated_at', 'approved_amount', 'submitted_at']
+
+
+class InsuranceClaimCreateSerializer(serializers.ModelSerializer):
+    class Meta:
+        model  = InsuranceClaim
+        fields = ['patient', 'invoice', 'hospital', 'scheme', 'provider_name', 'member_id', 'claim_amount', 'notes']

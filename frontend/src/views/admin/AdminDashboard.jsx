@@ -110,6 +110,7 @@ function AdminDashboard() {
   const [userFilter,        setUserFilter]        = useState('all');
   const [loading,           setLoading]           = useState(true);
   const [error,             setError]             = useState(null);
+  const [activeTab,         setActiveTab]         = useState('users');
 
   const fetchDashboardData = useCallback(async () => {
     try {
@@ -367,151 +368,223 @@ function AdminDashboard() {
         </div>
       )}
 
-      {/* ══ COMPREHENSIVE STATS SECTIONS ══ */}
-      {loading ? (
-        <div style={{ display:'flex', alignItems:'center', justifyContent:'center', minHeight:200, gap:14 }}>
-          <div className="spinner-border text-primary" style={{ width:40, height:40 }}></div>
-          <span style={{ color:'#64748b', fontSize:14 }}>Loading system statistics…</span>
-        </div>
-      ) : (
-        <>
-          {error && (
-            <div style={{ background:'#fffbeb', border:'1px solid #fcd34d', borderRadius:8, padding:'12px 16px', marginBottom:16, fontSize:12, color:'#92400e' }}>
-              <i className="fas fa-info-circle" style={{ marginRight:8 }}></i>
-              Showing default values due to loading error. Click "Retry" to attempt loading again.
+      {/* ══ KPI STRIP (always visible) ══ */}
+      <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(140px,1fr))', gap:12, marginBottom:24 }}>
+        {[
+          { label:'Total Users',    value: stats.total_users,       icon:'fas fa-users',          g:'linear-gradient(135deg,#4361ee,#3730a3)', tab:'users' },
+          { label:'Hospitals',      value: org.total_hospitals,      icon:'fas fa-hospital',       g:'linear-gradient(135deg,#10b981,#047857)', tab:'org' },
+          { label:'Total Patients', value: patients.total_patients,  icon:'fas fa-procedures',     g:'linear-gradient(135deg,#0891b2,#0e7490)', tab:'patients' },
+          { label:'Appointments',   value: appts.total_appointments, icon:'fas fa-calendar-check', g:'linear-gradient(135deg,#7c3aed,#6d28d9)', tab:'appointments' },
+          { label:'Visits Today',   value: visits.visits_today,      icon:'fas fa-stethoscope',    g:'linear-gradient(135deg,#f59e0b,#b45309)', tab:'visits' },
+          { label:'Unread Messages',value: comms.unread_messages,    icon:'fas fa-envelope',       g:'linear-gradient(135deg,#ef4444,#b91c1c)', tab:'comms' },
+        ].map(k => (
+          <div key={k.label}
+            onClick={() => setActiveTab(k.tab)}
+            style={{
+              background: k.g, borderRadius:16, padding:'18px 16px', color:'#fff',
+              position:'relative', overflow:'hidden', cursor:'pointer',
+              outline: activeTab === k.tab ? '3px solid rgba(255,255,255,0.7)' : '3px solid transparent',
+              transition:'outline 0.15s, transform 0.15s',
+            }}
+            onMouseEnter={e => { e.currentTarget.style.transform = 'translateY(-2px)'; }}
+            onMouseLeave={e => { e.currentTarget.style.transform = 'translateY(0)'; }}
+          >
+            <div style={{ position:'absolute', right:-12, bottom:-12, width:64, height:64, borderRadius:'50%', background:'rgba(255,255,255,0.1)' }} />
+            <div style={{ width:34, height:34, borderRadius:10, background:'rgba(255,255,255,0.2)', display:'flex', alignItems:'center', justifyContent:'center', marginBottom:10 }}>
+              <i className={k.icon} style={{ fontSize:14, color:'#fff' }} />
             </div>
-          )}
-          {/* Section groups with clean professional cards */}
-          {[
-            {
-              label: 'User Management', icon: 'fas fa-users-cog', color: '#6366f1',
-              cards: [
-                { icon:'fas fa-users',        label:'Total Users',      value: stats.total_users,     sub:`${stats.active_users} active`,   accent:'#6366f1', link:'/admin/users' },
-                { icon:'fas fa-user-check',   label:'Active Users',     value: stats.active_users,    sub:'Currently enabled',              accent:'#10b981', link:'/admin/users' },
-                { icon:'fas fa-user-times',   label:'Inactive Users',   value: stats.inactive_users,  sub:'Blocked / deactivated',          accent:'#ef4444', link:'/admin/users' },
-                { icon:'fas fa-user-tag',     label:'Total Roles',      value: stats.total_roles,     sub:'Permission groups',              accent:'#8b5cf6', link:'/admin/roles' },
-                { icon:'fas fa-user-plus',    label:'Joined Today',     value: stats.new_users_today, sub:'New registrations today',        accent:'#0891b2', link:'/admin/users' },
-                { icon:'fas fa-calendar-week',label:'Joined This Week',  value: stats.new_users_week,  sub:'Last 7 days',                   accent:'#f59e0b', link:'/admin/users' },
-              ],
-            },
-            {
-              label: 'Organization', icon: 'fas fa-globe-africa', color: '#0891b2',
-              cards: [
-                { icon:'fas fa-globe-africa',  label:'Regions',     value: org.total_regions,     sub:'Administrative regions',         accent:'#0891b2', link:'/admin/regions' },
-                { icon:'fas fa-map-marked-alt', label:'Districts',   value: org.total_districts,   sub:'Across all regions',             accent:'#6366f1', link:'/admin/districts' },
-                { icon:'fas fa-sitemap',        label:'Chiefdoms',   value: org.total_chiefdoms,   sub:'Local authority areas',          accent:'#7c3aed', link:'/admin/chiefdoms' },
-                { icon:'fas fa-city',           label:'Towns',       value: org.total_towns,       sub:'Registered localities',          accent:'#f59e0b', link:'/admin/towns' },
-                { icon:'fas fa-hospital',       label:'Hospitals',   value: org.total_hospitals,   sub:`${org.active_hospitals} active`, accent:'#10b981', link:'/admin/hospitals' },
-                { icon:'fas fa-building',       label:'Departments', value: org.total_departments, sub:'Across all hospitals',           accent:'#64748b', link:'/admin/departments' },
-              ],
-            },
-            {
-              label: 'Patients', icon: 'fas fa-procedures', color: '#10b981',
-              cards: [
-                { icon:'fas fa-procedures',    label:'Total Patients',  value: patients.total_patients,  sub:`${patients.active_patients} active`, accent:'#10b981', link:'/receptionist/patients' },
-                { icon:'fas fa-user-injured',  label:'Active Patients', value: patients.active_patients, sub:'Currently registered',               accent:'#6366f1', link:'/receptionist/patients' },
-                { icon:'fas fa-calendar-day',  label:'Admitted Today',  value: patients.patients_today,  sub:'Registered today',                   accent:'#0891b2', link:'/receptionist/patients' },
-                { icon:'fas fa-calendar-week', label:'This Week',       value: patients.patients_week,   sub:'Last 7 days',                        accent:'#f59e0b', link:'/receptionist/patients' },
-                { icon:'fas fa-calendar-alt',  label:'This Month',      value: patients.patients_month,  sub:'Last 30 days',                       accent:'#8b5cf6', link:'/receptionist/patients' },
-              ],
-            },
-            {
-              label: 'Appointments', icon: 'fas fa-calendar-check', color: '#7c3aed',
-              cards: [
-                { icon:'fas fa-calendar-alt',   label:'Total',      value: appts.total_appointments,     sub:'All time',               accent:'#7c3aed', link:'/receptionist/appointments' },
-                { icon:'fas fa-hourglass-half', label:'Pending',    value: appts.pending_appointments,   sub:'Awaiting confirmation',  accent:'#f59e0b', link:'/receptionist/appointments' },
-                { icon:'fas fa-calendar-check', label:'Confirmed',  value: appts.confirmed_appointments, sub:'Scheduled',              accent:'#6366f1', link:'/receptionist/appointments' },
-                { icon:'fas fa-check-double',   label:'Completed',  value: appts.completed_appointments, sub:'Successfully done',      accent:'#10b981', link:'/receptionist/appointments' },
-                { icon:'fas fa-times-circle',   label:'Cancelled',  value: appts.cancelled_appointments, sub:'Declined or cancelled',  accent:'#ef4444', link:'/receptionist/appointments' },
-                { icon:'fas fa-calendar-day',   label:'Today',      value: appts.appointments_today,     sub:'Scheduled for today',    accent:'#0891b2', link:'/receptionist/appointments' },
-              ],
-            },
-            {
-              label: 'Clinical Visits', icon: 'fas fa-stethoscope', color: '#ef4444',
-              cards: [
-                { icon:'fas fa-stethoscope',   label:'Total Visits',   value: visits.total_visits,     sub:'All encounters',      accent:'#ef4444', link:'/receptionist/patients' },
-                { icon:'fas fa-calendar-day',  label:'Visits Today',   value: visits.visits_today,     sub:"Today's encounters",  accent:'#f59e0b', link:'/receptionist/patients' },
-                { icon:'fas fa-calendar-week', label:'This Week',      value: visits.visits_this_week, sub:'Last 7 days',         accent:'#6366f1', link:'/receptionist/patients' },
-                { icon:'fas fa-spinner',       label:'Active Now',     value: visits.active_visits,    sub:'In progress',         accent:'#0891b2', link:'/receptionist/patients' },
-                { icon:'fas fa-check-circle',  label:'Completed',      value: visits.completed_visits, sub:'Discharged visits',   accent:'#10b981', link:'/receptionist/patients' },
-              ],
-            },
-            {
-              label: 'Communications & Audit', icon: 'fas fa-envelope', color: '#64748b',
-              cards: [
-                { icon:'fas fa-envelope',       label:'Total Messages',   value: comms.total_messages,  sub:'All time',             accent:'#6366f1', link:'/messages' },
-                { icon:'fas fa-envelope-open',  label:'Unread Messages',  value: comms.unread_messages, sub:'Awaiting read',        accent:'#ef4444', link:'/messages' },
-                { icon:'fas fa-clipboard-list', label:'Audit Logs Today', value: audit.audit_today,     sub:'Actions logged today', accent:'#f59e0b', link:'/admin/users' },
-                { icon:'fas fa-history',        label:'Audit This Week',  value: audit.audit_week,      sub:'Last 7 days activity', accent:'#10b981', link:'/admin/users' },
-              ],
-            },
-          ].map(section => (
-            <div key={section.label} style={{ marginBottom: 32 }}>
+            <div style={{ fontSize:26, fontWeight:900, lineHeight:1 }}>
+              {loading ? <span style={{ fontSize:14, opacity:0.7 }}>—</span> : (k.value??0).toLocaleString()}
+            </div>
+            <div style={{ fontSize:10, opacity:0.85, marginTop:4, fontWeight:600 }}>{k.label}</div>
+            {activeTab === k.tab && (
+              <div style={{ position:'absolute', bottom:0, left:0, right:0, height:3, background:'rgba(255,255,255,0.8)', borderRadius:'0 0 16px 16px' }} />
+            )}
+          </div>
+        ))}
+      </div>
 
-              {/* ── Section header ── */}
-              <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:14 }}>
-                <div style={{ width:30, height:30, borderRadius:8,
-                  background: section.color + '12',
-                  display:'flex', alignItems:'center', justifyContent:'center' }}>
-                  <i className={section.icon} style={{ color: section.color, fontSize:13 }}></i>
+      {/* ══ TAB SECTION PANEL ══ */}
+      {(() => {
+        const SECTIONS = [
+          {
+            key:'users', label:'User Management', icon:'fas fa-users-cog', color:'#6366f1',
+            cards:[
+              { icon:'fas fa-users',        label:'Total Users',      value: stats.total_users,     sub:`${stats.active_users} active`,   accent:'#6366f1', link:'/admin/users' },
+              { icon:'fas fa-user-check',   label:'Active Users',     value: stats.active_users,    sub:'Currently enabled',              accent:'#10b981', link:'/admin/users' },
+              { icon:'fas fa-user-times',   label:'Inactive Users',   value: stats.inactive_users,  sub:'Blocked / deactivated',          accent:'#ef4444', link:'/admin/users' },
+              { icon:'fas fa-user-tag',     label:'Total Roles',      value: stats.total_roles,     sub:'Permission groups',              accent:'#8b5cf6', link:'/admin/roles' },
+              { icon:'fas fa-user-plus',    label:'Joined Today',     value: stats.new_users_today, sub:'New registrations today',        accent:'#0891b2', link:'/admin/users' },
+              { icon:'fas fa-calendar-week',label:'Joined This Week', value: stats.new_users_week,  sub:'Last 7 days',                    accent:'#f59e0b', link:'/admin/users' },
+            ],
+          },
+          {
+            key:'org', label:'Organization', icon:'fas fa-globe-africa', color:'#0891b2',
+            cards:[
+              { icon:'fas fa-globe-africa',   label:'Regions',     value: org.total_regions,     sub:'Administrative regions',         accent:'#0891b2', link:'/admin/regions' },
+              { icon:'fas fa-map-marked-alt', label:'Districts',   value: org.total_districts,   sub:'Across all regions',             accent:'#6366f1', link:'/admin/districts' },
+              { icon:'fas fa-sitemap',        label:'Chiefdoms',   value: org.total_chiefdoms,   sub:'Local authority areas',          accent:'#7c3aed', link:'/admin/chiefdoms' },
+              { icon:'fas fa-city',           label:'Towns',       value: org.total_towns,       sub:'Registered localities',          accent:'#f59e0b', link:'/admin/towns' },
+              { icon:'fas fa-hospital',       label:'Hospitals',   value: org.total_hospitals,   sub:`${org.active_hospitals} active`, accent:'#10b981', link:'/admin/hospitals' },
+              { icon:'fas fa-building',       label:'Departments', value: org.total_departments, sub:'Across all hospitals',           accent:'#64748b', link:'/admin/departments' },
+            ],
+          },
+          {
+            key:'patients', label:'Patients', icon:'fas fa-procedures', color:'#10b981',
+            cards:[
+              { icon:'fas fa-procedures',    label:'Total Patients',  value: patients.total_patients,  sub:`${patients.active_patients} active`, accent:'#10b981', link:'/receptionist/patients' },
+              { icon:'fas fa-user-injured',  label:'Active Patients', value: patients.active_patients, sub:'Currently registered',               accent:'#6366f1', link:'/receptionist/patients' },
+              { icon:'fas fa-calendar-day',  label:'Admitted Today',  value: patients.patients_today,  sub:'Registered today',                   accent:'#0891b2', link:'/receptionist/patients' },
+              { icon:'fas fa-calendar-week', label:'This Week',       value: patients.patients_week,   sub:'Last 7 days',                        accent:'#f59e0b', link:'/receptionist/patients' },
+              { icon:'fas fa-calendar-alt',  label:'This Month',      value: patients.patients_month,  sub:'Last 30 days',                       accent:'#8b5cf6', link:'/receptionist/patients' },
+            ],
+          },
+          {
+            key:'appointments', label:'Appointments', icon:'fas fa-calendar-check', color:'#7c3aed',
+            cards:[
+              { icon:'fas fa-calendar-alt',   label:'Total',      value: appts.total_appointments,     sub:'All time',               accent:'#7c3aed', link:'/receptionist/appointments' },
+              { icon:'fas fa-hourglass-half', label:'Pending',    value: appts.pending_appointments,   sub:'Awaiting confirmation',  accent:'#f59e0b', link:'/receptionist/appointments' },
+              { icon:'fas fa-calendar-check', label:'Confirmed',  value: appts.confirmed_appointments, sub:'Scheduled',              accent:'#6366f1', link:'/receptionist/appointments' },
+              { icon:'fas fa-check-double',   label:'Completed',  value: appts.completed_appointments, sub:'Successfully done',      accent:'#10b981', link:'/receptionist/appointments' },
+              { icon:'fas fa-times-circle',   label:'Cancelled',  value: appts.cancelled_appointments, sub:'Declined or cancelled',  accent:'#ef4444', link:'/receptionist/appointments' },
+              { icon:'fas fa-calendar-day',   label:'Today',      value: appts.appointments_today,     sub:'Scheduled for today',    accent:'#0891b2', link:'/receptionist/appointments' },
+            ],
+          },
+          {
+            key:'visits', label:'Clinical Visits', icon:'fas fa-stethoscope', color:'#ef4444',
+            cards:[
+              { icon:'fas fa-stethoscope',   label:'Total Visits',  value: visits.total_visits,     sub:'All encounters',     accent:'#ef4444', link:'/receptionist/patients' },
+              { icon:'fas fa-calendar-day',  label:'Visits Today',  value: visits.visits_today,     sub:"Today's encounters", accent:'#f59e0b', link:'/receptionist/patients' },
+              { icon:'fas fa-calendar-week', label:'This Week',     value: visits.visits_this_week, sub:'Last 7 days',        accent:'#6366f1', link:'/receptionist/patients' },
+              { icon:'fas fa-spinner',       label:'Active Now',    value: visits.active_visits,    sub:'In progress',        accent:'#0891b2', link:'/receptionist/patients' },
+              { icon:'fas fa-check-circle',  label:'Completed',     value: visits.completed_visits, sub:'Discharged visits',  accent:'#10b981', link:'/receptionist/patients' },
+            ],
+          },
+          {
+            key:'comms', label:'Comms & Audit', icon:'fas fa-envelope', color:'#64748b',
+            cards:[
+              { icon:'fas fa-envelope',       label:'Total Messages',   value: comms.total_messages,  sub:'All time',             accent:'#6366f1', link:'/messages' },
+              { icon:'fas fa-envelope-open',  label:'Unread Messages',  value: comms.unread_messages, sub:'Awaiting read',        accent:'#ef4444', link:'/messages' },
+              { icon:'fas fa-clipboard-list', label:'Audit Logs Today', value: audit.audit_today,     sub:'Actions logged today', accent:'#f59e0b', link:'/admin/users' },
+              { icon:'fas fa-history',        label:'Audit This Week',  value: audit.audit_week,      sub:'Last 7 days activity', accent:'#10b981', link:'/admin/users' },
+            ],
+          },
+        ];
+
+        const section = SECTIONS.find(s => s.key === activeTab) || SECTIONS[0];
+
+        return (
+          <div style={{ background:'#fff', borderRadius:20, boxShadow:'0 2px 16px rgba(15,23,42,0.07)', overflow:'hidden', marginBottom:28 }}>
+
+            {/* ── Tab bar ── */}
+            <div style={{ display:'flex', borderBottom:'1px solid #f1f5f9', overflowX:'auto', padding:'0 4px' }}>
+              {SECTIONS.map(s => {
+                const isActive = s.key === activeTab;
+                return (
+                  <button key={s.key}
+                    onClick={() => setActiveTab(s.key)}
+                    style={{
+                      padding:'14px 18px', border:'none', background:'none', cursor:'pointer',
+                      fontSize:12, fontWeight:700, whiteSpace:'nowrap',
+                      display:'flex', alignItems:'center', gap:7,
+                      color: isActive ? s.color : '#94a3b8',
+                      borderBottom: isActive ? `2px solid ${s.color}` : '2px solid transparent',
+                      marginBottom:-1, transition:'color 0.15s',
+                    }}
+                  >
+                    <i className={s.icon} style={{ fontSize:11 }} />
+                    {s.label}
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* ── Section description strip ── */}
+            <div style={{
+              display:'flex', alignItems:'center', justifyContent:'space-between',
+              padding:'14px 22px', background:`${section.color}08`,
+              borderBottom:`1px solid ${section.color}18`,
+            }}>
+              <div style={{ display:'flex', alignItems:'center', gap:10 }}>
+                <div style={{
+                  width:32, height:32, borderRadius:9,
+                  background:`linear-gradient(135deg,${section.color},${section.color}bb)`,
+                  display:'flex', alignItems:'center', justifyContent:'center',
+                  boxShadow:`0 4px 10px ${section.color}40`,
+                }}>
+                  <i className={section.icon} style={{ color:'#fff', fontSize:13 }} />
                 </div>
-                <span style={{ fontSize:11, fontWeight:800, color:'#334155',
-                  textTransform:'uppercase', letterSpacing:'1.5px' }}>{section.label}</span>
-                <div style={{ flex:1, height:1, background:'#e2e8f0' }}></div>
+                <div>
+                  <div style={{ fontSize:13, fontWeight:800, color:'#1e293b' }}>{section.label}</div>
+                  <div style={{ fontSize:11, color:'#94a3b8' }}>{section.cards.length} metrics in this category</div>
+                </div>
               </div>
+              <span style={{
+                fontSize:11, fontWeight:700, color: section.color,
+                background:`${section.color}12`, padding:'4px 12px', borderRadius:20,
+                border:`1px solid ${section.color}30`,
+              }}>
+                {section.cards.length} metrics
+              </span>
+            </div>
 
-              {/* ── Cards grid ── */}
-              <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill, minmax(190px, 1fr))', gap:14 }}>
-                {section.cards.map(c => (
+            {/* ── Cards grid ── */}
+            {loading ? (
+              <div style={{ display:'flex', alignItems:'center', justifyContent:'center', minHeight:180, gap:12 }}>
+                <div className="spinner-border text-primary" style={{ width:32, height:32 }}></div>
+                <span style={{ color:'#64748b', fontSize:13 }}>Loading statistics…</span>
+              </div>
+            ) : (
+              <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill, minmax(200px, 1fr))', gap:0 }}>
+                {section.cards.map((c, idx) => (
                   <div key={c.label}
                     onClick={() => navigate(c.link)}
                     style={{
-                      background: '#fff',
-                      borderRadius: 16,
-                      padding: '22px 22px 18px',
-                      boxShadow: '0 2px 8px rgba(15,23,42,0.06)',
-                      border: 'none',
-                      cursor: 'pointer',
-                      transition: 'box-shadow 0.2s ease, transform 0.2s ease',
+                      padding:'22px 24px',
+                      cursor:'pointer',
+                      borderRight: (idx % 3 !== 2) ? '1px solid #f1f5f9' : 'none',
+                      borderBottom:'1px solid #f1f5f9',
+                      transition:'background 0.15s',
+                      position:'relative', overflow:'hidden',
                     }}
-                    onMouseEnter={e => {
-                      e.currentTarget.style.transform = 'translateY(-4px)';
-                      e.currentTarget.style.boxShadow = '0 12px 32px rgba(15,23,42,0.12)';
-                    }}
-                    onMouseLeave={e => {
-                      e.currentTarget.style.transform = 'translateY(0)';
-                      e.currentTarget.style.boxShadow = '0 2px 8px rgba(15,23,42,0.06)';
-                    }}
+                    onMouseEnter={e => { e.currentTarget.style.background = `${c.accent}06`; }}
+                    onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; }}
                   >
-                    {/* Icon badge */}
+                    {/* Left accent bar */}
                     <div style={{
-                      width: 42, height: 42, borderRadius: 12,
-                      background: c.accent + '15',
-                      display:'flex', alignItems:'center', justifyContent:'center',
-                      marginBottom: 16,
-                    }}>
-                      <i className={c.icon} style={{ color: c.accent, fontSize: 17 }}></i>
+                      position:'absolute', left:0, top:16, bottom:16,
+                      width:3, borderRadius:3,
+                      background:`linear-gradient(180deg,${c.accent},${c.accent}55)`,
+                    }} />
+                    <div style={{ display:'flex', alignItems:'flex-start', justifyContent:'space-between', marginBottom:14 }}>
+                      <div style={{
+                        width:42, height:42, borderRadius:12,
+                        background:`${c.accent}12`,
+                        display:'flex', alignItems:'center', justifyContent:'center',
+                      }}>
+                        <i className={c.icon} style={{ color:c.accent, fontSize:17 }} />
+                      </div>
+                      <i className="fas fa-external-link-alt" style={{ fontSize:9, color:'#cbd5e1', marginTop:4 }} />
                     </div>
-
-                    {/* Value */}
-                    <div style={{ fontSize:32, fontWeight:800, color:'#0f172a', lineHeight:1, marginBottom:6 }}>
+                    <div style={{ fontSize:32, fontWeight:900, color:'#0f172a', lineHeight:1, marginBottom:5 }}>
                       {(c.value ?? 0).toLocaleString()}
                     </div>
-
-                    {/* Label */}
-                    <div style={{ fontSize:13, fontWeight:600, color:'#334155', marginBottom:5 }}>
-                      {c.label}
-                    </div>
-
-                    {/* Sub-label */}
-                    <div style={{ fontSize:11, color: c.accent, fontWeight:500, opacity:0.75 }}>{c.sub}</div>
+                    <div style={{ fontSize:13, fontWeight:700, color:'#334155', marginBottom:3 }}>{c.label}</div>
+                    <div style={{ fontSize:11, color:c.accent, fontWeight:600 }}>{c.sub}</div>
                   </div>
                 ))}
               </div>
-            </div>
-          ))}
-        </>
-      )}
+            )}
+
+            {error && (
+              <div style={{ padding:'10px 22px 14px', fontSize:11, color:'#92400e', background:'#fffbeb', borderTop:'1px solid #fcd34d' }}>
+                <i className="fas fa-info-circle" style={{ marginRight:6 }}></i>
+                Showing default values — <button onClick={fetchDashboardData} style={{ background:'none', border:'none', color:'#b45309', fontWeight:700, cursor:'pointer', fontSize:11, padding:0 }}>retry loading</button>
+              </div>
+            )}
+          </div>
+        );
+      })()}
 
       {/* Main content row */}
       <div className="row g-4 mb-4">

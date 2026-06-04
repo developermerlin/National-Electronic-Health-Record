@@ -7,7 +7,7 @@ from django.db.models import Q, Count, Sum, Avg, F
 from django.db.models.functions import TruncMonth, TruncDate
 from django.utils import timezone
 from datetime import timedelta
-from userauths.models import User, Role, Permission, RolePermission, Region, District, Chiefdom, Town, Hospital, Department, Patient, PatientVisit, Appointment, Message, AuditLog
+from userauths.models import User, Role, Permission, RolePermission, Region, District, Chiefdom, Town, Hospital, Department, Patient, PatientVisit, Appointment, Message, AuditLog, InpatientAdmission, Invoice
 from userauths.serializer import (
     UserSerializer, UserCreateSerializer, UserUpdateSerializer,
     RoleSerializer, SimplePermissionSerializer, RolePermissionAssignSerializer,
@@ -157,6 +157,31 @@ class UserManagementViewSet(viewsets.ModelViewSet):
         """Update user information including profile fields"""
         partial = kwargs.pop('partial', False)
         instance = self.get_object()
+        user = request.user
+        user_role = user.role.name if user.role else None
+
+        # Hospital admins cannot change users to admin roles
+        if user_role == 'hospital_admin':
+            target_role_id = request.data.get('role')
+            if target_role_id:
+                from userauths.models import Role
+                try:
+                    target_role = Role.objects.get(id=target_role_id)
+                    if target_role.name in ['admin', 'ministry_admin', 'district_admin']:
+                        return Response(
+                            {'error': 'You cannot assign administrator roles.'},
+                            status=status.HTTP_403_FORBIDDEN
+                        )
+                except Role.DoesNotExist:
+                    pass
+            # Hospital admins cannot reassign users to other hospitals
+            target_hospital_id = request.data.get('hospital')
+            if target_hospital_id and user.hospital and str(target_hospital_id) != str(user.hospital.id):
+                return Response(
+                    {'error': 'You can only assign users to your assigned hospital.'},
+                    status=status.HTTP_403_FORBIDDEN
+                )
+
         serializer = self.get_serializer(instance, data=request.data, partial=partial)
         serializer.is_valid(raise_exception=True)
         serializer.save()
@@ -198,13 +223,27 @@ class UserManagementViewSet(viewsets.ModelViewSet):
     
     def destroy(self, request, *args, **kwargs):
         """Soft delete user by setting is_active to False"""
+        user = request.user
+        user_role = user.role.name if user.role else None
         instance = self.get_object()
+
+        # Hospital admins cannot deactivate admins or other hospital_admins
+        if user_role == 'hospital_admin':
+            protected = ['admin', 'ministry_admin', 'district_admin', 'hospital_admin']
+            if instance.role and instance.role.name in protected:
+                return Response(
+                    {'error': 'You cannot deactivate administrator accounts.'},
+                    status=status.HTTP_403_FORBIDDEN
+                )
+            if instance.id == user.id:
+                return Response(
+                    {'error': 'You cannot deactivate your own account.'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
         instance.is_active = False
         instance.save()
-        
-        return Response({
-            'message': 'User deactivated successfully'
-        }, status=status.HTTP_200_OK)
+        return Response({'message': 'User deactivated successfully'}, status=status.HTTP_200_OK)
     
     @action(detail=True, methods=['post'])
     def activate(self, request, pk=None):
@@ -220,29 +259,36 @@ class UserManagementViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=['delete'])
     def permanent_delete(self, request, pk=None):
-        """Permanently delete user from system - Admin only"""
+        """Permanently delete user from system - Admin or Hospital Admin"""
         user = request.user
         user_role = user.role.name if user.role else None
-        
-        # Only admin can permanently delete
-        if user_role != 'admin':
+
+        if user_role not in ('admin', 'hospital_admin'):
             return Response(
-                {'error': 'Only system administrators can permanently delete users.'},
+                {'error': 'You do not have permission to permanently delete users.'},
                 status=status.HTTP_403_FORBIDDEN
             )
-        
+
         instance = self.get_object()
         user_name = instance.full_name or instance.email
-        
+
         # Prevent self-deletion
         if instance.id == user.id:
             return Response(
                 {'error': 'You cannot delete your own account.'},
                 status=status.HTTP_400_BAD_REQUEST
             )
-        
-        # Prevent deletion of other admins (optional safeguard)
-        if instance.role and instance.role.name == 'admin':
+
+        # Hospital admins cannot delete protected roles
+        protected = ['admin', 'ministry_admin', 'district_admin', 'hospital_admin']
+        if user_role == 'hospital_admin' and instance.role and instance.role.name in protected:
+            return Response(
+                {'error': 'You cannot delete administrator accounts.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # System admins cannot delete other system admins
+        if user_role == 'admin' and instance.role and instance.role.name == 'admin':
             return Response(
                 {'error': 'Cannot delete system administrator accounts.'},
                 status=status.HTTP_400_BAD_REQUEST
@@ -1182,3 +1228,216 @@ def my_profile(request):
                 pass
 
         return Response({'message': 'Profile updated successfully', 'photo_url': photo_url})
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def ministry_hospital_report(request, hospital_id):
+    """
+    Drill-down report for a specific hospital.
+    Includes operational metrics: patients, visits, appointments, revenue, admissions.
+    """
+    role = request.user.role.name if request.user.role else None
+    if role not in ('admin', 'ministry_admin'):
+        return Response({'error': 'Forbidden'}, status=status.HTTP_403_FORBIDDEN)
+
+    hospital = get_object_or_404(Hospital, pk=hospital_id, is_active=True)
+    today = timezone.now().date()
+    start_of_month = today.replace(day=1)
+
+    # Patients
+    total_patients = Patient.objects.filter(hospital=hospital).count()
+    new_patients_this_month = Patient.objects.filter(hospital=hospital, created_at__date__gte=start_of_month).count()
+
+    # Visits
+    total_visits = PatientVisit.objects.filter(hospital=hospital).count()
+    visits_this_month = PatientVisit.objects.filter(hospital=hospital, visit_date__date__gte=start_of_month).count()
+    visits_today = PatientVisit.objects.filter(hospital=hospital, visit_date__date=today).count()
+
+    # Appointments
+    total_appointments = Appointment.objects.filter(hospital=hospital).count()
+    appointments_this_month = Appointment.objects.filter(hospital=hospital, scheduled_at__date__gte=start_of_month).count()
+    completed_appointments = Appointment.objects.filter(hospital=hospital, status='completed').count()
+    cancelled_appointments = Appointment.objects.filter(hospital=hospital, status='cancelled').count()
+    no_show_appointments = Appointment.objects.filter(hospital=hospital, status='no_show').count()
+
+    # Revenue
+    invoices = Invoice.objects.filter(hospital=hospital)
+    total_revenue = invoices.filter(status='paid').aggregate(t=Sum('total'))['t'] or 0
+    outstanding = invoices.filter(status__in=('pending', 'partial')).aggregate(t=Sum('balance_due'))['t'] or 0
+    revenue_this_month = invoices.filter(status='paid', created_at__date__gte=start_of_month).aggregate(t=Sum('total'))['t'] or 0
+
+    # Admissions
+    total_admissions = InpatientAdmission.objects.filter(hospital=hospital).count()
+    current_admissions = InpatientAdmission.objects.filter(hospital=hospital, status='admitted').count()
+    discharged_this_month = InpatientAdmission.objects.filter(hospital=hospital, status='discharged', discharge_date__date__gte=start_of_month).count()
+
+    # Staff
+    staff_count = User.objects.filter(hospital=hospital, is_active=True).exclude(role__name='patient').count()
+    doctors_count = User.objects.filter(hospital=hospital, is_active=True, role__name='doctor').count()
+    nurses_count = User.objects.filter(hospital=hospital, is_active=True, role__name='nurse').count()
+
+    # Ward occupancy
+    wards = []
+    for w in hospital.wards.filter(is_active=True):
+        beds_total = w.beds.filter(is_active=True).count()
+        beds_occ = w.beds.filter(status='occupied').count()
+        wards.append({
+            'id': w.id, 'name': w.name, 'type': w.ward_type,
+            'beds_total': beds_total, 'beds_occupied': beds_occ,
+            'beds_available': beds_total - beds_occ,
+            'occupancy_rate': round(beds_occ / beds_total * 100, 1) if beds_total else 0,
+        })
+
+    return Response({
+        'hospital': {'id': hospital.id, 'name': hospital.name, 'type': hospital.hospital_type,
+                     'district': hospital.district.name if hospital.district else None,
+                     'region': hospital.district.region.name if hospital.district and hospital.district.region else None},
+        'patients': {'total': total_patients, 'new_this_month': new_patients_this_month},
+        'visits': {'total': total_visits, 'this_month': visits_this_month, 'today': visits_today},
+        'appointments': {'total': total_appointments, 'this_month': appointments_this_month,
+                         'completed': completed_appointments, 'cancelled': cancelled_appointments, 'no_show': no_show_appointments},
+        'revenue': {'total_revenue': total_revenue, 'outstanding': outstanding, 'this_month': revenue_this_month},
+        'admissions': {'total': total_admissions, 'current': current_admissions, 'discharged_this_month': discharged_this_month},
+        'staff': {'total': staff_count, 'doctors': doctors_count, 'nurses': nurses_count},
+        'wards': wards,
+    })
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def district_admin_dashboard(request):
+    """
+    Self-service dashboard for district_admin users.
+    Returns aggregated metrics for the admin's own assigned district.
+    """
+    user = request.user
+    role = user.role.name if user.role else None
+    if role not in ('district_admin', 'admin', 'ministry_admin'):
+        return Response({'error': 'Forbidden'}, status=status.HTTP_403_FORBIDDEN)
+
+    district = user.district
+    if not district:
+        return Response({'error': 'You are not assigned to a district.'}, status=status.HTTP_400_BAD_REQUEST)
+
+    hospitals = Hospital.objects.filter(district=district, is_active=True)
+    today = timezone.now().date()
+    start_of_month = today.replace(day=1)
+    thirty_days_ago = today - timedelta(days=30)
+
+    total_patients        = Patient.objects.filter(hospital__in=hospitals).count()
+    total_visits          = PatientVisit.objects.filter(hospital__in=hospitals).count()
+    visits_this_month     = PatientVisit.objects.filter(hospital__in=hospitals, visit_date__date__gte=start_of_month).count()
+    visits_today          = PatientVisit.objects.filter(hospital__in=hospitals, visit_date__date=today).count()
+    total_staff           = User.objects.filter(hospital__in=hospitals, is_active=True).exclude(role__name='patient').count()
+    total_appointments    = Appointment.objects.filter(hospital__in=hospitals).count()
+    completed_appts       = Appointment.objects.filter(hospital__in=hospitals, status='completed').count()
+    total_admissions      = InpatientAdmission.objects.filter(hospital__in=hospitals).count()
+    current_admissions    = InpatientAdmission.objects.filter(hospital__in=hospitals, status='admitted').count()
+
+    # Monthly visit trend (last 6 months)
+    monthly_trend = []
+    for i in range(5, -1, -1):
+        month_start = (today.replace(day=1) - timedelta(days=i * 30)).replace(day=1)
+        month_label = month_start.strftime('%b %Y')
+        count = PatientVisit.objects.filter(hospital__in=hospitals, visit_date__date__gte=month_start,
+                                            visit_date__date__lt=(month_start.replace(month=month_start.month % 12 + 1) if month_start.month < 12
+                                                                   else month_start.replace(year=month_start.year + 1, month=1))).count()
+        monthly_trend.append({'month': month_label, 'visits': count})
+
+    # Hospital breakdown
+    hospital_breakdown = []
+    for h in hospitals:
+        hospital_breakdown.append({
+            'id': h.id, 'name': h.name, 'type': h.hospital_type,
+            'patients':     Patient.objects.filter(hospital=h).count(),
+            'visits':       PatientVisit.objects.filter(hospital=h).count(),
+            'staff':        User.objects.filter(hospital=h, is_active=True).exclude(role__name='patient').count(),
+            'appointments': Appointment.objects.filter(hospital=h).count(),
+        })
+
+    # Staff by role
+    staff_by_role = list(
+        User.objects.filter(hospital__in=hospitals, is_active=True)
+        .exclude(role__name='patient')
+        .values('role__name')
+        .annotate(count=Count('id'))
+        .order_by('-count')
+    )
+
+    return Response({
+        'district': {
+            'id': district.id,
+            'name': district.name,
+            'region': district.region.name if district.region else None,
+        },
+        'summary': {
+            'hospitals':          hospitals.count(),
+            'patients':           total_patients,
+            'staff':              total_staff,
+            'visits_today':       visits_today,
+            'visits_this_month':  visits_this_month,
+            'total_visits':       total_visits,
+            'appointments':       total_appointments,
+            'completed_appts':    completed_appts,
+            'admissions_current': current_admissions,
+            'admissions_total':   total_admissions,
+        },
+        'hospital_breakdown': hospital_breakdown,
+        'monthly_trend':      monthly_trend,
+        'staff_by_role':      staff_by_role,
+    })
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def ministry_district_report(request, district_id):
+    """
+    Drill-down report for a specific district.
+    Aggregates operational metrics across all hospitals in the district.
+    """
+    role = request.user.role.name if request.user.role else None
+    if role not in ('admin', 'ministry_admin'):
+        return Response({'error': 'Forbidden'}, status=status.HTTP_403_FORBIDDEN)
+
+    district = get_object_or_404(District, pk=district_id, is_active=True)
+    hospitals = Hospital.objects.filter(district=district, is_active=True)
+    today = timezone.now().date()
+    start_of_month = today.replace(day=1)
+
+    total_patients = Patient.objects.filter(hospital__in=hospitals).count()
+    total_visits = PatientVisit.objects.filter(hospital__in=hospitals).count()
+    visits_this_month = PatientVisit.objects.filter(hospital__in=hospitals, visit_date__date__gte=start_of_month).count()
+    total_appointments = Appointment.objects.filter(hospital__in=hospitals).count()
+    completed_appointments = Appointment.objects.filter(hospital__in=hospitals, status='completed').count()
+    total_revenue = Invoice.objects.filter(hospital__in=hospitals, status='paid').aggregate(t=Sum('total'))['t'] or 0
+    total_admissions = InpatientAdmission.objects.filter(hospital__in=hospitals).count()
+    current_admissions = InpatientAdmission.objects.filter(hospital__in=hospitals, status='admitted').count()
+    staff_count = User.objects.filter(hospital__in=hospitals, is_active=True).exclude(role__name='patient').count()
+
+    # Hospital breakdown within district
+    hospital_breakdown = []
+    for h in hospitals:
+        hospital_breakdown.append({
+            'id': h.id,
+            'name': h.name,
+            'type': h.hospital_type,
+            'patients': Patient.objects.filter(hospital=h).count(),
+            'visits': PatientVisit.objects.filter(hospital=h).count(),
+            'appointments': Appointment.objects.filter(hospital=h).count(),
+            'revenue': Invoice.objects.filter(hospital=h, status='paid').aggregate(t=Sum('total'))['t'] or 0,
+            'staff': User.objects.filter(hospital=h, is_active=True).exclude(role__name='patient').count(),
+        })
+
+    return Response({
+        'district': {'id': district.id, 'name': district.name,
+                     'region': district.region.name if district.region else None},
+        'hospitals_count': hospitals.count(),
+        'patients': {'total': total_patients},
+        'visits': {'total': total_visits, 'this_month': visits_this_month},
+        'appointments': {'total': total_appointments, 'completed': completed_appointments},
+        'revenue': {'total_revenue': total_revenue},
+        'admissions': {'total': total_admissions, 'current': current_admissions},
+        'staff': {'total': staff_count},
+        'hospital_breakdown': hospital_breakdown,
+    })

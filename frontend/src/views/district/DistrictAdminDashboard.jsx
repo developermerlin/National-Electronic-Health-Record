@@ -1,173 +1,113 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import DashboardLayout from '../../layout/DashboardLayout';
+import { getNavForUser, getBrandForUser, getRoleBadge } from '../../utils/navItems';
+
+const ROLE_LABELS = {
+  doctor: 'Doctors', nurse: 'Nurses', receptionist: 'Receptionists',
+  pharmacist: 'Pharmacists', lab_technician: 'Lab Technicians',
+  triage: 'Triage Officers', hospital_admin: 'Hospital Admins',
+};
+const ROLE_COLORS = ['#4361ee','#16a34a','#f77f00','#7c3aed','#0891b2','#dc2626','#2ec4b6'];
 
 function DistrictAdminDashboard() {
-  const { user } = useAuth();
-  const [stats, setStats] = useState({
-    totalHospitals: 0,
-    totalPatients: 0,
-    totalStaff: 0,
-    activeCases: 0,
-  });
-  const [recentActivities, setRecentActivities] = useState([]);
+  const { apiCall, user } = useAuth();
+  const navItems  = getNavForUser(user);
+  const brand     = getBrandForUser(user);
+  const roleBadge = getRoleBadge(user);
+
+  const [data, setData]       = useState(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError]     = useState('');
 
-  useEffect(() => {
-    fetchDashboardData();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  const fetchDashboardData = async () => {
+  const fetchData = useCallback(async () => {
+    setLoading(true); setError('');
     try {
-      setLoading(true);
-      // In a real implementation, these would be actual API endpoints
-      // For now, we'll set placeholder data
-      setStats({
-        totalHospitals: 12,
-        totalPatients: 2847,
-        totalStaff: 156,
-        activeCases: 423,
-      });
-      setRecentActivities([
-        { id: 1, type: 'hospital', message: 'New hospital registered: Bo Government Hospital', time: '2 hours ago' },
-        { id: 2, type: 'patient', message: 'Patient transfer requested from Makeni', time: '4 hours ago' },
-        { id: 3, type: 'staff', message: 'New doctor assigned to Kenema Hospital', time: '6 hours ago' },
-        { id: 4, type: 'report', message: 'Monthly health report submitted', time: '1 day ago' },
-      ]);
-    } catch (error) {
-      console.error('Error fetching district data:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
+      const res = await apiCall('/admin/district-dashboard/');
+      if (res.ok) setData(await res.json());
+      else { const d = await res.json(); setError(d.error || 'Failed to load dashboard.'); }
+    } catch { setError('Network error.'); }
+    setLoading(false);
+  }, [apiCall]);
 
-  const navItems = [
-    {
-      label: 'Dashboard',
-      items: [
-        { path: '/district-admin/dashboard', icon: 'fas fa-tachometer-alt', text: 'Overview' },
-      ]
-    },
-    {
-      label: 'District Management',
-      items: [
-        { path: '/admin/hospitals', icon: 'fas fa-hospital', text: 'Hospitals' },
-        { path: '/admin/chiefdoms', icon: 'fas fa-sitemap', text: 'Chiefdoms' },
-        { path: '/admin/towns', icon: 'fas fa-city', text: 'Towns' },
-      ]
-    },
-    {
-      label: 'Health Data',
-      items: [
-        { path: '/district-admin/patients', icon: 'fas fa-procedures', text: 'District Patients' },
-        { path: '/district-admin/staff', icon: 'fas fa-user-md', text: 'Staff Overview' },
-        { path: '/district-admin/reports', icon: 'fas fa-chart-line', text: 'Health Reports' },
-      ]
-    },
-    {
-      label: 'Account',
-      items: [
-        { path: '/admin/profile', icon: 'fas fa-user-circle', text: 'My Profile' },
-      ]
-    }
-  ];
+  useEffect(() => { fetchData(); }, [fetchData]);
+
+  const s = data?.summary || {};
+  const district = data?.district || {};
+  const hospitals = data?.hospital_breakdown || [];
+  const trend = data?.monthly_trend || [];
+  const staffRoles = data?.staff_by_role || [];
+
+  const maxTrend = Math.max(...trend.map(t => t.visits), 1);
 
   const statCards = [
-    { icon: 'fas fa-hospital', label: 'Hospitals', value: stats.totalHospitals, accent: '#0891b2' },
-    { icon: 'fas fa-procedures', label: 'Total Patients', value: stats.totalPatients, accent: '#10b981' },
-    { icon: 'fas fa-user-md', label: 'Healthcare Staff', value: stats.totalStaff, accent: '#6366f1' },
-    { icon: 'fas fa-heartbeat', label: 'Active Cases', value: stats.activeCases, accent: '#f59e0b' },
+    { icon: 'fas fa-hospital',        label: 'Hospitals',         value: s.hospitals,          color: '#0891b2', bg: '#e0f2fe' },
+    { icon: 'fas fa-users',           label: 'Total Patients',    value: s.patients,           color: '#16a34a', bg: '#dcfce7' },
+    { icon: 'fas fa-user-md',         label: 'Healthcare Staff',  value: s.staff,              color: '#7c3aed', bg: '#ede9fe' },
+    { icon: 'fas fa-calendar-check',  label: 'Visits Today',      value: s.visits_today,       color: '#f77f00', bg: '#fff7ed' },
+    { icon: 'fas fa-chart-line',      label: 'Visits This Month', value: s.visits_this_month,  color: '#4361ee', bg: '#eff2ff' },
+    { icon: 'fas fa-bed',             label: 'Current Admissions',value: s.admissions_current, color: '#dc2626', bg: '#fee2e2' },
   ];
 
-  const getActivityIcon = (type) => {
-    switch(type) {
-      case 'hospital': return { icon: 'fas fa-hospital', color: '#0891b2' };
-      case 'patient': return { icon: 'fas fa-procedures', color: '#10b981' };
-      case 'staff': return { icon: 'fas fa-user-md', color: '#6366f1' };
-      case 'report': return { icon: 'fas fa-file-alt', color: '#f59e0b' };
-      default: return { icon: 'fas fa-info-circle', color: '#64748b' };
-    }
-  };
-
   return (
-    <DashboardLayout navItems={navItems} brandTitle="District Health Office" roleBadge="District Admin">
-      <div style={{ padding: '28px 24px' }}>
-        {/* Header */}
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24 }}>
+    <DashboardLayout navItems={navItems} brandTitle={brand} roleBadge={roleBadge}>
+      <div style={{ padding: '20px 16px', maxWidth: 1300, margin: '0 auto' }}>
+
+        {/* ── Header ── */}
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 24, flexWrap: 'wrap', gap: 12 }}>
           <div>
-            <h1 style={{ fontSize: 26, fontWeight: 800, color: '#0f172a', margin: 0 }}>District Admin Dashboard</h1>
-            <p style={{ color: '#64748b', margin: '4px 0 0', fontSize: 14 }}>
-              Managing: <strong style={{ color: '#0891b2' }}>{user?.district_name || 'Your District'}</strong>
+            <h2 style={{ fontWeight: 800, fontSize: 26, color: '#0f172a', margin: 0 }}>
+              <i className="fas fa-map-marked-alt me-2" style={{ color: '#0891b2' }}></i>District Dashboard
+            </h2>
+            <p style={{ color: '#64748b', fontSize: 13, marginTop: 4, marginBottom: 0 }}>
+              {district.name ? <><strong>{district.name}</strong> · {district.region} Region</> : 'Loading district data...'}
             </p>
           </div>
-          <div style={{ display: 'flex', gap: 10 }}>
-            <button style={{
-              display: 'inline-flex', alignItems: 'center', gap: 8,
-              background: 'linear-gradient(135deg,#0891b2,#0e7490)',
-              color: '#fff', border: 'none', borderRadius: 10,
-              padding: '10px 20px', fontWeight: 700, fontSize: 14,
-              cursor: 'pointer', boxShadow: '0 4px 14px rgba(8,145,178,0.35)',
-            }}>
-              <i className="fas fa-file-export" style={{ fontSize: 12 }}></i>Export Report
-            </button>
-          </div>
+          <button onClick={fetchData} style={{ padding: '8px 16px', borderRadius: 9, border: '1px solid #e2e8f0', background: '#fff', color: '#374151', fontWeight: 600, fontSize: 13, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6 }}>
+            <i className="fas fa-sync-alt" style={{ fontSize: 11 }}></i>Refresh
+          </button>
         </div>
 
-        {/* Stats */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 14, marginBottom: 24 }}>
-          {statCards.map(s => (
-            <div key={s.label} style={{
-              background: '#fff', borderRadius: 16, padding: '20px 20px 16px',
-              boxShadow: '0 2px 8px rgba(15,23,42,0.06)', border: 'none',
-            }}>
-              <div style={{ width: 42, height: 42, borderRadius: 12, background: s.accent + '15',
-                display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 14 }}>
-                <i className={s.icon} style={{ color: s.accent, fontSize: 17 }}></i>
+        {error && <div style={{ background: '#fee2e2', color: '#dc2626', padding: '10px 16px', borderRadius: 10, fontSize: 13, marginBottom: 20 }}>{error}</div>}
+
+        {/* ── Stats row ── */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: 14, marginBottom: 24 }}>
+          {statCards.map(({ icon, label, value, color, bg }) => (
+            <div key={label} style={{ background: '#fff', borderRadius: 14, padding: '18px 20px', boxShadow: '0 2px 10px rgba(0,0,0,0.05)' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                <div style={{ width: 44, height: 44, borderRadius: 12, background: bg, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <i className={icon} style={{ color, fontSize: 18 }}></i>
+                </div>
+                <div>
+                  <div style={{ fontSize: 22, fontWeight: 800, color: '#0f172a' }}>{loading ? '—' : (value ?? 0).toLocaleString()}</div>
+                  <div style={{ fontSize: 11, color: '#64748b' }}>{label}</div>
+                </div>
               </div>
-              <div style={{ fontSize: 30, fontWeight: 800, color: '#0f172a', lineHeight: 1, marginBottom: 6 }}>
-                {s.value.toLocaleString()}
-              </div>
-              <div style={{ fontSize: 13, fontWeight: 600, color: '#334155' }}>{s.label}</div>
             </div>
           ))}
         </div>
 
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(400px, 1fr))', gap: 20 }}>
-          {/* Recent Activity */}
-          <div style={{ background: '#fff', borderRadius: 14, boxShadow: '0 2px 8px rgba(15,23,42,0.06)', overflow: 'hidden' }}>
-            <div style={{ padding: '16px 20px', borderBottom: '1px solid #f1f5f9' }}>
-              <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700, color: '#0f172a' }}>Recent Activity</h3>
-            </div>
+        {/* ── Middle row: Monthly trend + Staff breakdown ── */}
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20, marginBottom: 24 }}>
+
+          {/* Monthly visits bar chart */}
+          <div style={{ background: '#fff', borderRadius: 16, padding: '20px 22px', boxShadow: '0 2px 10px rgba(0,0,0,0.05)' }}>
+            <h5 style={{ fontWeight: 800, fontSize: 15, color: '#0f172a', margin: '0 0 18px' }}>
+              <i className="fas fa-chart-bar me-2" style={{ color: '#4361ee' }}></i>Monthly Visit Trend
+            </h5>
             {loading ? (
-              <div style={{ textAlign: 'center', padding: '40px 0' }}>
-                <div className="spinner-border text-primary" role="status"></div>
-              </div>
-            ) : recentActivities.length === 0 ? (
-              <div style={{ textAlign: 'center', padding: '40px 0', color: '#94a3b8' }}>
-                <i className="fas fa-bell" style={{ fontSize: 40, marginBottom: 12, display: 'block' }}></i>
-                <p>No recent activity</p>
+              <div style={{ display: 'flex', alignItems: 'flex-end', gap: 10, height: 120 }}>
+                {[40, 65, 80, 55, 70, 45].map((h, i) => <div key={i} style={{ flex: 1, background: '#f1f5f9', borderRadius: 6, height: `${h}%` }} />)}
               </div>
             ) : (
-              <div>
-                {recentActivities.map((activity, idx) => {
-                  const iconStyle = getActivityIcon(activity.type);
+              <div style={{ display: 'flex', alignItems: 'flex-end', gap: 8, height: 130 }}>
+                {trend.map(t => {
+                  const pct = maxTrend ? Math.max((t.visits / maxTrend) * 100, 4) : 4;
                   return (
-                    <div key={activity.id}
-                      style={{ display: 'flex', alignItems: 'flex-start', gap: 12,
-                        padding: '14px 20px',
-                        borderBottom: idx < recentActivities.length - 1 ? '1px solid #f8fafc' : 'none' }}
-                    >
-                      <div style={{ width: 36, height: 36, borderRadius: 10, background: iconStyle.color + '15',
-                        display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                        <i className={iconStyle.icon} style={{ color: iconStyle.color, fontSize: 14 }}></i>
-                      </div>
-                      <div style={{ flex: 1 }}>
-                        <div style={{ fontSize: 13, fontWeight: 500, color: '#334155', marginBottom: 2 }}>
-                          {activity.message}
-                        </div>
-                        <div style={{ fontSize: 11, color: '#94a3b8' }}>{activity.time}</div>
-                      </div>
+                    <div key={t.month} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
+                      <div style={{ fontSize: 10, color: '#64748b', fontWeight: 600 }}>{t.visits}</div>
+                      <div style={{ width: '100%', background: '#4361ee', borderRadius: '4px 4px 0 0', height: `${pct}%`, minHeight: 6, transition: 'height 0.4s' }} />
+                      <div style={{ fontSize: 9, color: '#94a3b8', whiteSpace: 'nowrap' }}>{t.month.split(' ')[0]}</div>
                     </div>
                   );
                 })}
@@ -175,61 +115,86 @@ function DistrictAdminDashboard() {
             )}
           </div>
 
-          {/* Quick Actions */}
-          <div style={{ background: '#fff', borderRadius: 14, boxShadow: '0 2px 8px rgba(15,23,42,0.06)', padding: '20px' }}>
-            <h3 style={{ margin: '0 0 16px', fontSize: 16, fontWeight: 700, color: '#0f172a' }}>Quick Actions</h3>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-              {[
-                { icon: 'fas fa-hospital', label: 'Add Hospital', color: '#0891b2' },
-                { icon: 'fas fa-user-plus', label: 'Add Staff', color: '#10b981' },
-                { icon: 'fas fa-file-medical', label: 'View Reports', color: '#6366f1' },
-                { icon: 'fas fa-envelope', label: 'Send Notice', color: '#f59e0b' },
-              ].map(action => (
-                <button key={action.label}
-                  style={{
-                    display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8,
-                    padding: '20px 16px', borderRadius: 12, border: '1px solid #e2e8f0',
-                    background: '#fff', cursor: 'pointer', transition: 'all 0.15s'
-                  }}
-                  onMouseEnter={e => { e.currentTarget.style.background = '#f8fafc'; e.currentTarget.style.borderColor = action.color; }}
-                  onMouseLeave={e => { e.currentTarget.style.background = '#fff'; e.currentTarget.style.borderColor = '#e2e8f0'; }}
-                >
-                  <div style={{ width: 44, height: 44, borderRadius: 12, background: action.color + '15',
-                    display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                    <i className={action.icon} style={{ color: action.color, fontSize: 18 }}></i>
-                  </div>
-                  <span style={{ fontSize: 13, fontWeight: 600, color: '#334155' }}>{action.label}</span>
-                </button>
-              ))}
-            </div>
+          {/* Staff by role */}
+          <div style={{ background: '#fff', borderRadius: 16, padding: '20px 22px', boxShadow: '0 2px 10px rgba(0,0,0,0.05)' }}>
+            <h5 style={{ fontWeight: 800, fontSize: 15, color: '#0f172a', margin: '0 0 16px' }}>
+              <i className="fas fa-users me-2" style={{ color: '#7c3aed' }}></i>Staff Distribution
+            </h5>
+            {loading ? (
+              <div style={{ color: '#94a3b8', textAlign: 'center', padding: 20 }}>Loading...</div>
+            ) : staffRoles.length === 0 ? (
+              <div style={{ color: '#94a3b8', textAlign: 'center', padding: 20 }}>No staff data</div>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                {staffRoles.slice(0, 6).map((r, i) => {
+                  const total = staffRoles.reduce((a, b) => a + b.count, 0) || 1;
+                  const pct   = Math.round((r.count / total) * 100);
+                  const color = ROLE_COLORS[i % ROLE_COLORS.length];
+                  return (
+                    <div key={r.role__name}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 3 }}>
+                        <span style={{ fontSize: 12, fontWeight: 600, color: '#374151' }}>{ROLE_LABELS[r.role__name] || r.role__name}</span>
+                        <span style={{ fontSize: 12, color: '#64748b' }}>{r.count} ({pct}%)</span>
+                      </div>
+                      <div style={{ height: 6, background: '#f1f5f9', borderRadius: 99 }}>
+                        <div style={{ height: '100%', width: `${pct}%`, background: color, borderRadius: 99, transition: 'width 0.4s' }} />
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </div>
         </div>
 
-        {/* District Overview */}
-        <div style={{ marginTop: 24, background: '#fff', borderRadius: 14, boxShadow: '0 2px 8px rgba(15,23,42,0.06)', overflow: 'hidden' }}>
-          <div style={{ padding: '16px 20px', borderBottom: '1px solid #f1f5f9' }}>
-            <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700, color: '#0f172a' }}>District Health Overview</h3>
+        {/* ── Hospital breakdown table ── */}
+        <div style={{ background: '#fff', borderRadius: 16, boxShadow: '0 2px 10px rgba(0,0,0,0.05)', overflow: 'hidden' }}>
+          <div style={{ padding: '16px 20px', borderBottom: '1px solid #f1f5f9', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <h5 style={{ fontWeight: 800, fontSize: 15, color: '#0f172a', margin: 0 }}>
+              <i className="fas fa-hospital me-2" style={{ color: '#0891b2' }}></i>Hospitals in {district.name || 'District'}
+            </h5>
+            <span style={{ fontSize: 12, color: '#94a3b8' }}>{hospitals.length} facilities</span>
           </div>
-          <div style={{ padding: '20px', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 20 }}>
-            {[
-              { label: 'Chiefdoms Managed', value: '8', icon: 'fas fa-sitemap', color: '#0891b2' },
-              { label: 'Towns Covered', value: '24', icon: 'fas fa-city', color: '#6366f1' },
-              { label: 'Health Facilities', value: '12', icon: 'fas fa-clinic-medical', color: '#10b981' },
-              { label: 'Active Programs', value: '5', icon: 'fas fa-tasks', color: '#f59e0b' },
-            ].map(item => (
-              <div key={item.label} style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                <div style={{ width: 40, height: 40, borderRadius: 10, background: item.color + '15',
-                  display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                  <i className={item.icon} style={{ color: item.color, fontSize: 16 }}></i>
-                </div>
-                <div>
-                  <div style={{ fontSize: 20, fontWeight: 800, color: '#0f172a' }}>{item.value}</div>
-                  <div style={{ fontSize: 12, color: '#64748b' }}>{item.label}</div>
-                </div>
-              </div>
-            ))}
-          </div>
+          {loading ? (
+            <div style={{ textAlign: 'center', padding: 40 }}>
+              <div className="spinner-border text-primary" role="status" style={{ width: 28, height: 28 }}></div>
+            </div>
+          ) : hospitals.length === 0 ? (
+            <div style={{ textAlign: 'center', padding: 48, color: '#94a3b8' }}>
+              <i className="fas fa-hospital" style={{ fontSize: 40, marginBottom: 12, display: 'block' }}></i>
+              No hospitals found in this district.
+            </div>
+          ) : (
+            <div style={{ overflowX: 'auto' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                <thead>
+                  <tr style={{ background: '#f8fafc' }}>
+                    {['Hospital', 'Type', 'Patients', 'Visits', 'Staff', 'Appointments'].map(h => (
+                      <th key={h} style={{ padding: '10px 16px', textAlign: 'left', fontSize: 11, fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.5px', whiteSpace: 'nowrap' }}>{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {hospitals.map((h, i) => (
+                    <tr key={h.id} style={{ borderTop: '1px solid #f1f5f9', background: i % 2 ? '#fafafa' : '#fff' }}>
+                      <td style={{ padding: '12px 16px' }}>
+                        <div style={{ fontWeight: 700, fontSize: 13, color: '#0f172a' }}>{h.name}</div>
+                      </td>
+                      <td style={{ padding: '12px 16px' }}>
+                        <span style={{ fontSize: 11, fontWeight: 600, padding: '2px 8px', borderRadius: 20, background: '#e0f2fe', color: '#0891b2' }}>{h.type || '—'}</span>
+                      </td>
+                      <td style={{ padding: '12px 16px', fontSize: 13, fontWeight: 600, color: '#0f172a' }}>{(h.patients || 0).toLocaleString()}</td>
+                      <td style={{ padding: '12px 16px', fontSize: 13, fontWeight: 600, color: '#0f172a' }}>{(h.visits || 0).toLocaleString()}</td>
+                      <td style={{ padding: '12px 16px', fontSize: 13, fontWeight: 600, color: '#0f172a' }}>{(h.staff || 0).toLocaleString()}</td>
+                      <td style={{ padding: '12px 16px', fontSize: 13, fontWeight: 600, color: '#0f172a' }}>{(h.appointments || 0).toLocaleString()}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
         </div>
+
       </div>
     </DashboardLayout>
   );

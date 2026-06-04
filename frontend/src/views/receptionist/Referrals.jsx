@@ -29,6 +29,7 @@ export default function Referrals() {
   const [items, setItems]     = useState([]);
   const [loading, setLoading] = useState(false);
   const [search, setSearch]   = useState('');
+  const [acting, setActing]   = useState(null); // id of row being accepted/rejected
 
   const navItems  = getNavForUser(user);
   const brand     = getBrandForUser(user);
@@ -200,12 +201,59 @@ export default function Referrals() {
                           {badge(r.status_display || r.status, sc.bg, sc.color)}
                         </td>
                         <td style={{ padding: '12px 16px' }}>
-                          <button className="btn btn-sm"
-                            style={{ background: '#ede9fe', color: '#7c3aed', fontWeight: 600,
-                              fontSize: 12, border: 'none', borderRadius: 6 }}
-                            onClick={e => { e.stopPropagation(); r.patient_pk && navigate(`/receptionist/patients/${r.patient_pk}`); }}>
-                            <i className="fas fa-eye me-1"></i>View
-                          </button>
+                          <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                            <button className="btn btn-sm"
+                              style={{ background: '#ede9fe', color: '#7c3aed', fontWeight: 600,
+                                fontSize: 12, border: 'none', borderRadius: 6 }}
+                              onClick={e => { e.stopPropagation(); r.patient_pk && navigate(`/receptionist/patients/${r.patient_pk}`); }}>
+                              <i className="fas fa-eye me-1"></i>View
+                            </button>
+                            {tab === 'incoming' && r.status !== 'cancelled' && (
+                              <>
+                                <button className="btn btn-sm"
+                                  style={{ background: '#dcfce7', color: '#15803d', fontWeight: 600,
+                                    fontSize: 12, border: 'none', borderRadius: 6 }}
+                                  disabled={acting === r.id}
+                                  onClick={async (e) => {
+                                    e.stopPropagation();
+                                    setActing(r.id);
+                                    try {
+                                      const res = await apiCall(`/visits/${r.id}/accept_referral/`, { method: 'POST' });
+                                      if (res.ok) {
+                                        fetchReferrals(tab);
+                                      } else {
+                                        const err = await res.json();
+                                        alert(err.error || 'Failed to accept referral');
+                                      }
+                                    } catch { alert('Network error'); }
+                                    setActing(null);
+                                  }}>
+                                  {acting === r.id ? <span className="spinner-border spinner-border-sm"></span> : <><i className="fas fa-check me-1"></i>Accept</>}
+                                </button>
+                                <button className="btn btn-sm"
+                                  style={{ background: '#fee2e2', color: '#b91c1c', fontWeight: 600,
+                                    fontSize: 12, border: 'none', borderRadius: 6 }}
+                                  disabled={acting === r.id}
+                                  onClick={async (e) => {
+                                    e.stopPropagation();
+                                    if (!window.confirm('Reject this referral?')) return;
+                                    setActing(r.id);
+                                    try {
+                                      const res = await apiCall(`/visits/${r.id}/reject_referral/`, { method: 'POST' });
+                                      if (res.ok) {
+                                        fetchReferrals(tab);
+                                      } else {
+                                        const err = await res.json();
+                                        alert(err.error || 'Failed to reject referral');
+                                      }
+                                    } catch { alert('Network error'); }
+                                    setActing(null);
+                                  }}>
+                                  {acting === r.id ? <span className="spinner-border spinner-border-sm"></span> : <><i className="fas fa-times me-1"></i>Reject</>}
+                                </button>
+                              </>
+                            )}
+                          </div>
                         </td>
                       </tr>
                     );

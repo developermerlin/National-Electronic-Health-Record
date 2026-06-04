@@ -4,6 +4,7 @@ import Footer from './base/Footer';
 import useTemplateScripts from '../hooks/useTemplateScripts';
 import { useAuth } from '../context/AuthContext';
 import { useNavigate } from 'react-router-dom';
+import { getHomeDashboard } from '../utils/navItems';
 
 function Home() {
   useTemplateScripts();
@@ -12,29 +13,7 @@ function Home() {
 
   useEffect(() => {
     if (user && user.role) {
-      if (user.role === 'admin') {
-        navigate('/admin/dashboard');
-      } else if (user.role === 'hospital_admin') {
-        navigate('/hospital-admin/dashboard');
-      } else if (user.role === 'ministry_admin') {
-        navigate('/ministry/dashboard');
-      } else if (user.role === 'district_admin') {
-        navigate('/district-admin/dashboard');
-      } else if (user.role === 'receptionist') {
-        navigate('/receptionist/dashboard');
-      } else if (user.role === 'doctor') {
-        navigate('/doctor/dashboard');
-      } else if (user.role === 'nurse') {
-        navigate('/nurse/dashboard');
-      } else if (user.role === 'triage') {
-        navigate('/triage');
-      } else if (user.role === 'lab_technician') {
-        navigate('/lab/dashboard');
-      } else if (user.role === 'pharmacist') {
-        navigate('/pharmacy/dashboard');
-      } else if (user.role === 'patient') {
-        navigate('/patient/dashboard');
-      }
+      navigate(getHomeDashboard(user));
     }
   }, [user, navigate]);
 

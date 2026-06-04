@@ -309,7 +309,15 @@ export default function TriageDashboard() {
                               </div>
                               <div>
                                 <div style={{ fontWeight: 700, color: '#1e293b', fontSize: 13 }}>{v.patient_name || '—'}</div>
-                                <div style={{ fontSize: 11, color: '#94a3b8', fontFamily: 'monospace' }}>{v.patient_id_code || ''}</div>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 2 }}>
+                                  {v.queue_number && (
+                                    <span style={{ fontSize: 10, fontWeight: 800, padding: '1px 6px', borderRadius: 5,
+                                      background: '#dbeafe', color: '#1d4ed8', letterSpacing: '0.5px', fontFamily: 'monospace' }}>
+                                      {v.queue_number}
+                                    </span>
+                                  )}
+                                  <span style={{ fontSize: 11, color: '#94a3b8', fontFamily: 'monospace' }}>{v.patient_id_code || ''}</span>
+                                </div>
                               </div>
                             </div>
                           </td>
@@ -449,6 +457,7 @@ export default function TriageDashboard() {
                   <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: '1px', textTransform: 'uppercase',
                     color: '#94a3b8', marginBottom: 8 }}>Visit Information</div>
                   {[
+                    { label: 'Queue Token', value: selectedVisit.queue_number || '—' },
                     { label: 'Type',        value: selectedVisit.visit_type_display || selectedVisit.visit_type },
                     { label: 'Complaint',   value: selectedVisit.chief_complaint },
                     { label: 'Doctor',      value: selectedVisit.doctor_name ? `Dr. ${selectedVisit.doctor_name}` : 'Unassigned' },

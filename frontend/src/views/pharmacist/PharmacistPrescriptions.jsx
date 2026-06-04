@@ -1,31 +1,9 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import DashboardLayout from '../../layout/DashboardLayout';
+import { getNavForUser, getBrandForUser, getRoleBadge } from '../../utils/navItems';
 
 const ACCENT = '#8b5cf6';
-
-const navItems = [
-  { label: 'Dashboard', items: [
-    { path: '/pharmacy/dashboard', icon: 'fas fa-tachometer-alt', text: 'Overview' },
-  ]},
-  { label: 'Dispensing', items: [
-    { path: '/pharmacy/prescriptions', icon: 'fas fa-file-prescription', text: 'All Prescriptions' },
-    { path: '/pharmacy/queue',         icon: 'fas fa-list-ol',           text: 'Dispense Queue' },
-  ]},
-  { label: 'Inventory', items: [
-    { path: '/pharmacy/inventory', icon: 'fas fa-boxes', text: 'Drug Inventory' },
-  ]},
-  { label: 'Patients', items: [
-    { path: '/pharmacy/patients', icon: 'fas fa-user-injured', text: 'Patient Lookup' },
-  ]},
-  { label: 'Communication', items: [
-    { path: '/chat',     icon: 'fas fa-comments', text: 'Live Chat' },
-    { path: '/messages', icon: 'fas fa-envelope',  text: 'Messages' },
-  ]},
-  { label: 'Account', items: [
-    { path: '/admin/profile', icon: 'fas fa-user-circle', text: 'My Profile' },
-  ]},
-];
 
 function ViewModal({ note, onClose }) {
   if (!note) return null;
@@ -104,7 +82,7 @@ function ViewModal({ note, onClose }) {
 }
 
 function PharmacistPrescriptions() {
-  const { apiCall } = useAuth();
+  const { apiCall, user } = useAuth();
   const [prescriptions, setPrescriptions] = useState([]);
   const [loading, setLoading]             = useState(true);
   const [viewNote, setViewNote]           = useState(null);
@@ -138,7 +116,7 @@ function PharmacistPrescriptions() {
   const dispensed  = prescriptions.filter(p => p.is_dispensed).length;
 
   return (
-    <DashboardLayout navItems={navItems} brandTitle="NEHR Pharmacy" roleBadge="Pharmacist">
+    <DashboardLayout navItems={getNavForUser(user)} brandTitle={getBrandForUser(user)} roleBadge={getRoleBadge(user)}>
       <div style={{ padding: '28px 24px' }}>
 
         {/* Header */}

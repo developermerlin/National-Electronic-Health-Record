@@ -312,6 +312,9 @@ function ReceptionistAppointments() {
                 </h1>
                 <p className="text-muted mb-0 small">Manage patient appointments and check-ins</p>
               </div>
+              <button className="btn btn-outline-secondary" onClick={() => window.open(`${import.meta.env.VITE_API_URL}/appointments/csv_export/`, '_blank')}>
+                <i className="fas fa-file-csv me-2"></i>Export CSV
+              </button>
               <button className="btn btn-primary" onClick={() => setShowCreateModal(true)}>
                 <i className="fas fa-plus me-2"></i>Book Appointment
               </button>

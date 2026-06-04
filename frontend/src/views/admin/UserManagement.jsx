@@ -36,6 +36,10 @@ function UserManagement() {
     // Emergency contact
     emergency_contact_name: '', emergency_contact_phone: '', emergency_contact_relationship: '',
   });
+  const [showViewModal, setShowViewModal] = useState(false);
+  const [viewUser, setViewUser]         = useState(null);
+  const [viewProfile, setViewProfile]   = useState(null);
+  const [viewLoading, setViewLoading]   = useState(false);
   const [confirmDeactivate, setConfirmDeactivate] = useState({ show: false, id: null });
   const [confirmPermanentDelete, setConfirmPermanentDelete] = useState({ show: false, id: null, confirmed: false, typedName: '' });
   const [showResetModal, setShowResetModal] = useState({ show: false, id: null });
@@ -58,6 +62,13 @@ function UserManagement() {
   // Check if current user is admin (role is stored as string in JWT token)
   const isAdmin = user?.role === 'admin';
   const isReadOnly = user?.role === 'ministry_admin';
+  const isHospitalAdmin = user?.role === 'hospital_admin';
+  const canManageStaff = isAdmin || isHospitalAdmin;
+
+  // Roles hospital admins are allowed to assign
+  const staffRoles = isHospitalAdmin
+    ? roles.filter(r => !['admin','ministry_admin','district_admin','hospital_admin','patient'].includes(r.name))
+    : roles;
 
   // Get selected role info
   const selectedRoleName = roles.find(r => r.id === parseInt(formData.role))?.name || '';
@@ -199,6 +210,18 @@ function UserManagement() {
     }
   };
 
+  const openViewModal = async (u) => {
+    setViewUser(u);
+    setViewProfile(null);
+    setShowViewModal(true);
+    setViewLoading(true);
+    try {
+      const res = await apiCall(`/admin/users/${u.id}/profile/`);
+      if (res.ok) setViewProfile(await res.json());
+    } catch { /* ignore */ }
+    setViewLoading(false);
+  };
+
   const [userToDeactivate, setUserToDeactivate] = useState(null);
   const [userToDelete, setUserToDelete] = useState(null);
 
@@ -304,7 +327,7 @@ function UserManagement() {
     const base = {
       email: user.email || '', full_name: user.full_name || '',
       phone: user.phone || '', role: user.role || '',
-      hospital: user.hospital || '', department: user.department || '',
+      hospital: user.hospital_id || (isHospitalAdmin ? (user.hospital_id || '') : ''), department: user.department_id || '',
       district: user.district || '', is_active: user.is_active,
       password: '',
       date_of_birth: '', gender: '', nationality: 'Sierra Leonean',
@@ -346,7 +369,7 @@ function UserManagement() {
   const resetForm = () => {
     setFormData({
       email: '', full_name: '', phone: '', role: '',
-      hospital: '', department: '', district: '',
+      hospital: isHospitalAdmin ? (user.hospital_id || '') : '', department: '', district: '',
       password: '', is_active: false,
       date_of_birth: '', gender: '', nationality: 'Sierra Leonean',
       nin_number: '', marital_status: '', address: '', city: '', state: '', country: 'Sierra Leone',
@@ -392,8 +415,8 @@ function UserManagement() {
             <h1 style={{ fontSize:26, fontWeight:800, color:'#0f172a', margin:0 }}>User Management</h1>
             <p style={{ color:'#64748b', margin:'4px 0 0', fontSize:14 }}>Manage system users and their roles</p>
           </div>
-          {!isReadOnly && (
-            <PrimaryButton icon="fas fa-user-plus" onClick={() => setShowCreateModal(true)}>
+          {canManageStaff && (
+            <PrimaryButton icon="fas fa-user-plus" onClick={() => { resetForm(); setCreateStep(1); setShowCreateModal(true); }}>
               Create New User
             </PrimaryButton>
           )}
@@ -456,7 +479,7 @@ function UserManagement() {
               background:'#f8fafc', outline:'none', cursor:'pointer' }}
           >
             <option value="">All Roles</option>
-            {roles.map(r => (
+            {staffRoles.map(r => (
               <option key={r.id} value={r.name}>{r.display_name || r.name}</option>
             ))}
           </select>
@@ -556,6 +579,13 @@ function UserManagement() {
 
                   {/* Actions */}
                   <div style={{ display:'flex', gap:6 }}>
+                    <button onClick={() => openViewModal(u)} title="View Details"
+                      style={{ width:32, height:32, borderRadius:8, border:'1px solid #e2e8f0',
+                        background:'#fff', color:'#475569', cursor:'pointer', fontSize:12,
+                        display:'flex', alignItems:'center', justifyContent:'center', transition:'all 0.15s' }}
+                      onMouseEnter={e => { e.currentTarget.style.background='#f0f9ff'; e.currentTarget.style.color='#0ea5e9'; e.currentTarget.style.borderColor='#bae6fd'; }}
+                      onMouseLeave={e => { e.currentTarget.style.background='#fff'; e.currentTarget.style.color='#475569'; e.currentTarget.style.borderColor='#e2e8f0'; }}
+                    ><i className="fas fa-eye" style={{ fontSize:11 }}></i></button>
                     {isReadOnly ? (
                       <span style={{ fontSize:12, color:'#94a3b8', fontStyle:'italic' }}>View only</span>
                     ) : (
@@ -594,7 +624,7 @@ function UserManagement() {
                           ><i className="fas fa-check-circle" style={{ fontSize:11 }}></i></button>
                         )}
 
-                        {isAdmin && (
+                        {(isAdmin || (isHospitalAdmin && !['admin','ministry_admin','district_admin','hospital_admin'].includes(u.role))) && (
                           <button onClick={() => handlePermanentDelete(u)} title="Delete Permanently"
                             style={{ width:32, height:32, borderRadius:8, border:'1px solid #e2e8f0',
                               background:'#fff', color:'#94a3b8', cursor:'pointer', fontSize:12,
@@ -749,10 +779,16 @@ function UserManagement() {
                       )}
                       {['hospital_admin','doctor','nurse','receptionist','lab_technician','pharmacist','triage'].includes(selectedRoleName) && (
                         <div style={{ gridColumn: '1/-1' }}>
-                          <span style={labelStyle}>Assigned Hospital *</span>
-                          <select style={inputStyle} value={formData.hospital} onChange={e => setFormData({...formData, hospital: e.target.value, department: ''})}>
-                            <option value="">Select Hospital</option>
-                            {hospitals.map(h => <option key={h.id} value={h.id}>{h.name}</option>)}
+                          <span style={labelStyle}>Assigned Hospital {isHospitalAdmin ? '' : '*'}</span>
+                          <select style={{...inputStyle, background: isHospitalAdmin ? '#f8fafc' : '#fff' }} value={formData.hospital} onChange={e => setFormData({...formData, hospital: e.target.value, department: ''})} disabled={isHospitalAdmin}>
+                            {isHospitalAdmin ? (
+                              <option value={user.hospital_id}>{hospitals.find(h => h.id === user.hospital_id)?.name || user.hospital_name || 'Your Hospital'}</option>
+                            ) : (
+                              <>
+                                <option value="">Select Hospital</option>
+                                {hospitals.map(h => <option key={h.id} value={h.id}>{h.name}</option>)}
+                              </>
+                            )}
                           </select>
                         </div>
                       )}
@@ -1058,7 +1094,7 @@ function UserManagement() {
                         <span style={labelStyle}>Role</span>
                         <select style={inputStyle} value={formData.role} onChange={e => setFormData({...formData, role: e.target.value})}>
                           <option value="">Select Role</option>
-                          {roles.map(r => <option key={r.id} value={r.id}>{r.display_name || r.name}</option>)}
+                          {staffRoles.map(r => <option key={r.id} value={r.id}>{r.display_name || r.name}</option>)}
                         </select>
                       </div>
                       <div>
@@ -1078,9 +1114,15 @@ function UserManagement() {
                       {['hospital_admin','doctor','nurse','receptionist','lab_technician','pharmacist','triage'].includes(editSelectedRoleName) && (
                         <div style={{ gridColumn: '1/-1' }}>
                           <span style={labelStyle}>Assigned Hospital</span>
-                          <select style={inputStyle} value={formData.hospital} onChange={e => setFormData({...formData, hospital: e.target.value, department: ''})}>
-                            <option value="">Select Hospital</option>
-                            {hospitals.map(h => <option key={h.id} value={h.id}>{h.name}</option>)}
+                          <select style={{...inputStyle, background: isHospitalAdmin ? '#f8fafc' : '#fff' }} value={formData.hospital} onChange={e => setFormData({...formData, hospital: e.target.value, department: ''})} disabled={isHospitalAdmin}>
+                            {isHospitalAdmin ? (
+                              <option value={user.hospital_id}>{hospitals.find(h => h.id === user.hospital_id)?.name || user.hospital_name || 'Your Hospital'}</option>
+                            ) : (
+                              <>
+                                <option value="">Select Hospital</option>
+                                {hospitals.map(h => <option key={h.id} value={h.id}>{h.name}</option>)}
+                              </>
+                            )}
                           </select>
                         </div>
                       )}
@@ -1230,6 +1272,140 @@ function UserManagement() {
           </div>
         );
       })()}
+      {/* ── Staff Detail View Modal ── */}
+      {showViewModal && viewUser && (
+        <div style={{ position:'fixed', inset:0, background:'rgba(15,23,42,0.6)', backdropFilter:'blur(3px)', zIndex:9999,
+          display:'flex', alignItems:'center', justifyContent:'center', padding:16 }}
+          onClick={() => { setShowViewModal(false); setViewUser(null); setViewProfile(null); }}>
+          <div style={{ background:'#fff', borderRadius:20, width:'100%', maxWidth:640, maxHeight:'90vh',
+            overflowY:'auto', boxShadow:'0 24px 60px rgba(0,0,0,0.2)' }}
+            onClick={e => e.stopPropagation()}>
+
+            {/* Header */}
+            <div style={{ background:'linear-gradient(135deg,#4361ee,#7c3aed)', borderRadius:'20px 20px 0 0', padding:'24px 28px', display:'flex', justifyContent:'space-between', alignItems:'center' }}>
+              <div style={{ display:'flex', alignItems:'center', gap:16 }}>
+                {viewProfile?.image
+                  ? <img src={viewProfile.image} alt="" style={{ width:56, height:56, borderRadius:'50%', objectFit:'cover', border:'3px solid rgba(255,255,255,0.4)' }} />
+                  : <div style={{ width:56, height:56, borderRadius:'50%', background:'rgba(255,255,255,0.2)', display:'flex', alignItems:'center', justifyContent:'center', fontSize:22, fontWeight:800, color:'#fff' }}>
+                      {(viewUser.full_name || viewUser.username || '?')[0].toUpperCase()}
+                    </div>
+                }
+                <div>
+                  <div style={{ fontWeight:800, fontSize:18, color:'#fff' }}>{viewUser.full_name || viewUser.username}</div>
+                  <div style={{ fontSize:12, color:'rgba(255,255,255,0.75)', marginTop:2 }}>{viewUser.employee_id || viewUser.email}</div>
+                </div>
+              </div>
+              <button onClick={() => { setShowViewModal(false); setViewUser(null); setViewProfile(null); }}
+                style={{ width:34, height:34, borderRadius:8, border:'1px solid rgba(255,255,255,0.3)', background:'rgba(255,255,255,0.1)', color:'#fff', cursor:'pointer', fontSize:16 }}>✕</button>
+            </div>
+
+            {viewLoading ? (
+              <div style={{ padding:40, textAlign:'center' }}>
+                <div className="spinner-border text-primary" style={{ width:32, height:32 }}></div>
+                <div style={{ marginTop:12, color:'#64748b', fontSize:13 }}>Loading profile…</div>
+              </div>
+            ) : (
+              <div style={{ padding:'24px 28px', display:'grid', gap:20 }}>
+
+                {/* Account Info */}
+                <section>
+                  <div style={{ fontSize:11, fontWeight:800, color:'#94a3b8', textTransform:'uppercase', letterSpacing:1, marginBottom:12 }}>Account Information</div>
+                  <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'10px 20px', fontSize:13 }}>
+                    {[['Email', viewUser.email],['Phone', viewUser.phone || '—'],
+                      ['Role', viewUser.role_display || viewUser.role || '—'],
+                      ['Status', viewUser.is_active ? '✅ Active' : '🔴 Inactive'],
+                      ['Hospital', viewUser.hospital_name || '—'],
+                      ['Department', viewUser.department_name || '—'],
+                    ].map(([label, val]) => (
+                      <div key={label} style={{ background:'#f8fafc', borderRadius:8, padding:'8px 12px' }}>
+                        <div style={{ fontSize:11, fontWeight:700, color:'#94a3b8', marginBottom:2 }}>{label}</div>
+                        <div style={{ fontWeight:600, color:'#0f172a' }}>{val}</div>
+                      </div>
+                    ))}
+                  </div>
+                </section>
+
+                {/* Demographics */}
+                {viewProfile && (
+                  <section>
+                    <div style={{ fontSize:11, fontWeight:800, color:'#94a3b8', textTransform:'uppercase', letterSpacing:1, marginBottom:12 }}>Demographics</div>
+                    <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'10px 20px', fontSize:13 }}>
+                      {[['Date of Birth', viewProfile.date_of_birth || '—'],
+                        ['Gender', viewProfile.gender || '—'],
+                        ['Nationality', viewProfile.nationality || '—'],
+                        ['NIN Number', viewProfile.nin_number || '—'],
+                        ['Marital Status', viewProfile.marital_status || '—'],
+                        ['Country', viewProfile.country || '—'],
+                      ].map(([label, val]) => (
+                        <div key={label} style={{ background:'#f8fafc', borderRadius:8, padding:'8px 12px' }}>
+                          <div style={{ fontSize:11, fontWeight:700, color:'#94a3b8', marginBottom:2 }}>{label}</div>
+                          <div style={{ fontWeight:600, color:'#0f172a' }}>{val}</div>
+                        </div>
+                      ))}
+                      {viewProfile.address && (
+                        <div style={{ gridColumn:'1/-1', background:'#f8fafc', borderRadius:8, padding:'8px 12px' }}>
+                          <div style={{ fontSize:11, fontWeight:700, color:'#94a3b8', marginBottom:2 }}>Address</div>
+                          <div style={{ fontWeight:600, color:'#0f172a' }}>{[viewProfile.address, viewProfile.city, viewProfile.state].filter(Boolean).join(', ')}</div>
+                        </div>
+                      )}
+                    </div>
+                  </section>
+                )}
+
+                {/* Professional */}
+                {viewProfile && (viewProfile.qualification || viewProfile.specialization || viewProfile.license_number || viewProfile.years_of_experience) && (
+                  <section>
+                    <div style={{ fontSize:11, fontWeight:800, color:'#94a3b8', textTransform:'uppercase', letterSpacing:1, marginBottom:12 }}>Professional Details</div>
+                    <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'10px 20px', fontSize:13 }}>
+                      {[['Qualification', viewProfile.qualification || '—'],
+                        ['Specialization', viewProfile.specialization || '—'],
+                        ['License Number', viewProfile.license_number || '—'],
+                        ['Years of Experience', viewProfile.years_of_experience ? `${viewProfile.years_of_experience} yrs` : '—'],
+                      ].map(([label, val]) => (
+                        <div key={label} style={{ background:'#f8fafc', borderRadius:8, padding:'8px 12px' }}>
+                          <div style={{ fontSize:11, fontWeight:700, color:'#94a3b8', marginBottom:2 }}>{label}</div>
+                          <div style={{ fontWeight:600, color:'#0f172a' }}>{val}</div>
+                        </div>
+                      ))}
+                    </div>
+                  </section>
+                )}
+
+                {/* Emergency Contact */}
+                {viewProfile && viewProfile.emergency_contact_name && (
+                  <section>
+                    <div style={{ fontSize:11, fontWeight:800, color:'#94a3b8', textTransform:'uppercase', letterSpacing:1, marginBottom:12 }}>Emergency Contact</div>
+                    <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'10px 20px', fontSize:13 }}>
+                      {[['Name', viewProfile.emergency_contact_name || '—'],
+                        ['Phone', viewProfile.emergency_contact_phone || '—'],
+                        ['Relationship', viewProfile.emergency_contact_relationship || '—'],
+                      ].map(([label, val]) => (
+                        <div key={label} style={{ background:'#f8fafc', borderRadius:8, padding:'8px 12px' }}>
+                          <div style={{ fontSize:11, fontWeight:700, color:'#94a3b8', marginBottom:2 }}>{label}</div>
+                          <div style={{ fontWeight:600, color:'#0f172a' }}>{val}</div>
+                        </div>
+                      ))}
+                    </div>
+                  </section>
+                )}
+
+                {/* Footer actions */}
+                {canManageStaff && (
+                  <div style={{ display:'flex', gap:10, paddingTop:4, borderTop:'1px solid #f1f5f9' }}>
+                    <button onClick={() => { setShowViewModal(false); openEditModal(viewUser); }}
+                      style={{ flex:1, padding:'10px', borderRadius:10, border:'1.5px solid #6366f1',
+                        background:'#fff', color:'#6366f1', fontWeight:700, cursor:'pointer', fontSize:13 }}>
+                      <i className="fas fa-edit me-2"></i>Edit Staff
+                    </button>
+                  </div>
+                )}
+
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* Professional User Deactivate Modal */}
       {confirmDeactivate.show && userToDeactivate && (
         <div className="modal show d-block" style={{ backgroundColor: 'rgba(0,0,0,0.6)', position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, zIndex: 1060 }}>

@@ -736,9 +736,59 @@ function PatientDetail() {
                     {visit.clinical_note.diagnosis && <div className="print-note-row"><span>Diagnosis:</span><strong>{visit.clinical_note.diagnosis}</strong></div>}
                     {visit.clinical_note.notes && <div className="print-note-row"><span>Notes:</span><div>{visit.clinical_note.notes}</div></div>}
                     {visit.clinical_note.prescription && <div className="print-note-row print-rx"><span>Prescription:</span><div>{visit.clinical_note.prescription}</div></div>}
+                    {visit.prescription && visit.prescription.items && visit.prescription.items.length > 0 && (
+                      <div className="print-note-row print-rx">
+                        <span>Structured Rx:</span>
+                        <div>
+                          {visit.prescription.items.map((item, iIdx) => (
+                            <div key={item.id || iIdx} style={{ marginBottom: 2, fontSize: 11 }}>
+                              {iIdx + 1}. {item.drug_name_display || item.drug_name} {item.strength} — {item.dose} {item.frequency_display || item.frequency} × {item.quantity} ({item.route_display || item.route})
+                              {item.instructions && <span className="text-muted"> — {item.instructions}</span>}
+                            </div>
+                          ))}
+                          {visit.prescription.notes && <div style={{ marginTop: 4, fontSize: 10, color: '#059669' }}><i className="fas fa-comment-medical me-1"></i>{visit.prescription.notes}</div>}
+                        </div>
+                      </div>
+                    )}
                     {visit.clinical_note.treatment_plan && <div className="print-note-row print-plan"><span>Treatment Plan:</span><div>{visit.clinical_note.treatment_plan}</div></div>}
                     {visit.clinical_note.follow_up_date && <div className="print-note-row"><span>Follow-up:</span><div>{new Date(visit.clinical_note.follow_up_date).toLocaleDateString('en-GB')}</div></div>}
                     {visit.clinical_note.doctor_name && <div className="print-recorded-by">Doctor: Dr. {visit.clinical_note.doctor_name}</div>}
+                  </div>
+                )}
+
+                {/* Admission print block */}
+                {visit.admission && (
+                  <div className="print-note-block" style={{ background: '#eff6ff', borderLeft: '3px solid #2563eb' }}>
+                    <div className="print-subtitle"><i className="fas fa-bed"></i> Inpatient Admission</div>
+                    <div className="print-note-row"><span>Status:</span><strong>{visit.admission.status_display}</strong></div>
+                    <div className="print-note-row"><span>Bed:</span><div>{visit.admission.bed_info?.bed_number} · {visit.admission.ward_info?.name}</div></div>
+                    <div className="print-note-row"><span>Admitted:</span><div>{new Date(visit.admission.admission_date).toLocaleDateString('en-GB')} by {visit.admission.admitted_by_name}</div></div>
+                    {visit.admission.admission_notes && <div className="print-note-row"><span>Notes:</span><div>{visit.admission.admission_notes}</div></div>}
+                    {visit.admission.status !== 'admitted' && (
+                      <>
+                        <div className="print-note-row"><span>Discharged:</span><div>{new Date(visit.admission.discharge_date).toLocaleDateString('en-GB')}</div></div>
+                        <div className="print-note-row"><span>Type:</span><div>{visit.admission.discharge_type_display}</div></div>
+                        {visit.admission.discharge_summary && <div className="print-note-row"><span>Summary:</span><div>{visit.admission.discharge_summary}</div></div>}
+                      </>
+                    )}
+                  </div>
+                )}
+
+                {/* Lab tests print block */}
+                {visit.lab_tests && visit.lab_tests.length > 0 && (
+                  <div className="print-note-block" style={{ background: '#fffbeb', borderLeft: '3px solid #f59e0b' }}>
+                    <div className="print-subtitle"><i className="fas fa-flask"></i> Laboratory Tests</div>
+                    {visit.lab_tests.map((lt, i) => (
+                      <div key={lt.id || i} className="print-note-row">
+                        <span>{lt.test_name}</span>
+                        <div>
+                          <strong>{lt.status_display}</strong>
+                          {lt.status === 'completed' && (
+                            <span> — {lt.result_value} {lt.result_unit} {lt.reference_range && `(Ref: ${lt.reference_range})`} {lt.is_critical && <span style={{ color: '#dc2626', fontWeight: 700 }}>CRITICAL</span>}</span>
+                          )}
+                        </div>
+                      </div>
+                    ))}
                   </div>
                 )}
               </div>
@@ -1123,6 +1173,44 @@ function PatientDetail() {
                                           <span style={{ fontWeight: 700 }}>Rx:</span> {visit.clinical_note.prescription}
                                         </div>
                                       )}
+                                      {visit.prescription && visit.prescription.items && visit.prescription.items.length > 0 && (
+                                        <div style={{ marginBottom: '4px', fontSize: '11px', border: '1px solid #d1fae5', borderRadius: '4px', overflow: 'hidden' }}>
+                                          <div style={{ background: '#ecfdf5', padding: '3px 8px', fontWeight: 700, color: '#047857', fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                                            <i className="fas fa-prescription me-1"></i>Structured Prescription
+                                            <span className="ms-1" style={{ fontSize: 9, color: '#6ee7b7', textTransform: 'none' }}>({visit.prescription.status_display || visit.prescription.status})</span>
+                                          </div>
+                                          <table style={{ width: '100%', fontSize: 10, borderCollapse: 'collapse' }}>
+                                            <thead>
+                                              <tr style={{ background: '#f0fdf4' }}>
+                                                <th style={{ padding: '3px 6px', textAlign: 'left', color: '#065f46', fontWeight: 700, borderBottom: '1px solid #a7f3d0' }}>#</th>
+                                                <th style={{ padding: '3px 6px', textAlign: 'left', color: '#065f46', fontWeight: 700, borderBottom: '1px solid #a7f3d0' }}>Drug</th>
+                                                <th style={{ padding: '3px 6px', textAlign: 'left', color: '#065f46', fontWeight: 700, borderBottom: '1px solid #a7f3d0' }}>Dose</th>
+                                                <th style={{ padding: '3px 6px', textAlign: 'left', color: '#065f46', fontWeight: 700, borderBottom: '1px solid #a7f3d0' }}>Freq</th>
+                                                <th style={{ padding: '3px 6px', textAlign: 'left', color: '#065f46', fontWeight: 700, borderBottom: '1px solid #a7f3d0' }}>Qty</th>
+                                              </tr>
+                                            </thead>
+                                            <tbody>
+                                              {visit.prescription.items.map((item, iIdx) => (
+                                                <tr key={item.id || iIdx} style={{ borderBottom: '1px solid #ecfdf5' }}>
+                                                  <td style={{ padding: '3px 6px', color: '#6b7280' }}>{iIdx + 1}</td>
+                                                  <td style={{ padding: '3px 6px', fontWeight: 600, color: '#111827' }}>
+                                                    {item.drug_name_display || item.drug_name} {item.strength}
+                                                    <span className="text-muted" style={{ fontSize: 9 }}> ({item.route_display || item.route})</span>
+                                                  </td>
+                                                  <td style={{ padding: '3px 6px', color: '#374151' }}>{item.dose}</td>
+                                                  <td style={{ padding: '3px 6px', color: '#374151' }}>{item.frequency_display || item.frequency}</td>
+                                                  <td style={{ padding: '3px 6px', color: '#374151' }}>{item.quantity}</td>
+                                                </tr>
+                                              ))}
+                                            </tbody>
+                                          </table>
+                                          {visit.prescription.notes && (
+                                            <div style={{ padding: '3px 8px', fontSize: 10, color: '#047857', background: '#f0fdf4' }}>
+                                              <i className="fas fa-comment-medical me-1"></i>{visit.prescription.notes}
+                                            </div>
+                                          )}
+                                        </div>
+                                      )}
                                       {visit.clinical_note.treatment_plan && (
                                         <div style={{ marginBottom: '4px', fontSize: '11px', color: '#1d4ed8', background: '#eff6ff', padding: '4px 8px', borderRadius: '4px' }}>
                                           <span style={{ fontWeight: 700 }}>Plan:</span> {visit.clinical_note.treatment_plan}
@@ -1140,6 +1228,71 @@ function PatientDetail() {
                                   ) : (
                                     <div style={{ background: '#f8fafc', borderRadius: '8px', padding: '10px 12px', textAlign: 'center' }}>
                                       <div style={{ fontSize: '11px', color: '#94a3b8' }}><i className="fas fa-file-medical me-1"></i>No clinical note</div>
+                                    </div>
+                                  )}
+
+                                  {/* Admission */}
+                                  {visit.admission ? (
+                                    <div style={{ background: '#eff6ff', borderRadius: '8px', padding: '10px 12px', border: '1px solid #bfdbfe' }}>
+                                      <div style={{ fontSize: '10px', fontWeight: 700, color: '#2563eb', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '6px' }}>
+                                        <i className="fas fa-bed me-1"></i>Inpatient Admission
+                                        <span className="ms-1 badge" style={{ fontSize: 9, background: visit.admission.status === 'admitted' ? '#dbeafe' : '#d1fae5', color: visit.admission.status === 'admitted' ? '#1e40af' : '#065f46' }}>{visit.admission.status_display}</span>
+                                      </div>
+                                      <div style={{ fontSize: '12px', marginBottom: '4px' }}>
+                                        <span style={{ color: '#94a3b8' }}>Bed:</span> <strong style={{ color: '#1a1a2e' }}>{visit.admission.bed_info?.bed_number}</strong>
+                                        <span className="mx-1" style={{ color: '#cbd5e1' }}>·</span>
+                                        <span style={{ color: '#94a3b8' }}>Ward:</span> <strong style={{ color: '#1a1a2e' }}>{visit.admission.ward_info?.name}</strong>
+                                      </div>
+                                      <div style={{ fontSize: '11px', color: '#475569', marginBottom: '4px' }}>
+                                        Admitted {new Date(visit.admission.admission_date).toLocaleDateString('en-GB')} by {visit.admission.admitted_by_name}
+                                      </div>
+                                      {visit.admission.admission_notes && (
+                                        <div style={{ fontSize: '11px', color: '#64748b', fontStyle: 'italic' }}>{visit.admission.admission_notes}</div>
+                                      )}
+                                      {visit.admission.status !== 'admitted' && (
+                                        <div style={{ fontSize: '11px', color: '#475569', marginTop: '4px' }}>
+                                          <span style={{ color: '#94a3b8' }}>Discharged:</span> {new Date(visit.admission.discharge_date).toLocaleDateString('en-GB')} ({visit.admission.discharge_type_display})
+                                        </div>
+                                      )}
+                                    </div>
+                                  ) : (
+                                    <div style={{ background: '#f8fafc', borderRadius: '8px', padding: '10px 12px', textAlign: 'center' }}>
+                                      <div style={{ fontSize: '11px', color: '#94a3b8' }}><i className="fas fa-bed me-1"></i>Not admitted</div>
+                                    </div>
+                                  )}
+
+                                  {/* Lab Tests */}
+                                  {visit.lab_tests && visit.lab_tests.length > 0 ? (
+                                    <div style={{ background: '#fef3c7', borderRadius: '8px', padding: '10px 12px', border: '1px solid #fcd34d' }}>
+                                      <div style={{ fontSize: '10px', fontWeight: 700, color: '#92400e', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '6px' }}>
+                                        <i className="fas fa-flask me-1"></i>Lab Tests
+                                      </div>
+                                      <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                                        {visit.lab_tests.map((lt, ltIdx) => (
+                                          <div key={lt.id || ltIdx} style={{ fontSize: '11px', background: '#fffbeb', borderRadius: '6px', padding: '6px 8px' }}>
+                                            <div className="d-flex justify-content-between align-items-center">
+                                              <strong style={{ color: '#1a1a2e' }}>{lt.test_name}</strong>
+                                              <span className="badge" style={{ fontSize: 9, background: lt.status === 'completed' ? '#d1fae5' : lt.status === 'ordered' ? '#fee2e2' : '#fef3c7', color: lt.status === 'completed' ? '#065f46' : lt.status === 'ordered' ? '#991b1b' : '#92400e' }}>{lt.status_display}</span>
+                                            </div>
+                                            <div style={{ color: '#64748b', marginTop: '2px' }}>
+                                              {lt.test_category_display} · {lt.sample_type_display}
+                                              {lt.priority !== 'routine' && <span className="ms-1" style={{ color: '#dc2626', fontWeight: 700 }}>({lt.priority_display})</span>}
+                                            </div>
+                                            {lt.status === 'completed' && (
+                                              <div style={{ marginTop: '4px', fontSize: '11px' }}>
+                                                <span style={{ color: '#94a3b8' }}>Result:</span> <strong>{lt.result_value}</strong> {lt.result_unit}
+                                                {lt.reference_range && <span style={{ color: '#94a3b8' }}> (Ref: {lt.reference_range})</span>}
+                                                {lt.is_critical && <span className="ms-1 badge bg-danger" style={{ fontSize: 9 }}>CRITICAL</span>}
+                                                {lt.result_notes && <div style={{ color: '#475569', fontStyle: 'italic' }}>{lt.result_notes}</div>}
+                                              </div>
+                                            )}
+                                          </div>
+                                        ))}
+                                      </div>
+                                    </div>
+                                  ) : (
+                                    <div style={{ background: '#f8fafc', borderRadius: '8px', padding: '10px 12px', textAlign: 'center' }}>
+                                      <div style={{ fontSize: '11px', color: '#94a3b8' }}><i className="fas fa-flask me-1"></i>No lab tests</div>
                                     </div>
                                   )}
                                 </div>

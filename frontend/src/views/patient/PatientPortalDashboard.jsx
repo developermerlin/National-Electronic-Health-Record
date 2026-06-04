@@ -36,6 +36,7 @@ export default function PatientPortalDashboard() {
   const [profile,       setProfile]       = useState(null);
   const [appointments,  setAppointments]  = useState([]);
   const [notifications, setNotifications] = useState([]);
+  const [labTests,      setLabTests]      = useState([]);
   const [loading,       setLoading]       = useState(true);
   const [activeTab,     setActiveTab]     = useState('upcoming');
   const [cancellingId,  setCancellingId]  = useState(null);
@@ -49,12 +50,14 @@ export default function PatientPortalDashboard() {
       apiCall('/portal/profile/'),
       apiCall('/portal/appointments/'),
       apiCall('/portal/notifications/'),
+      apiCall('/portal/lab-tests/'),
     ])
-      .then(async ([pRes, aRes, nRes]) => {
+      .then(async ([pRes, aRes, nRes, lRes]) => {
         if (!mounted) return;
         if (pRes.ok) setProfile(await pRes.json());
         if (aRes.ok) setAppointments(await aRes.json());
         if (nRes.ok) setNotifications(await nRes.json());
+        if (lRes.ok) setLabTests(await lRes.json());
         setLoading(false);
       })
       .catch((err) => { console.error('Portal fetch:', err); if (mounted) setLoading(false); });
@@ -331,7 +334,7 @@ export default function PatientPortalDashboard() {
             {[
               { icon: 'fas fa-calendar-check',  iconBg: '#eff6ff', iconColor: '#4361ee', value: upcoming.length,      label: 'Upcoming Appointments' },
               { icon: 'fas fa-check-circle',     iconBg: '#f0fdf4', iconColor: '#16a34a', value: past.length,          label: 'Completed Visits' },
-              { icon: 'fas fa-times-circle',     iconBg: '#fef2f2', iconColor: '#dc2626', value: cancelled.length,     label: 'Cancelled' },
+              { icon: 'fas fa-flask',            iconBg: '#fffbeb', iconColor: '#92400e', value: labTests.length,      label: 'Lab Tests' },
               { icon: 'fas fa-notes-medical',    iconBg: '#fdf4ff', iconColor: '#7c3aed', value: appointments.length,  label: 'Total Appointments' },
             ].map(s => (
               <div key={s.label} className="col-6 col-lg-3">
@@ -456,6 +459,68 @@ export default function PatientPortalDashboard() {
                             {cancellingId === appt.id ? <span className="spinner-border spinner-border-sm"></span> : <><i className="fas fa-times me-1"></i>Cancel</>}
                           </button>
                         )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* ── Lab Results Panel ── */}
+          <div className="dash-card mb-4" style={{ overflow: 'hidden' }}>
+            <div className="dash-card-header">
+              <h6 style={{ margin: 0 }}><i className="fas fa-flask me-2" style={{ color: '#f59e0b' }}></i>My Lab Results</h6>
+              <span style={{ fontSize: '12px', color: '#6c757d', fontWeight: 600 }}>{labTests.length} test(s)</span>
+            </div>
+            <div className="dash-card-body" style={{ padding: 0 }}>
+              {labTests.length === 0 ? (
+                <div style={{ textAlign: 'center', padding: '40px 24px', color: '#adb5bd' }}>
+                  <i className="fas fa-flask" style={{ fontSize: '36px', marginBottom: '10px', display: 'block', opacity: 0.5 }}></i>
+                  <div style={{ fontWeight: 600, fontSize: '14px', color: '#6c757d' }}>No lab tests on record</div>
+                </div>
+              ) : (
+                <div style={{ padding: '8px 0' }}>
+                  {labTests.map((lt, idx) => {
+                    const statusBg = lt.status === 'completed' ? '#f0fdf4' : lt.status === 'ordered' ? '#fef2f2' : '#fffbeb';
+                    const statusColor = lt.status === 'completed' ? '#065f46' : lt.status === 'ordered' ? '#991b1b' : '#92400e';
+                    const statusBorder = lt.status === 'completed' ? '#bbf7d0' : lt.status === 'ordered' ? '#fecaca' : '#fde68a';
+                    return (
+                      <div key={lt.id} style={{
+                        display: 'flex', alignItems: 'flex-start', gap: '14px',
+                        padding: '14px 24px',
+                        borderBottom: idx < labTests.length - 1 ? '1px solid #f1f5f9' : 'none',
+                        transition: 'background 0.1s',
+                      }}
+                        onMouseEnter={e => e.currentTarget.style.background = '#fafbff'}
+                        onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+                      >
+                        <div style={{ width: '40px', height: '40px', borderRadius: '10px', background: statusBg, border: `1px solid ${statusBorder}`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                          <i className="fas fa-flask" style={{ color: statusColor, fontSize: '14px' }}></i>
+                        </div>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', marginBottom: '3px' }}>
+                            <span style={{ fontWeight: 700, color: '#1a1a2e', fontSize: '14px' }}>{lt.test_name}</span>
+                            <span style={{ background: statusBg, color: statusColor, border: `1px solid ${statusBorder}`, borderRadius: '6px', padding: '2px 8px', fontSize: '11px', fontWeight: 600 }}>{lt.status_display}</span>
+                            {lt.is_critical && <span className="badge bg-danger" style={{ fontSize: 9 }}>CRITICAL</span>}
+                          </div>
+                          <div style={{ fontSize: '12px', color: '#6c757d', display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
+                            <span>{lt.test_category_display}</span>
+                            <span>{lt.sample_type_display}</span>
+                            <span>{new Date(lt.created_at).toLocaleDateString('en-GB')}</span>
+                            {lt.hospital_name && <span>{lt.hospital_name}</span>}
+                          </div>
+                          {lt.status === 'completed' && (
+                            <div style={{ marginTop: '6px', background: '#f8fafc', borderRadius: '8px', padding: '8px 12px', fontSize: '12px' }}>
+                              <div><span style={{ color: '#94a3b8' }}>Result:</span> <strong style={{ color: '#1a1a2e' }}>{lt.result_value}</strong> {lt.result_unit}</div>
+                              {lt.reference_range && <div style={{ color: '#64748b' }}>Reference: {lt.reference_range}</div>}
+                              {lt.result_notes && <div style={{ color: '#475569', fontStyle: 'italic', marginTop: '2px' }}>{lt.result_notes}</div>}
+                            </div>
+                          )}
+                          {lt.status !== 'completed' && lt.clinical_info && (
+                            <div style={{ fontSize: '12px', color: '#94a3b8', marginTop: '4px', fontStyle: 'italic' }}>{lt.clinical_info}</div>
+                          )}
+                        </div>
                       </div>
                     );
                   })}

@@ -15,6 +15,16 @@ from userauths import pharmacist_views
 from userauths import lab_views
 from userauths import inventory_views
 from userauths import mch_views
+from userauths import prescription_views
+from userauths import ipd_views
+from userauths import billing_views
+from userauths import leave_views
+from userauths import insurance_views
+from userauths import analytics_views
+from userauths import notification_views
+from userauths import telemedicine_views
+from userauths import nhia_integration
+from userauths import audit_views
 
 # from store import views as store_views
 # from customer import views as customer_views
@@ -36,6 +46,10 @@ router.register(r'patients', patient_views.PatientViewSet, basename='patient-man
 router.register(r'appointments', appointment_views.AppointmentViewSet, basename='appointment-management')
 router.register(r'visits', visit_views.PatientVisitViewSet, basename='visit-management')
 router.register(r'audit/logs', audit_views.AuditLogViewSet, basename='audit-log')
+router.register(r'billing/invoices', billing_views.InvoiceViewSet, basename='invoice-management')
+router.register(r'billing/payments', billing_views.PaymentViewSet, basename='payment-management')
+router.register(r'staff/leave',           leave_views.StaffLeaveViewSet,      basename='staff-leave')
+router.register(r'insurance/claims',      insurance_views.InsuranceClaimViewSet, basename='insurance-claim')
 
 urlpatterns = [
     # Include router URLs
@@ -54,9 +68,48 @@ urlpatterns = [
     path('admin/permissions/', admin_views.PermissionListView.as_view(), name='permissions-list'),
     path('admin/bulk-action/', admin_views.bulk_user_action, name='bulk-user-action'),
     path('admin/ministry-dashboard/', admin_views.ministry_dashboard, name='ministry-dashboard'),
+    path('admin/ministry-reports/hospital/<int:hospital_id>/', admin_views.ministry_hospital_report, name='ministry-hospital-report'),
+    path('admin/ministry-reports/district/<int:district_id>/', admin_views.ministry_district_report, name='ministry-district-report'),
+    path('admin/district-dashboard/', admin_views.district_admin_dashboard, name='district-admin-dashboard'),
     path('admin/hospital-dashboard/', admin_views.hospital_dashboard, name='hospital-dashboard'),
     path('admin/referral-doctors/', admin_views.referral_doctors, name='referral-doctors'),
     path('user/my-profile/', admin_views.my_profile, name='my-profile'),
+    
+    # Analytics endpoints
+    path('analytics/performance/', analytics_views.hospital_performance_metrics, name='analytics-performance'),
+    path('analytics/financial/', analytics_views.financial_analytics, name='analytics-financial'),
+    path('analytics/clinical-quality/', analytics_views.clinical_quality_indicators, name='analytics-clinical'),
+    path('analytics/multi-hospital/', analytics_views.multi_hospital_comparison, name='analytics-multi-hospital'),
+    path('analytics/export/', analytics_views.export_analytics_csv, name='analytics-export'),
+    
+    # Notification Management endpoints
+    path('notifications/templates/', notification_views.notification_templates, name='notification-templates'),
+    path('notifications/dashboard/', notification_views.notification_dashboard, name='notification-dashboard'),
+    path('notifications/send-bulk/', notification_views.send_bulk_notification, name='send-bulk-notification'),
+    path('notifications/send-custom/', notification_views.send_custom_sms, name='send-custom-sms'),
+    path('notifications/trigger-reminders/', notification_views.trigger_appointment_reminders, name='trigger-reminders'),
+    path('notifications/patient/<int:patient_id>/preferences/', notification_views.patient_notification_preferences, name='patient-notification-preferences'),
+    path('notifications/patient/<int:patient_id>/preferences/update/', notification_views.update_patient_notification_preferences, name='update-patient-notification-preferences'),
+    
+    # Telemedicine endpoints
+    path('telemedicine/dashboard/', telemedicine_views.telemedicine_dashboard, name='telemedicine-dashboard'),
+    path('telemedicine/create/', telemedicine_views.create_virtual_appointment, name='create-virtual-appointment'),
+    path('telemedicine/session/<int:appointment_id>/', telemedicine_views.generate_session_token, name='generate-session-token'),
+    path('telemedicine/end/<int:appointment_id>/', telemedicine_views.end_consultation, name='end-consultation'),
+    path('telemedicine/verify-session/', telemedicine_views.verify_session, name='verify-session'),
+    path('telemedicine/history/', telemedicine_views.consultation_history, name='consultation-history'),
+    
+    # NHIA Integration endpoints
+    path('nhia/verify-card/', nhia_integration.verify_insurance_card, name='verify-insurance-card'),
+    path('nhia/submit-claim/', nhia_integration.submit_insurance_claim, name='submit-insurance-claim'),
+    path('nhia/claim/<int:claim_id>/status/', nhia_integration.check_nhia_claim_status, name='check-nhia-claim-status'),
+    path('nhia/dashboard/', nhia_integration.nhia_claims_dashboard, name='nhia-claims-dashboard'),
+    path('nhia/patient/<int:patient_id>/insurance/', nhia_integration.patient_insurance_info, name='patient-insurance-info'),
+    
+    # Enhanced Audit Trail endpoints
+    path('audit/export/', audit_views.export_audit_logs, name='export-audit-logs'),
+    path('audit/compliance-report/', audit_views.audit_compliance_report, name='audit-compliance-report'),
+    path('audit/user-activity/<int:user_id>/', audit_views.user_activity_report, name='user-activity-report'),
 
     # Social Auth endpoints
     path('auth/google/', social_auth_views.google_login, name='google-login'),
@@ -90,6 +143,10 @@ urlpatterns = [
     path('portal/notifications/read-all/', patient_portal_views.mark_all_notifications_read, name='portal-notifications-read-all'),
     path('portal/notifications/<int:notif_id>/read/', patient_portal_views.mark_notification_read, name='portal-notification-read'),
     path('portal/medical-history/', patient_portal_views.patient_medical_history, name='portal-medical-history'),
+    path('portal/lab-tests/', patient_portal_views.patient_lab_tests, name='portal-lab-tests'),
+
+    # Hospital admin: list doctors in the hospital
+    path('hospital-admin/doctors/', doctor_appointment_views.hospital_admin_doctors, name='hospital-admin-doctors'),
 
     # Doctor dashboard
     path('doctor/dashboard/', doctor_appointment_views.doctor_dashboard, name='doctor-dashboard'),
@@ -131,6 +188,26 @@ urlpatterns = [
     path('mch/anc/<int:anc_id>/', mch_views.anc_detail, name='anc-detail'),
     path('mch/immunizations/', mch_views.immunization_list, name='immunization-list'),
     path('mch/patients/<int:patient_id>/profile/', mch_views.patient_mch_profile, name='patient-mch-profile'),
+
+    # Structured Prescription endpoints
+    path('visits/<int:visit_id>/prescription/', prescription_views.visit_prescription, name='visit-prescription'),
+    path('patients/<int:patient_id>/prescriptions/', prescription_views.patient_prescriptions, name='patient-prescriptions'),
+    path('pharmacy/prescriptions/pending/', prescription_views.pharmacy_pending_prescriptions, name='pharmacy-pending-prescriptions'),
+    path('pharmacy/prescriptions/<int:rx_id>/dispense/', prescription_views.dispense_prescription, name='dispense-prescription'),
+    path('pharmacy/inventory/search/', prescription_views.inventory_drug_search, name='inventory-drug-search'),
+
+    # IPD / Ward / Bed / Admission endpoints
+    path('ipd/dashboard/', ipd_views.ipd_dashboard, name='ipd-dashboard'),
+    path('ipd/wards/', ipd_views.ward_list_create, name='ward-list-create'),
+    path('ipd/wards/<int:ward_id>/', ipd_views.ward_detail, name='ward-detail'),
+    path('ipd/beds/', ipd_views.bed_list_create, name='bed-list-create'),
+    path('ipd/beds/<int:bed_id>/', ipd_views.bed_detail, name='bed-detail'),
+    path('ipd/beds/available/', ipd_views.available_beds, name='available-beds'),
+    path('ipd/admissions/', ipd_views.admission_list_create, name='admission-list-create'),
+    path('ipd/admissions/<int:admission_id>/', ipd_views.admission_detail, name='admission-detail'),
+    path('ipd/admissions/<int:admission_id>/discharge/', ipd_views.discharge_patient, name='discharge-patient'),
+    path('ipd/admissions/<int:admission_id>/nursing-notes/', ipd_views.nursing_notes_list, name='nursing-notes-list'),
+    path('ipd/nursing-notes/<int:note_id>/', ipd_views.nursing_note_detail, name='nursing-note-detail'),
 
     # Doctor availability / schedule management
     path('doctor/availability/', doctor_availability_views.doctor_availability, name='doctor-availability'),

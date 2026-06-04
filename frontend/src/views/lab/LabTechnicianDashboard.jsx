@@ -3,21 +3,9 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { useLocation } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import DashboardLayout from '../../layout/DashboardLayout';
+import { getNavForUser, getBrandForUser, getRoleBadge } from '../../utils/navItems';
 
 const ACCENT = '#0891b2';
-
-const navItems = [
-  { label: 'Dashboard', items: [
-    { path: '/lab/dashboard', icon: 'fas fa-tachometer-alt', text: 'Overview' },
-  ]},
-  { label: 'Laboratory', items: [
-    { path: '/lab/tests', icon: 'fas fa-flask', text: 'All Test Requests' },
-    { path: '/lab/queue', icon: 'fas fa-list-ol', text: 'Pending Queue' },
-  ]},
-  { label: 'Account', items: [
-    { path: '/admin/profile', icon: 'fas fa-user-circle', text: 'My Profile' },
-  ]},
-];
 
 const priorityStyle = p => {
   if (p === 'stat')    return { bg: '#fce7f3', color: '#be185d', label: 'STAT' };
@@ -146,7 +134,7 @@ function ResultModal({ test, onClose, onSave }) {
   );
 }
 
-function DetailModal({ test, onClose, onCollect, onNotify }) {
+function DetailModal({ test, onClose, onCollect, onNotify, onPrint }) {
   const [collecting, setCollecting] = useState(false);
   const [notifying, setNotifying]   = useState(false);
 
@@ -221,6 +209,14 @@ function DetailModal({ test, onClose, onCollect, onNotify }) {
               <i className="fas fa-check-circle" style={{ marginRight: 6 }}></i>Doctor Notified
             </span>
           )}
+          {test.status === 'completed' && test.result_value && (
+            <button onClick={() => onPrint(test)} style={{
+              padding: '9px 18px', borderRadius: 9, border: 'none', fontWeight: 700, fontSize: 13, cursor: 'pointer',
+              background: 'linear-gradient(135deg,#10b981,#059669)', color: '#fff', boxShadow: '0 3px 10px rgba(16,185,129,0.3)',
+            }}>
+              <i className="fas fa-print" style={{ marginRight: 6 }}></i>Print Report
+            </button>
+          )}
           <button onClick={onClose} style={{
             padding: '9px 18px', borderRadius: 9, border: '1.5px solid #e2e8f0',
             background: '#fff', color: '#475569', fontWeight: 700, fontSize: 13, cursor: 'pointer', marginLeft: 'auto',
@@ -242,7 +238,7 @@ function InfoBlock({ label, value, sub }) {
 }
 
 function LabTechnicianDashboard() {
-  const { apiCall } = useAuth();
+  const { apiCall, user } = useAuth();
   const location = useLocation();
   const initialView = ['/lab/tests', '/lab/queue'].includes(location.pathname) ? 'queue' : 'dashboard';
   const [view, setView]             = useState(initialView); // dashboard | queue
@@ -347,6 +343,151 @@ function LabTechnicianDashboard() {
     finally { setActionLoading(false); }
   };
 
+  const printLabReport = (test) => {
+    const w = window.open('', '_blank', 'width=800,height=900');
+    const hospitalName = user.hospital?.name || 'National Electronic Health Record System';
+    const isAbnormal = test.is_critical;
+    w.document.write(`
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <title>Lab Report - ${test.patient?.full_name}</title>
+        <style>
+          * { margin: 0; padding: 0; box-sizing: border-box; }
+          body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; padding: 40px; background: #fff; color: #1e293b; }
+          .header { text-align: center; margin-bottom: 30px; border-bottom: 3px solid ${ACCENT}; padding-bottom: 20px; }
+          .header h1 { font-size: 24px; color: ${ACCENT}; margin-bottom: 6px; }
+          .header .hospital { font-size: 16px; font-weight: 700; color: #0f172a; margin-bottom: 4px; }
+          .header p { font-size: 12px; color: #64748b; }
+          .report-title { text-align: center; background: ${ACCENT}15; padding: 14px; border-radius: 10px; margin-bottom: 24px; }
+          .report-title h2 { font-size: 20px; color: ${ACCENT}; font-weight: 800; }
+          .section { margin: 20px 0; }
+          .section-title { font-size: 13px; font-weight: 700; color: ${ACCENT}; text-transform: uppercase; margin-bottom: 10px; border-bottom: 2px solid #e2e8f0; padding-bottom: 4px; }
+          .info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 16px; }
+          .info-item { background: #f8fafc; padding: 10px 14px; border-radius: 8px; }
+          .info-label { font-size: 10px; font-weight: 700; color: #64748b; text-transform: uppercase; margin-bottom: 4px; }
+          .info-value { font-size: 13px; color: #0f172a; font-weight: 600; }
+          .result-box { background: ${isAbnormal ? '#fef2f2' : '#f0fdf4'}; border-left: 4px solid ${isAbnormal ? '#dc2626' : '#10b981'}; padding: 16px 18px; border-radius: 6px; margin: 14px 0; }
+          .result-value { font-size: 18px; font-weight: 800; color: #0f172a; margin-bottom: 6px; }
+          .result-meta { font-size: 12px; color: #64748b; margin-top: 4px; }
+          .critical-banner { background: #fee2e2; border: 2px solid #dc2626; border-radius: 10px; padding: 12px 16px; margin: 16px 0; text-align: center; }
+          .critical-banner strong { color: #dc2626; font-size: 14px; }
+          .footer { margin-top: 40px; padding-top: 20px; border-top: 2px solid #e2e8f0; text-align: center; font-size: 11px; color: #94a3b8; }
+          .signatures { display: grid; grid-template-columns: 1fr 1fr; gap: 40px; margin-top: 40px; }
+          .sig-block { text-align: center; }
+          .sig-line { border-top: 1.5px solid #334155; margin-top: 40px; padding-top: 8px; font-size: 12px; font-weight: 600; color: #334155; }
+          @media print {
+            body { padding: 20px; }
+            .no-print { display: none; }
+          }
+        </style>
+      </head>
+      <body>
+        <div class="header">
+          <div class="hospital">${hospitalName}</div>
+          <h1>LABORATORY REPORT</h1>
+          <p>National Electronic Health Record System</p>
+        </div>
+
+        <div class="report-title">
+          <h2>${test.test_name}</h2>
+        </div>
+
+        ${test.is_critical ? `
+        <div class="critical-banner">
+          <strong>⚠ CRITICAL VALUE — IMMEDIATE ATTENTION REQUIRED</strong>
+        </div>
+        ` : ''}
+
+        <div class="info-grid">
+          <div class="info-item">
+            <div class="info-label">Patient Name</div>
+            <div class="info-value">${test.patient?.full_name || '—'}</div>
+          </div>
+          <div class="info-item">
+            <div class="info-label">Patient ID</div>
+            <div class="info-value">${test.patient?.patient_id || '—'}</div>
+          </div>
+          <div class="info-item">
+            <div class="info-label">Gender</div>
+            <div class="info-value">${test.patient?.gender || '—'}</div>
+          </div>
+          <div class="info-item">
+            <div class="info-label">Date of Birth</div>
+            <div class="info-value">${test.patient?.date_of_birth ? new Date(test.patient.date_of_birth).toLocaleDateString('en-GB') : '—'}</div>
+          </div>
+          <div class="info-item">
+            <div class="info-label">Test Category</div>
+            <div class="info-value">${test.test_category_display || '—'}</div>
+          </div>
+          <div class="info-item">
+            <div class="info-label">Sample Type</div>
+            <div class="info-value">${test.sample_type_display || '—'}</div>
+          </div>
+          <div class="info-item">
+            <div class="info-label">Priority</div>
+            <div class="info-value">${test.priority_display || '—'}</div>
+          </div>
+          <div class="info-item">
+            <div class="info-label">Ordered By</div>
+            <div class="info-value">Dr. ${test.ordered_by?.name || '—'}</div>
+          </div>
+          <div class="info-item">
+            <div class="info-label">Sample Collected</div>
+            <div class="info-value">${test.sample_collected_at ? new Date(test.sample_collected_at).toLocaleString('en-GB') : '—'}</div>
+          </div>
+          <div class="info-item">
+            <div class="info-label">Report Date</div>
+            <div class="info-value">${test.completed_at ? new Date(test.completed_at).toLocaleString('en-GB') : '—'}</div>
+          </div>
+        </div>
+
+        ${test.clinical_info ? `
+        <div class="section">
+          <div class="section-title">Clinical Indication</div>
+          <div style="padding: 10px 0; font-size: 13px; color: #334155;">${test.clinical_info}</div>
+        </div>
+        ` : ''}
+
+        <div class="section">
+          <div class="section-title">Test Result</div>
+          <div class="result-box">
+            <div class="result-value">${test.result_value || '—'}</div>
+            ${test.result_unit ? `<div class="result-meta"><strong>Unit:</strong> ${test.result_unit}</div>` : ''}
+            ${test.reference_range ? `<div class="result-meta"><strong>Reference Range:</strong> ${test.reference_range}</div>` : ''}
+          </div>
+          ${test.result_notes ? `
+          <div style="background: #f8fafc; border-radius: 8px; padding: 12px 14px; margin-top: 10px;">
+            <div style="font-size: 11px; font-weight: 700; color: #64748b; text-transform: uppercase; margin-bottom: 6px;">Interpretation & Comments</div>
+            <div style="font-size: 13px; color: #475569; line-height: 1.6;">${test.result_notes}</div>
+          </div>
+          ` : ''}
+        </div>
+
+        <div class="signatures">
+          <div class="sig-block">
+            <div class="sig-line">Performed By: ${test.completed_by?.name || '—'}</div>
+          </div>
+          <div class="sig-block">
+            <div class="sig-line">Verified By (Lab Supervisor)</div>
+          </div>
+        </div>
+
+        <div class="footer">
+          <p>Report generated on ${new Date().toLocaleString('en-GB')} | National Electronic Health Record System</p>
+          <p style="margin-top: 6px; font-style: italic;">This is an electronically generated report and does not require a signature.</p>
+        </div>
+
+        <div class="no-print" style="margin-top: 30px; text-align: center;">
+          <button onclick="window.print()" style="padding: 10px 24px; background: ${ACCENT}; color: #fff; border: none; border-radius: 8px; font-weight: 700; cursor: pointer; margin-right: 10px;">Print</button>
+          <button onclick="window.close()" style="padding: 10px 24px; background: #64748b; color: #fff; border: none; border-radius: 8px; font-weight: 700; cursor: pointer;">Close</button>
+        </div>
+      </body>
+      </html>
+    `);
+    w.document.close();
+  };
+
   const statCards = [
     { icon: 'fas fa-flask',             label: 'Total Tests',        value: stats.total_tests        || 0, accent: ACCENT },
     { icon: 'fas fa-hourglass-half',    label: 'Awaiting Sample',    value: stats.pending            || 0, accent: '#f59e0b' },
@@ -359,7 +500,7 @@ function LabTechnicianDashboard() {
   const displayTests = view === 'dashboard' ? recentTests : tests;
 
   return (
-    <DashboardLayout navItems={navItems} brandTitle="NEHR Laboratory" roleBadge="Lab Technician">
+    <DashboardLayout navItems={getNavForUser(user)} brandTitle={getBrandForUser(user)} roleBadge={getRoleBadge(user)}>
       {/* Toast */}
       {toast && (
         <div style={{
@@ -537,6 +678,7 @@ function LabTechnicianDashboard() {
           onClose={() => setSelectedTest(null)}
           onCollect={() => handleCollect(selectedTest.id)}
           onNotify={() => handleNotify(selectedTest.id)}
+          onPrint={printLabReport}
         />
       )}
 

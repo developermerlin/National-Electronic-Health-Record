@@ -6,12 +6,14 @@ Role-based permissions:
   - hospital_admin: Full access to appointments at their hospital
   - ministry_admin / admin: Full access to all appointments
 """
+import csv
 from rest_framework import viewsets, status
 from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from django.db.models import Q
 from django.utils import timezone
+from django.http import HttpResponse
 from datetime import datetime, timedelta
 
 from userauths.models import Appointment, User, Patient, Hospital, Department, PatientVisit
@@ -477,3 +479,31 @@ class AppointmentViewSet(viewsets.ModelViewSet):
         }
 
         return Response(stats)
+
+    @action(detail=False, methods=['get'], url_path='csv_export')
+    def csv_export(self, request):
+        """Export appointment list as CSV."""
+        queryset = self.get_queryset()
+        response = HttpResponse(content_type='text/csv')
+        response['Content-Disposition'] = 'attachment; filename="appointments.csv"'
+        writer = csv.writer(response)
+        writer.writerow([
+            'ID', 'Patient Name', 'Patient Code', 'Doctor', 'Department',
+            'Hospital', 'Scheduled Date', 'Status', 'Type', 'Notes',
+            'Created At',
+        ])
+        for a in queryset.select_related('patient', 'doctor', 'department', 'hospital').iterator():
+            writer.writerow([
+                a.id,
+                a.patient.full_name if a.patient else '',
+                a.patient.patient_id if a.patient else '',
+                a.doctor.full_name if a.doctor else '',
+                a.department.name if a.department else '',
+                a.hospital.name if a.hospital else '',
+                a.scheduled_at.strftime('%Y-%m-%d %H:%M') if a.scheduled_at else '',
+                a.get_status_display() if a.status else '',
+                a.get_appointment_type_display() if a.appointment_type else '',
+                a.notes or '',
+                a.created_at.strftime('%Y-%m-%d') if a.created_at else '',
+            ])
+        return response

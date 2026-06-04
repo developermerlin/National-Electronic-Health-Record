@@ -17,6 +17,28 @@ from userauths.serializer import (
 from userauths.permissions import PatientAccessControl
 
 
+_QUEUE_PREFIX = {
+    'outpatient':      'OPD',
+    'emergency':       'EMG',
+    'inpatient':       'IPD',
+    'follow_up':       'FLW',
+    'referral':        'REF',
+    'routine_checkup': 'CHK',
+}
+
+
+def _generate_queue_number(hospital, visit_type, visit_date):
+    """Return next sequential token for hospital+type on visit_date (e.g. OPD-007)."""
+    prefix = _QUEUE_PREFIX.get(visit_type, 'Q')
+    date   = visit_date.date() if hasattr(visit_date, 'date') else visit_date
+    count  = PatientVisit.objects.filter(
+        hospital=hospital,
+        visit_type=visit_type,
+        visit_date__date=date,
+    ).exclude(queue_number__isnull=True).exclude(queue_number='').count()
+    return f"{prefix}-{(count + 1):03d}"
+
+
 class PatientVisitViewSet(viewsets.ModelViewSet):
     """
     CRUD + custom actions for patient visits/encounters.
@@ -39,7 +61,7 @@ class PatientVisitViewSet(viewsets.ModelViewSet):
         qs   = PatientVisit.objects.select_related(
             'patient', 'hospital', 'department', 'doctor',
             'registered_by', 'appointment', 'referred_to_hospital',
-        ).prefetch_related('vitals', 'clinical_note')
+        ).prefetch_related('vitals', 'clinical_note', 'prescription', 'prescription__items', 'prescription__items__drug', 'admission', 'admission__bed', 'admission__ward', 'admission__admitted_by', 'lab_tests')
 
         role = user.role.name if user.role else None
 
@@ -152,7 +174,7 @@ class PatientVisitViewSet(viewsets.ModelViewSet):
         if role in ('admin', 'ministry_admin'):
             qs = PatientVisit.objects.filter(patient_id=patient_id).select_related(
                 'hospital', 'department', 'doctor', 'registered_by',
-            ).prefetch_related('vitals', 'clinical_note').order_by('-visit_date')
+            ).prefetch_related('vitals', 'clinical_note', 'prescription', 'prescription__items', 'prescription__items__drug', 'admission', 'admission__bed', 'admission__ward', 'admission__admitted_by', 'lab_tests').order_by('-visit_date')
             PatientAccessControl._log(user, None, 'view', 'admin', 'allowed', request)
             serializer = PatientVisitListSerializer(qs, many=True, context={'request': request})
             return Response(serializer.data)
@@ -176,7 +198,7 @@ class PatientVisitViewSet(viewsets.ModelViewSet):
 
         qs = PatientVisit.objects.filter(patient_id=patient_id).select_related(
             'hospital', 'department', 'doctor', 'registered_by',
-        ).prefetch_related('vitals', 'clinical_note').order_by('-visit_date')
+        ).prefetch_related('vitals', 'clinical_note', 'prescription', 'prescription__items', 'prescription__items__drug', 'admission', 'admission__bed', 'admission__ward', 'admission__admitted_by', 'lab_tests').order_by('-visit_date')
 
         # Cross-hospital referral access: only show visits at the user's own hospital.
         # The referring hospital's records remain private — the receiving doctor sees
@@ -186,6 +208,61 @@ class PatientVisitViewSet(viewsets.ModelViewSet):
 
         serializer = PatientVisitListSerializer(qs, many=True, context={'request': request})
         return Response(serializer.data)
+
+    # ── accept incoming referral ──────────────────────────────
+    @action(detail=True, methods=['post'], url_path='accept_referral')
+    def accept_referral(self, request, pk=None):
+        user = request.user
+        referral = self.get_object()
+        if not user.hospital:
+            return Response({'error': 'User is not linked to a hospital.'}, status=status.HTTP_400_BAD_REQUEST)
+        if referral.visit_type != 'referral':
+            return Response({'error': 'This visit is not a referral.'}, status=status.HTTP_400_BAD_REQUEST)
+        if referral.referred_to_hospital_id != user.hospital.id:
+            return Response({'error': 'Referral not addressed to your hospital.'}, status=status.HTTP_403_FORBIDDEN)
+
+        import random, string
+        prefix = _QUEUE_PREFIX.get('referral', 'REF')
+        token  = ''.join(random.choices(string.ascii_uppercase + string.digits, k=4))
+        new_visit = PatientVisit.objects.create(
+            patient=referral.patient,
+            hospital=user.hospital,
+            department=None,
+            doctor=None,
+            visit_type='referral',
+            status='registered',
+            reason=referral.reason or '',
+            chief_complaint=referral.chief_complaint or '',
+            notes=f"Accepted referral from {referral.hospital.name if referral.hospital else 'another hospital'}. Original visit: {referral.id}.\n\n{referral.notes or ''}",
+            queue_number=f"{prefix}-{token}",
+            referred_to_hospital=None,
+            referred_to_doctor=referral.referred_to_doctor or '',
+            registered_by=user,
+        )
+        return Response(
+            PatientVisitListSerializer(new_visit, context={'request': request}).data,
+            status=status.HTTP_201_CREATED
+        )
+
+    # ── reject incoming referral ──────────────────────────────
+    @action(detail=True, methods=['post'], url_path='reject_referral')
+    def reject_referral(self, request, pk=None):
+        user = request.user
+        referral = self.get_object()
+        if not user.hospital:
+            return Response({'error': 'User is not linked to a hospital.'}, status=status.HTTP_400_BAD_REQUEST)
+        if referral.visit_type != 'referral':
+            return Response({'error': 'This visit is not a referral.'}, status=status.HTTP_400_BAD_REQUEST)
+        if referral.referred_to_hospital_id != user.hospital.id:
+            return Response({'error': 'Referral not addressed to your hospital.'}, status=status.HTTP_403_FORBIDDEN)
+
+        referral.status = 'cancelled'
+        referral.discharge_notes = (referral.discharge_notes or '') + "\n[Rejected by receiving hospital]"
+        referral.save()
+        return Response(
+            PatientVisitListSerializer(referral, context={'request': request}).data,
+            status=status.HTTP_200_OK
+        )
 
     # ── doctor's patient list ─────────────────────────────────
     @action(detail=False, methods=['get'], url_path='my_patients')
@@ -277,7 +354,7 @@ class PatientVisitViewSet(viewsets.ModelViewSet):
         user = request.user
         role = user.role.name if user.role else None
 
-        if role not in ('nurse', 'doctor', 'admin', 'hospital_admin', 'ministry_admin', 'receptionist'):
+        if role not in ('nurse', 'triage', 'doctor', 'admin', 'hospital_admin', 'ministry_admin', 'receptionist'):
             return Response({'detail': 'Not authorized.'}, status=status.HTTP_403_FORBIDDEN)
 
         today = timezone.now().date()
@@ -313,7 +390,7 @@ class PatientVisitViewSet(viewsets.ModelViewSet):
         visits_qs = PatientVisit.objects.filter(
             hospital=hosp, visit_date__date=today,
         ).select_related('patient', 'hospital', 'department', 'doctor', 'registered_by'
-        ).prefetch_related('vitals', 'clinical_note').order_by('visit_date')
+        ).prefetch_related('vitals', 'clinical_note', 'prescription', 'prescription__items', 'prescription__items__drug', 'admission', 'admission__bed', 'admission__ward', 'admission__admitted_by', 'lab_tests').order_by('visit_date')
 
         counts = {
             'needs_triage':  appt_qs.count(),
@@ -355,6 +432,11 @@ class PatientVisitViewSet(viewsets.ModelViewSet):
         visit_ser = PatientVisitCreateSerializer(data=visit_payload, context={'request': request})
         visit_ser.is_valid(raise_exception=True)
         visit = visit_ser.save()
+
+        # Auto-assign queue number
+        if user.hospital:
+            visit.queue_number = _generate_queue_number(user.hospital, visit.visit_type, visit.visit_date)
+            visit.save(update_fields=['queue_number'])
 
         # Record vitals if any vital field provided
         VITAL_FIELDS = [
@@ -414,7 +496,7 @@ class PatientVisitViewSet(viewsets.ModelViewSet):
         user = request.user
         role = user.role.name if user.role else None
 
-        if role not in ('nurse', 'doctor', 'admin', 'hospital_admin', 'ministry_admin', 'receptionist'):
+        if role not in ('nurse', 'triage', 'doctor', 'admin', 'hospital_admin', 'ministry_admin', 'receptionist'):
             return Response({'detail': 'Not authorized.'}, status=status.HTTP_403_FORBIDDEN)
 
         hosp = user.hospital
@@ -427,7 +509,7 @@ class PatientVisitViewSet(viewsets.ModelViewSet):
             visits_qs = visits_qs.filter(patient_id=patient_id)
 
         visits_qs = visits_qs.select_related('patient', 'hospital', 'department', 'doctor', 'registered_by'
-        ).prefetch_related('vitals', 'clinical_note').order_by('-visit_date')[:100]
+        ).prefetch_related('vitals', 'clinical_note', 'prescription', 'prescription__items', 'prescription__items__drug', 'admission', 'admission__bed', 'admission__ward', 'admission__admitted_by', 'lab_tests').order_by('-visit_date')[:100]
 
         return Response({
             'count': visits_qs.count(),

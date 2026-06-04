@@ -2,19 +2,9 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import DashboardLayout from '../../layout/DashboardLayout';
+import { getNavForUser, getBrandForUser, getRoleBadge } from '../../utils/navItems';
 
 const ACCENT = '#0d9488';
-
-const navItems = [
-  { label: 'MCH', items: [
-    { path: '/mch/dashboard',       icon: 'fas fa-heartbeat',     text: 'MCH Dashboard' },
-    { path: '/mch/anc',             icon: 'fas fa-female',        text: 'ANC Visits' },
-    { path: '/mch/immunizations',   icon: 'fas fa-syringe',       text: 'Immunizations' },
-  ]},
-  { label: 'Account', items: [
-    { path: '/admin/profile', icon: 'fas fa-user-circle', text: 'My Profile' },
-  ]},
-];
 
 const VACCINES = [
   { value: 'bcg',      label: 'BCG' },
@@ -265,7 +255,7 @@ function SectionTitle({ children }) {
 }
 
 function MCHDashboard() {
-  const { apiCall } = useAuth();
+  const { apiCall, user } = useAuth();
   const [activeTab, setActiveTab]   = useState('dashboard'); // dashboard | anc | immunizations
   const [stats, setStats]           = useState({});
   const [ancVisits, setAncVisits]   = useState([]);
@@ -382,7 +372,7 @@ function MCHDashboard() {
   const displayImm = activeTab === 'dashboard' ? recentImm : immunizations;
 
   return (
-    <DashboardLayout navItems={navItems} brandTitle="NEHR MCH" roleBadge="Nurse / Midwife">
+    <DashboardLayout navItems={getNavForUser(user)} brandTitle={getBrandForUser(user)} roleBadge={getRoleBadge(user)}>
       <Toast toast={toast} />
 
       <div style={{ padding: '28px 24px' }}>

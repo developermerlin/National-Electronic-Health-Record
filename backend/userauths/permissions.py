@@ -132,10 +132,10 @@ class PatientAccessControl:
 
 
 class CanViewAuditLogs(permissions.BasePermission):
-    """Only admin, ministry_admin, and hospital_admin can view audit logs."""
+    """Only admin, ministry_admin, hospital_admin, and district_admin can view audit logs."""
     def has_permission(self, request, view):
         user = request.user
         if not user or not user.is_authenticated:
             return False
         role = user.role.name if user.role else None
-        return role in ('admin', 'ministry_admin', 'hospital_admin')
+        return role in ('admin', 'ministry_admin', 'hospital_admin', 'district_admin')
