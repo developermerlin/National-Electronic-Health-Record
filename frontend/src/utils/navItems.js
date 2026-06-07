@@ -444,7 +444,7 @@ const _haSection = {
     items: [
       { path: '/receptionist/appointments',      icon: 'fas fa-calendar-check',       text: 'Appointments'         },
       { path: '/receptionist/referrals',         icon: 'fas fa-share-square',         text: 'Referral Cases'       },
-      { path: '/admin/departments',              icon: 'fas fa-building',             text: 'Departments'          },
+      { path: '/hospital-admin/departments',     icon: 'fas fa-building',             text: 'Departments'          },
       { path: '/hospital-admin/prescriptions',   icon: 'fas fa-prescription-bottle-alt', text: 'Prescriptions'     },
       { path: '/hospital-admin/analytics',       icon: 'fas fa-chart-line',           text: 'Analytics & Reports'  },
       { path: '/hospital-admin/notifications',   icon: 'fas fa-bell',                 text: 'Notification Center'  },
@@ -542,7 +542,7 @@ const hospitalAdminNav = [
     items: [
       { path: '/receptionist/appointments',      icon: 'fas fa-calendar-check',       text: 'Appointments' },
       { path: '/receptionist/referrals',         icon: 'fas fa-share-square',         text: 'Referral Cases' },
-      { path: '/admin/departments',              icon: 'fas fa-building',             text: 'Departments' },
+      { path: '/hospital-admin/departments',     icon: 'fas fa-building',             text: 'Departments' },
       { path: '/hospital-admin/prescriptions',   icon: 'fas fa-prescription-bottle-alt', text: 'Prescriptions' },
       { path: '/hospital-admin/analytics',       icon: 'fas fa-chart-line',           text: 'Analytics & Reports' },
       { path: '/hospital-admin/notifications',   icon: 'fas fa-bell',                 text: 'Notification Center' },

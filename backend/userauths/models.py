@@ -346,6 +346,198 @@ class Department(models.Model):
         unique_together = ('name', 'hospital')
 
 
+class DepartmentCategory(models.Model):
+    """
+    Professional Hospital Department Categories with comprehensive sub-units.
+    This represents the main department types (Surgery, ICU, Laboratory, etc.)
+    """
+    CATEGORY_CHOICES = [
+        ('surgery', 'Surgery Department'),
+        ('icu', 'ICU Department'),
+        ('laboratory', 'Laboratory Department'),
+        ('radiology', 'Radiology Department'),
+        ('medical', 'Medical Department (General Medicine)'),
+        ('dental', 'Dental Department'),
+        ('physiotherapy', 'Physiotherapy Department'),
+        ('ophthalmology', 'Ophthalmology Department'),
+        ('ent', 'ENT Department'),
+        ('psychiatry', 'Psychiatry Department'),
+        ('ipd', 'In-Patient Department (IPD)'),
+        ('opd', 'Out-Patient Department (OPD)'),
+        ('pediatrics', 'Pediatrics Department'),
+        ('emergency', 'Emergency / Casualty'),
+        ('pharmacy', 'Pharmacy'),
+        ('maternity', 'Maternity / Obstetrics'),
+        ('records', 'Medical Records'),
+        ('admin', 'Administration'),
+        ('triage', 'Triage'),
+        ('other', 'Other'),
+    ]
+    
+    name = models.CharField(max_length=50, choices=CATEGORY_CHOICES, unique=True)
+    display_name = models.CharField(max_length=200, help_text='Full display name')
+    description = models.TextField(blank=True, null=True)
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    
+    class Meta:
+        ordering = ['name']
+        verbose_name = 'Department Category'
+        verbose_name_plural = 'Department Categories'
+    
+    def __str__(self):
+        return self.get_name_display()
+
+
+class DepartmentUnit(models.Model):
+    """
+    Sub-units within each department category.
+    E.g., General Surgery, Orthopedic Surgery under Surgery Department
+    """
+    category = models.ForeignKey(DepartmentCategory, on_delete=models.CASCADE, related_name='units')
+    name = models.CharField(max_length=200, help_text='Unit name (e.g., General Surgery, Hematology Lab)')
+    code = models.CharField(max_length=50, blank=True, help_text='Auto-generated unit code')
+    description = models.TextField(blank=True, null=True)
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    
+    class Meta:
+        ordering = ['category__name', 'name']
+        unique_together = ('category', 'name')
+        verbose_name = 'Department Unit'
+        verbose_name_plural = 'Department Units'
+    
+    def save(self, *args, **kwargs):
+        if not self.code:
+            import re
+            words = re.sub(r'[^a-zA-Z\s]', '', self.name).split()
+            if len(words) >= 2:
+                letters = ''.join(w[0].upper() for w in words[:3])
+            else:
+                letters = self.name[:3].upper()
+            cat_prefix = self.category.name.upper()[:3] if self.category else 'GEN'
+            existing = DepartmentUnit.objects.filter(code__startswith=f"UNIT-{cat_prefix}-{letters}-").exclude(pk=self.pk)
+            max_num = 0
+            for u in existing:
+                parts = u.code.split('-')
+                if len(parts) == 4 and parts[3].isdigit():
+                    max_num = max(max_num, int(parts[3]))
+            self.code = f"UNIT-{cat_prefix}-{letters}-{str(max_num + 1).zfill(3)}"
+        super().save(*args, **kwargs)
+    
+    def __str__(self):
+        return f"{self.name} ({self.category.get_name_display()})"
+
+
+class HospitalDepartment(models.Model):
+    """
+    Actual department instances in a specific hospital.
+    Links Hospital → Department Category → Units
+    """
+    hospital = models.ForeignKey(Hospital, on_delete=models.CASCADE, related_name='hospital_departments')
+    category = models.ForeignKey(DepartmentCategory, on_delete=models.CASCADE, related_name='hospital_instances')
+    department_code = models.CharField(max_length=50, unique=True, blank=True, help_text='Auto-generated department code')
+    
+    head_of_department = models.CharField(max_length=300, blank=True, null=True, help_text='Department head name')
+    head_user = models.ForeignKey('User', on_delete=models.SET_NULL, null=True, blank=True, related_name='headed_hospital_departments')
+    
+    phone = models.CharField(max_length=50, blank=True, null=True)
+    email = models.EmailField(blank=True, null=True)
+    location = models.CharField(max_length=200, blank=True, null=True, help_text='Physical location in hospital (e.g., Building A, Floor 2)')
+    
+    STATUS_CHOICES = [
+        ('active', 'Active'),
+        ('inactive', 'Inactive'),
+        ('under_construction', 'Under Construction'),
+        ('temporarily_closed', 'Temporarily Closed'),
+    ]
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='active')
+    is_active = models.BooleanField(default=True)
+    
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    created_by = models.ForeignKey('User', on_delete=models.SET_NULL, null=True, blank=True, related_name='created_hospital_departments')
+    
+    class Meta:
+        ordering = ['hospital__name', 'category__name']
+        unique_together = ('hospital', 'category')
+        verbose_name = 'Hospital Department'
+        verbose_name_plural = 'Hospital Departments'
+    
+    def save(self, *args, **kwargs):
+        if not self.department_code:
+            import re
+            cat_abbr = self.category.name.upper()[:3]
+            hosp_code = self.hospital.code if self.hospital_id else 'GEN'
+            existing = HospitalDepartment.objects.filter(department_code__startswith=f"HDPT-{hosp_code}-{cat_abbr}-").exclude(pk=self.pk)
+            max_num = 0
+            for d in existing:
+                parts = d.department_code.split('-')
+                if len(parts) == 4 and parts[3].isdigit():
+                    max_num = max(max_num, int(parts[3]))
+            self.department_code = f"HDPT-{hosp_code}-{cat_abbr}-{str(max_num + 1).zfill(3)}"
+        super().save(*args, **kwargs)
+    
+    def __str__(self):
+        return f"{self.category.get_name_display()} - {self.hospital.name}"
+
+
+class HospitalDepartmentUnitInstance(models.Model):
+    """
+    Specific unit instances within a hospital department.
+    E.g., General Surgery unit in Surgery Department at Connaught Hospital
+    """
+    hospital_department = models.ForeignKey(HospitalDepartment, on_delete=models.CASCADE, related_name='unit_instances')
+    unit = models.ForeignKey(DepartmentUnit, on_delete=models.CASCADE, related_name='hospital_instances')
+    
+    unit_code = models.CharField(max_length=50, blank=True, help_text='Auto-generated unit instance code')
+    unit_head = models.CharField(max_length=300, blank=True, null=True, help_text='Unit head/supervisor name')
+    unit_head_user = models.ForeignKey('User', on_delete=models.SET_NULL, null=True, blank=True, related_name='headed_units')
+    
+    bed_capacity = models.PositiveIntegerField(default=0, help_text='Number of beds (if applicable)')
+    staff_count = models.PositiveIntegerField(default=0, help_text='Number of staff assigned')
+    
+    phone = models.CharField(max_length=50, blank=True, null=True)
+    location = models.CharField(max_length=200, blank=True, null=True, help_text='Specific location within department')
+    
+    STATUS_CHOICES = [
+        ('operational', 'Operational'),
+        ('non_operational', 'Non-Operational'),
+        ('under_maintenance', 'Under Maintenance'),
+    ]
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='operational')
+    is_active = models.BooleanField(default=True)
+    
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    
+    class Meta:
+        ordering = ['hospital_department__hospital__name', 'hospital_department__category__name', 'unit__name']
+        unique_together = ('hospital_department', 'unit')
+        verbose_name = 'Hospital Department Unit Instance'
+        verbose_name_plural = 'Hospital Department Unit Instances'
+    
+    def save(self, *args, **kwargs):
+        if not self.unit_code:
+            dept_code = self.hospital_department.department_code if self.hospital_department else 'DEPT'
+            unit_abbr = self.unit.code[:10] if self.unit else 'UNIT'
+            existing = HospitalDepartmentUnitInstance.objects.filter(
+                unit_code__startswith=f"{dept_code}-{unit_abbr}-"
+            ).exclude(pk=self.pk)
+            max_num = 0
+            for u in existing:
+                parts = u.unit_code.split('-')
+                if parts and parts[-1].isdigit():
+                    max_num = max(max_num, int(parts[-1]))
+            self.unit_code = f"{dept_code}-{unit_abbr}-{str(max_num + 1).zfill(3)}"
+        super().save(*args, **kwargs)
+    
+    def __str__(self):
+        return f"{self.unit.name} - {self.hospital_department.category.get_name_display()} @ {self.hospital_department.hospital.name}"
+
+
 class Role(models.Model):
     ROLE_CHOICES = [
         ('ministry_admin', 'Ministry Administrator'),

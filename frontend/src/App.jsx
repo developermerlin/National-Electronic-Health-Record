@@ -62,6 +62,7 @@ import BillingDashboard from './views/billing/BillingDashboard';
 import MultiHospitalDashboard from './views/ministry/MultiHospitalDashboard';
 import FinancialReport from './views/billing/FinancialReport';
 import LeaveManagement from './views/hospital_admin/LeaveManagement';
+import HospitalDepartmentManagement from './views/hospital_admin/HospitalDepartmentManagement';
 import DoctorBilling from './views/doctor/DoctorBilling';
 import InsuranceClaims from './views/billing/InsuranceClaims';
 import MessagesPage from './views/messages/MessagesPage';
@@ -234,6 +235,11 @@ function AppContent() {
         <Route path="/doctor/billing" element={
           <ProtectedRoute allowedRoles={['admin', 'ministry_admin', 'hospital_admin', 'district_admin', 'doctor']}>
             <DoctorBilling />
+          </ProtectedRoute>
+        } />
+        <Route path="/hospital-admin/departments" element={
+          <ProtectedRoute allowedRoles={['hospital_admin', 'admin', 'ministry_admin']}>
+            <HospitalDepartmentManagement />
           </ProtectedRoute>
         } />
         <Route path="/hospital-admin/leave" element={

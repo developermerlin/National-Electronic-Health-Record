@@ -7,13 +7,23 @@ from django.db.models import Q, Count, Sum, Avg, F
 from django.db.models.functions import TruncMonth, TruncDate
 from django.utils import timezone
 from datetime import timedelta
-from userauths.models import User, Role, Permission, RolePermission, Region, District, Chiefdom, Town, Hospital, Department, Patient, PatientVisit, Appointment, Message, AuditLog, InpatientAdmission, Invoice
+from userauths.models import (
+    User, Role, Permission, RolePermission, Region, District, Chiefdom, Town, 
+    Hospital, Department, Patient, PatientVisit, Appointment, Message, AuditLog, 
+    InpatientAdmission, Invoice, DepartmentCategory, DepartmentUnit, 
+    HospitalDepartment, HospitalDepartmentUnitInstance
+)
 from userauths.serializer import (
     UserSerializer, UserCreateSerializer, UserUpdateSerializer,
     RoleSerializer, SimplePermissionSerializer, RolePermissionAssignSerializer,
     RegionSerializer, DistrictSerializer, ChiefdomSerializer, TownSerializer,
     HospitalSerializer, HospitalCreateSerializer,
     DepartmentSerializer, ProfileSerializer
+)
+from userauths.department_serializers import (
+    DepartmentCategorySerializer, DepartmentUnitSerializer,
+    HospitalDepartmentSerializer, HospitalDepartmentDetailSerializer,
+    HospitalDepartmentUnitInstanceSerializer, DepartmentCategoryWithUnitsSerializer
 )
 from userauths.models import Profile
 
@@ -1441,3 +1451,400 @@ def ministry_district_report(request, district_id):
         'staff': {'total': staff_count},
         'hospital_breakdown': hospital_breakdown,
     })
+
+
+# ═══════════════════════════════════════════════════════════════
+# HOSPITAL ADMIN - DEPARTMENT MANAGEMENT
+# ═══════════════════════════════════════════════════════════════
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def hospital_admin_department_categories(request):
+    """
+    Get all department categories with their units.
+    Available to all authenticated users for browsing.
+    """
+    categories = DepartmentCategory.objects.filter(is_active=True).prefetch_related('units')
+    serializer = DepartmentCategoryWithUnitsSerializer(categories, many=True)
+    return Response(serializer.data)
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def hospital_admin_departments(request):
+    """
+    Get departments for the hospital admin's hospital.
+    Hospital admins can only see their own hospital's departments.
+    """
+    user = request.user
+    role = user.role.name if user.role else None
+    
+    # Hospital admins can only see their hospital
+    if role == 'hospital_admin':
+        if not user.hospital:
+            return Response(
+                {'error': 'You are not assigned to a hospital'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        hospital = user.hospital
+    # Ministry/District admins can specify hospital_id
+    elif role in ('admin', 'ministry_admin', 'district_admin'):
+        hospital_id = request.query_params.get('hospital')
+        if not hospital_id:
+            return Response(
+                {'error': 'hospital parameter is required'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        hospital = Hospital.objects.filter(id=hospital_id).first()
+        if not hospital:
+            return Response(
+                {'error': 'Hospital not found'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+    else:
+        return Response(
+            {'error': 'Insufficient permissions'},
+            status=status.HTTP_403_FORBIDDEN
+        )
+    
+    # Get departments for the hospital
+    departments = HospitalDepartment.objects.filter(
+        hospital=hospital
+    ).select_related('category', 'head_user').prefetch_related('unit_instances')
+    
+    serializer = HospitalDepartmentSerializer(departments, many=True)
+    return Response({
+        'hospital': {
+            'id': hospital.id,
+            'name': hospital.name,
+            'code': hospital.code
+        },
+        'departments': serializer.data
+    })
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def hospital_admin_create_department(request):
+    """
+    Create a new department for the hospital.
+    Hospital admins can only create for their hospital.
+    """
+    user = request.user
+    role = user.role.name if user.role else None
+    
+    if role not in ('admin', 'ministry_admin', 'hospital_admin'):
+        return Response(
+            {'error': 'Insufficient permissions'},
+            status=status.HTTP_403_FORBIDDEN
+        )
+    
+    # Hospital admins can only create for their hospital
+    if role == 'hospital_admin':
+        if not user.hospital:
+            return Response(
+                {'error': 'You are not assigned to a hospital'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        hospital = user.hospital
+        # Override hospital in request data
+        data = request.data.copy()
+        data['hospital'] = hospital.id
+    else:
+        data = request.data
+        hospital_id = data.get('hospital')
+        if not hospital_id:
+            return Response(
+                {'error': 'hospital field is required'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        hospital = Hospital.objects.filter(id=hospital_id).first()
+        if not hospital:
+            return Response(
+                {'error': 'Hospital not found'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+    
+    # Check if department already exists
+    category_id = data.get('category')
+    if HospitalDepartment.objects.filter(hospital=hospital, category_id=category_id).exists():
+        return Response(
+            {'error': 'This department already exists in your hospital'},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+    
+    # Create the department
+    serializer = HospitalDepartmentSerializer(data=data, context={'request': request})
+    if serializer.is_valid():
+        department = serializer.save(created_by=user)
+        return Response(
+            HospitalDepartmentDetailSerializer(department).data,
+            status=status.HTTP_201_CREATED
+        )
+    return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def hospital_admin_department_detail(request, department_id):
+    """
+    Get detailed information about a specific department.
+    Hospital admins can only view their hospital's departments.
+    """
+    user = request.user
+    role = user.role.name if user.role else None
+    
+    department = HospitalDepartment.objects.filter(id=department_id).select_related(
+        'hospital', 'category', 'head_user'
+    ).prefetch_related('unit_instances__unit').first()
+    
+    if not department:
+        return Response(
+            {'error': 'Department not found'},
+            status=status.HTTP_404_NOT_FOUND
+        )
+    
+    # Hospital admins can only view their hospital's departments
+    if role == 'hospital_admin' and department.hospital != user.hospital:
+        return Response(
+            {'error': 'You can only view departments in your hospital'},
+            status=status.HTTP_403_FORBIDDEN
+        )
+    
+    serializer = HospitalDepartmentDetailSerializer(department)
+    return Response(serializer.data)
+
+
+@api_view(['PUT', 'PATCH'])
+@permission_classes([IsAuthenticated])
+def hospital_admin_update_department(request, department_id):
+    """
+    Update a department.
+    Hospital admins can only update their hospital's departments.
+    """
+    user = request.user
+    role = user.role.name if user.role else None
+    
+    if role not in ('admin', 'ministry_admin', 'hospital_admin'):
+        return Response(
+            {'error': 'Insufficient permissions'},
+            status=status.HTTP_403_FORBIDDEN
+        )
+    
+    department = HospitalDepartment.objects.filter(id=department_id).first()
+    if not department:
+        return Response(
+            {'error': 'Department not found'},
+            status=status.HTTP_404_NOT_FOUND
+        )
+    
+    # Hospital admins can only update their hospital's departments
+    if role == 'hospital_admin' and department.hospital != user.hospital:
+        return Response(
+            {'error': 'You can only update departments in your hospital'},
+            status=status.HTTP_403_FORBIDDEN
+        )
+    
+    serializer = HospitalDepartmentSerializer(
+        department, 
+        data=request.data, 
+        partial=request.method == 'PATCH'
+    )
+    if serializer.is_valid():
+        serializer.save()
+        return Response(serializer.data)
+    return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def hospital_admin_add_unit_to_department(request, department_id):
+    """
+    Add a unit to a department.
+    Hospital admins can only add units to their hospital's departments.
+    """
+    user = request.user
+    role = user.role.name if user.role else None
+    
+    if role not in ('admin', 'ministry_admin', 'hospital_admin'):
+        return Response(
+            {'error': 'Insufficient permissions'},
+            status=status.HTTP_403_FORBIDDEN
+        )
+    
+    department = HospitalDepartment.objects.filter(id=department_id).first()
+    if not department:
+        return Response(
+            {'error': 'Department not found'},
+            status=status.HTTP_404_NOT_FOUND
+        )
+    
+    # Hospital admins can only modify their hospital's departments
+    if role == 'hospital_admin' and department.hospital != user.hospital:
+        return Response(
+            {'error': 'You can only modify departments in your hospital'},
+            status=status.HTTP_403_FORBIDDEN
+        )
+    
+    unit_id = request.data.get('unit_id')
+    if not unit_id:
+        return Response(
+            {'error': 'unit_id is required'},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+    
+    # Verify unit belongs to the department's category
+    unit = DepartmentUnit.objects.filter(
+        id=unit_id, 
+        category=department.category,
+        is_active=True
+    ).first()
+    
+    if not unit:
+        return Response(
+            {'error': 'Unit not found or does not belong to this department category'},
+            status=status.HTTP_404_NOT_FOUND
+        )
+    
+    # Check if unit already exists
+    if HospitalDepartmentUnitInstance.objects.filter(
+        hospital_department=department,
+        unit=unit
+    ).exists():
+        return Response(
+            {'error': 'This unit already exists in the department'},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+    
+    # Create the unit instance
+    unit_instance = HospitalDepartmentUnitInstance.objects.create(
+        hospital_department=department,
+        unit=unit,
+        unit_head=request.data.get('unit_head', ''),
+        unit_head_user_id=request.data.get('unit_head_user'),
+        bed_capacity=request.data.get('bed_capacity', 0),
+        staff_count=request.data.get('staff_count', 0),
+        phone=request.data.get('phone', ''),
+        location=request.data.get('location', ''),
+        status=request.data.get('status', 'operational'),
+        is_active=request.data.get('is_active', True)
+    )
+    
+    serializer = HospitalDepartmentUnitInstanceSerializer(unit_instance)
+    return Response(serializer.data, status=status.HTTP_201_CREATED)
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def hospital_admin_department_units(request, department_id):
+    """
+    Get all units for a specific department.
+    """
+    user = request.user
+    role = user.role.name if user.role else None
+    
+    department = HospitalDepartment.objects.filter(id=department_id).first()
+    if not department:
+        return Response(
+            {'error': 'Department not found'},
+            status=status.HTTP_404_NOT_FOUND
+        )
+    
+    # Hospital admins can only view their hospital's departments
+    if role == 'hospital_admin' and department.hospital != user.hospital:
+        return Response(
+            {'error': 'You can only view departments in your hospital'},
+            status=status.HTTP_403_FORBIDDEN
+        )
+    
+    units = department.unit_instances.select_related('unit', 'unit_head_user').all()
+    serializer = HospitalDepartmentUnitInstanceSerializer(units, many=True)
+    return Response(serializer.data)
+
+
+@api_view(['PUT', 'PATCH'])
+@permission_classes([IsAuthenticated])
+def hospital_admin_update_unit(request, unit_instance_id):
+    """
+    Update a unit instance.
+    Hospital admins can only update units in their hospital.
+    """
+    user = request.user
+    role = user.role.name if user.role else None
+    
+    if role not in ('admin', 'ministry_admin', 'hospital_admin'):
+        return Response(
+            {'error': 'Insufficient permissions'},
+            status=status.HTTP_403_FORBIDDEN
+        )
+    
+    unit_instance = HospitalDepartmentUnitInstance.objects.filter(
+        id=unit_instance_id
+    ).select_related('hospital_department__hospital').first()
+    
+    if not unit_instance:
+        return Response(
+            {'error': 'Unit not found'},
+            status=status.HTTP_404_NOT_FOUND
+        )
+    
+    # Hospital admins can only update their hospital's units
+    if role == 'hospital_admin' and unit_instance.hospital_department.hospital != user.hospital:
+        return Response(
+            {'error': 'You can only update units in your hospital'},
+            status=status.HTTP_403_FORBIDDEN
+        )
+    
+    serializer = HospitalDepartmentUnitInstanceSerializer(
+        unit_instance,
+        data=request.data,
+        partial=request.method == 'PATCH'
+    )
+    if serializer.is_valid():
+        serializer.save()
+        return Response(serializer.data)
+    return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+@api_view(['DELETE'])
+@permission_classes([IsAuthenticated])
+def hospital_admin_delete_unit(request, unit_instance_id):
+    """
+    Delete/deactivate a unit instance.
+    Hospital admins can only delete units in their hospital.
+    """
+    user = request.user
+    role = user.role.name if user.role else None
+    
+    if role not in ('admin', 'ministry_admin', 'hospital_admin'):
+        return Response(
+            {'error': 'Insufficient permissions'},
+            status=status.HTTP_403_FORBIDDEN
+        )
+    
+    unit_instance = HospitalDepartmentUnitInstance.objects.filter(
+        id=unit_instance_id
+    ).select_related('hospital_department__hospital').first()
+    
+    if not unit_instance:
+        return Response(
+            {'error': 'Unit not found'},
+            status=status.HTTP_404_NOT_FOUND
+        )
+    
+    # Hospital admins can only delete their hospital's units
+    if role == 'hospital_admin' and unit_instance.hospital_department.hospital != user.hospital:
+        return Response(
+            {'error': 'You can only delete units in your hospital'},
+            status=status.HTTP_403_FORBIDDEN
+        )
+    
+    # Soft delete - just deactivate
+    unit_instance.is_active = False
+    unit_instance.status = 'non_operational'
+    unit_instance.save()
+    
+    return Response(
+        {'message': 'Unit deactivated successfully'},
+        status=status.HTTP_200_OK
+    )

@@ -26,6 +26,7 @@ from userauths import telemedicine_views
 from userauths import nhia_integration
 from userauths import audit_views
 from userauths import specialty_views
+from userauths import department_views
 
 # from store import views as store_views
 # from customer import views as customer_views
@@ -43,6 +44,13 @@ router.register(r'admin/hospitals', admin_views.HospitalViewSet, basename='hospi
 router.register(r'admin/departments', admin_views.DepartmentViewSet, basename='department-management')
 router.register(r'admin/chiefdoms', admin_views.ChiefdomViewSet, basename='chiefdom-management')
 router.register(r'admin/towns', admin_views.TownViewSet, basename='town-management')
+
+# Department Categories and Units Management
+router.register(r'department-categories', department_views.DepartmentCategoryViewSet, basename='department-category')
+router.register(r'department-units', department_views.DepartmentUnitViewSet, basename='department-unit')
+router.register(r'hospital-departments', department_views.HospitalDepartmentViewSet, basename='hospital-department')
+router.register(r'hospital-department-units', department_views.HospitalDepartmentUnitInstanceViewSet, basename='hospital-department-unit')
+
 router.register(r'patients', patient_views.PatientViewSet, basename='patient-management')
 router.register(r'appointments', appointment_views.AppointmentViewSet, basename='appointment-management')
 router.register(r'visits', visit_views.PatientVisitViewSet, basename='visit-management')
@@ -76,6 +84,17 @@ urlpatterns = [
     path('admin/hospital-dashboard/', admin_views.hospital_dashboard, name='hospital-dashboard'),
     path('admin/referral-doctors/', admin_views.referral_doctors, name='referral-doctors'),
     path('user/my-profile/', admin_views.my_profile, name='my-profile'),
+    
+    # Hospital Admin - Department Management endpoints
+    path('hospital-admin/department-categories/', admin_views.hospital_admin_department_categories, name='hospital-admin-dept-categories'),
+    path('hospital-admin/departments/', admin_views.hospital_admin_departments, name='hospital-admin-departments'),
+    path('hospital-admin/departments/create/', admin_views.hospital_admin_create_department, name='hospital-admin-create-dept'),
+    path('hospital-admin/departments/<int:department_id>/', admin_views.hospital_admin_department_detail, name='hospital-admin-dept-detail'),
+    path('hospital-admin/departments/<int:department_id>/update/', admin_views.hospital_admin_update_department, name='hospital-admin-update-dept'),
+    path('hospital-admin/departments/<int:department_id>/add-unit/', admin_views.hospital_admin_add_unit_to_department, name='hospital-admin-add-unit'),
+    path('hospital-admin/departments/<int:department_id>/units/', admin_views.hospital_admin_department_units, name='hospital-admin-dept-units'),
+    path('hospital-admin/units/<int:unit_instance_id>/update/', admin_views.hospital_admin_update_unit, name='hospital-admin-update-unit'),
+    path('hospital-admin/units/<int:unit_instance_id>/delete/', admin_views.hospital_admin_delete_unit, name='hospital-admin-delete-unit'),
     
     # Analytics endpoints
     path('analytics/performance/', analytics_views.hospital_performance_metrics, name='analytics-performance'),

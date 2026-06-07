@@ -1,5 +1,9 @@
 from django.contrib import admin
-from userauths.models import User, Profile, Role, Permission, RolePermission, Region, District, Chiefdom, Town, Hospital, Department, Patient, Appointment, Message
+from userauths.models import (
+    User, Profile, Role, Permission, RolePermission, Region, District, Chiefdom, Town, 
+    Hospital, Department, Patient, Appointment, Message,
+    DepartmentCategory, DepartmentUnit, HospitalDepartment, HospitalDepartmentUnitInstance
+)
 
 class UserAdmin(admin.ModelAdmin):
     search_fields  = ['full_name', 'username', 'email',  'phone', 'employee_id']
@@ -100,6 +104,52 @@ class MessageAdmin(admin.ModelAdmin):
     search_fields = ['sender__full_name', 'recipient__full_name', 'subject', 'body']
     list_filter = ['is_read', 'created_at']
 
+class DepartmentCategoryAdmin(admin.ModelAdmin):
+    list_display = ['name', 'display_name', 'is_active', 'created_at']
+    search_fields = ['name', 'display_name', 'description']
+    list_filter = ['is_active', 'created_at']
+    readonly_fields = ['created_at', 'updated_at']
+
+class DepartmentUnitAdmin(admin.ModelAdmin):
+    list_display = ['name', 'code', 'category', 'is_active', 'created_at']
+    search_fields = ['name', 'code', 'description']
+    list_filter = ['category', 'is_active', 'created_at']
+    readonly_fields = ['code', 'created_at', 'updated_at']
+
+class HospitalDepartmentAdmin(admin.ModelAdmin):
+    list_display = ['category', 'hospital', 'department_code', 'head_of_department', 'status', 'is_active']
+    search_fields = ['department_code', 'hospital__name', 'head_of_department']
+    list_filter = ['category', 'hospital', 'status', 'is_active', 'created_at']
+    readonly_fields = ['department_code', 'created_at', 'updated_at']
+    fieldsets = (
+        ('Basic Information', {
+            'fields': ('hospital', 'category', 'department_code', 'status', 'is_active')
+        }),
+        ('Management', {
+            'fields': ('head_of_department', 'head_user', 'phone', 'email', 'location')
+        }),
+        ('Audit', {
+            'fields': ('created_by', 'created_at', 'updated_at')
+        }),
+    )
+
+class HospitalDepartmentUnitInstanceAdmin(admin.ModelAdmin):
+    list_display = ['unit', 'hospital_department', 'unit_code', 'unit_head', 'bed_capacity', 'staff_count', 'status', 'is_active']
+    search_fields = ['unit_code', 'unit__name', 'unit_head', 'hospital_department__hospital__name']
+    list_filter = ['hospital_department__category', 'hospital_department__hospital', 'status', 'is_active', 'created_at']
+    readonly_fields = ['unit_code', 'created_at', 'updated_at']
+    fieldsets = (
+        ('Basic Information', {
+            'fields': ('hospital_department', 'unit', 'unit_code', 'status', 'is_active')
+        }),
+        ('Management', {
+            'fields': ('unit_head', 'unit_head_user', 'bed_capacity', 'staff_count', 'phone', 'location')
+        }),
+        ('Audit', {
+            'fields': ('created_at', 'updated_at')
+        }),
+    )
+
 admin.site.register(User, UserAdmin)
 admin.site.register(Profile, ProfileAdmin)
 admin.site.register(Role, RoleAdmin)
@@ -111,6 +161,10 @@ admin.site.register(Chiefdom, ChiefdomAdmin)
 admin.site.register(Town, TownAdmin)
 admin.site.register(Hospital, HospitalAdmin)
 admin.site.register(Department, DepartmentAdmin)
+admin.site.register(DepartmentCategory, DepartmentCategoryAdmin)
+admin.site.register(DepartmentUnit, DepartmentUnitAdmin)
+admin.site.register(HospitalDepartment, HospitalDepartmentAdmin)
+admin.site.register(HospitalDepartmentUnitInstance, HospitalDepartmentUnitInstanceAdmin)
 admin.site.register(Patient, PatientAdmin)
 admin.site.register(Appointment, AppointmentAdmin)
 admin.site.register(Message, MessageAdmin)
