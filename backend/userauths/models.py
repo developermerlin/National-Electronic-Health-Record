@@ -424,6 +424,42 @@ class RolePermission(models.Model):
         return f"{self.role.name} - {self.permission.name}"
 
 
+class MedicalSpecialty(models.Model):
+    """
+    Medical Specialties Master Table
+    Stores all doctor specialties available in the hospital
+    """
+    CATEGORY_CHOICES = [
+        ('general_medicine', 'General Medicine'),
+        ('surgery', 'Surgery'),
+        ('obstetrics_gynecology', 'Obstetrics & Gynecology'),
+        ('pediatrics', 'Pediatrics'),
+        ('other_clinical', 'Other Clinical Specialties'),
+    ]
+    
+    specialty_id = ShortUUIDField(unique=True, length=10, max_length=20, prefix='SPEC', alphabet='1234567890')
+    name = models.CharField(max_length=200, unique=True, help_text='Specialty name')
+    description = models.TextField(blank=True, null=True, help_text='Detailed description of the specialty')
+    category = models.CharField(max_length=50, choices=CATEGORY_CHOICES, default='other_clinical', help_text='Specialty category')
+    department = models.ForeignKey(Department, on_delete=models.SET_NULL, null=True, blank=True, related_name='specialties', help_text='Associated department')
+    is_active = models.BooleanField(default=True, help_text='Active status')
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    created_by = models.ForeignKey('User', on_delete=models.SET_NULL, null=True, blank=True, related_name='created_specialties')
+    
+    class Meta:
+        ordering = ['category', 'name']
+        verbose_name = 'Medical Specialty'
+        verbose_name_plural = 'Medical Specialties'
+    
+    def __str__(self):
+        return self.name
+    
+    def get_doctors_count(self):
+        """Return count of doctors with this specialty"""
+        return self.doctors.count()
+
+
 class User(AbstractUser):
     username = models.CharField(max_length=500, null=True, blank=True)
     email = models.EmailField(unique=True)
@@ -435,6 +471,10 @@ class User(AbstractUser):
     hospital = models.ForeignKey(Hospital, on_delete=models.SET_NULL, null=True, blank=True, related_name='staff')
     department = models.ForeignKey(Department, on_delete=models.SET_NULL, null=True, blank=True, related_name='staff')
     district = models.ForeignKey(District, on_delete=models.SET_NULL, null=True, blank=True, related_name='district_staff', help_text='For district admins')
+    
+    # Doctor specialties (many-to-many relationship)
+    specialties = models.ManyToManyField(MedicalSpecialty, blank=True, related_name='doctors', help_text='Medical specialties for doctors')
+    
     is_active = models.BooleanField(default=True)
     created_by = models.ForeignKey('self', on_delete=models.SET_NULL, null=True, blank=True, related_name='created_users')
 

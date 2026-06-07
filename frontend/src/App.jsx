@@ -14,6 +14,7 @@ import ChiefdomManagement from './views/admin/ChiefdomManagement';
 import TownManagement from './views/admin/TownManagement';
 import HospitalManagement from './views/admin/HospitalManagement';
 import DepartmentManagement from './views/admin/DepartmentManagement';
+import SpecialtyManagement from './views/admin/SpecialtyManagement';
 import AuditLogDashboard from './views/admin/AuditLogDashboard';
 import MinistryDashboard from './views/ministry/MinistryDashboard';
 import ProfilePage from './views/admin/ProfilePage';
@@ -203,6 +204,11 @@ function AppContent() {
         <Route path="/admin/departments" element={
           <ProtectedRoute allowedRoles={['admin', 'ministry_admin', 'hospital_admin']}>
             <DepartmentManagement />
+          </ProtectedRoute>
+        } />
+        <Route path="/admin/specialties" element={
+          <ProtectedRoute allowedRoles={['admin', 'ministry_admin', 'hospital_admin']}>
+            <SpecialtyManagement />
           </ProtectedRoute>
         } />
         <Route path="/audit/logs" element={

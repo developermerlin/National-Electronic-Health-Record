@@ -25,6 +25,7 @@ from userauths import notification_views
 from userauths import telemedicine_views
 from userauths import nhia_integration
 from userauths import audit_views
+from userauths import specialty_views
 
 # from store import views as store_views
 # from customer import views as customer_views
@@ -50,6 +51,7 @@ router.register(r'billing/invoices', billing_views.InvoiceViewSet, basename='inv
 router.register(r'billing/payments', billing_views.PaymentViewSet, basename='payment-management')
 router.register(r'staff/leave',           leave_views.StaffLeaveViewSet,      basename='staff-leave')
 router.register(r'insurance/claims',      insurance_views.InsuranceClaimViewSet, basename='insurance-claim')
+router.register(r'specialties',           specialty_views.MedicalSpecialtyViewSet, basename='medical-specialty')
 
 urlpatterns = [
     # Include router URLs

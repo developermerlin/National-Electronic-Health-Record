@@ -1,4 +1,4 @@
-from userauths.models import Profile, User, Role, Permission, RolePermission, Region, District, Chiefdom, Town, Hospital, Department, Patient, Message, Appointment, PatientVisit, VitalSigns, ClinicalNote, Notification, DoctorAvailability, DoctorUnavailableDate, AuditLog, Prescription, PrescriptionItem, Ward, Bed, InpatientAdmission, Invoice, InvoiceItem, Payment, StaffLeave, InsuranceClaim
+from userauths.models import Profile, User, Role, Permission, RolePermission, Region, District, Chiefdom, Town, Hospital, Department, Patient, Message, Appointment, PatientVisit, VitalSigns, ClinicalNote, Notification, DoctorAvailability, DoctorUnavailableDate, AuditLog, Prescription, PrescriptionItem, Ward, Bed, InpatientAdmission, Invoice, InvoiceItem, Payment, StaffLeave, InsuranceClaim, MedicalSpecialty
 
 # ===import jwt serializers for token===
 from django.contrib.auth.password_validation import validate_password
@@ -106,6 +106,9 @@ class UserSerializer(serializers.ModelSerializer):
     hospital_type = serializers.CharField(source='hospital.get_hospital_type_display', read_only=True, default=None)
     district_name = serializers.SerializerMethodField()
     region_name = serializers.SerializerMethodField()
+    department_name = serializers.CharField(source='department.name', read_only=True, default=None)
+    department_display = serializers.CharField(source='department.get_name_display', read_only=True, default=None)
+    specialties_list = serializers.SerializerMethodField()
 
     class Meta:
         model = User
@@ -114,6 +117,12 @@ class UserSerializer(serializers.ModelSerializer):
     
     def get_permissions(self, obj):
         return obj.get_permissions()
+    
+    def get_specialties_list(self, obj):
+        """Return list of specialty names for doctors"""
+        if obj.role and obj.role.name == 'doctor':
+            return [{'id': s.id, 'name': s.name, 'category': s.category} for s in obj.specialties.all()]
+        return []
     
     def get_district_name(self, obj):
         if obj.district:
@@ -181,6 +190,7 @@ class UserCreateSerializer(serializers.ModelSerializer):
     password = serializers.CharField(write_only=True, required=True)
     is_active = serializers.BooleanField(default=False)
     employee_id = serializers.CharField(read_only=True)
+    specialty_ids = serializers.ListField(child=serializers.IntegerField(), required=False, write_only=True, help_text='List of specialty IDs for doctors')
 
     # Profile demographic fields
     date_of_birth   = serializers.DateField(required=False, allow_null=True)
@@ -222,7 +232,7 @@ class UserCreateSerializer(serializers.ModelSerializer):
         model = User
         fields = [
             'email', 'full_name', 'phone', 'role', 'employee_id',
-            'hospital', 'department', 'district', 'password', 'is_active',
+            'hospital', 'department', 'district', 'password', 'is_active', 'specialty_ids',
             'date_of_birth', 'gender', 'nationality', 'nin_number', 'marital_status',
             'address', 'city', 'state', 'country',
             'qualification', 'specialization', 'license_number', 'years_of_experience',
@@ -246,6 +256,7 @@ class UserCreateSerializer(serializers.ModelSerializer):
                 profile_data[field] = validated_data.pop(field)
 
         password = validated_data.pop('password')
+        specialty_ids = validated_data.pop('specialty_ids', [])
 
         if not validated_data.get('employee_id'):
             validated_data['employee_id'] = self.generate_employee_id()
@@ -253,6 +264,10 @@ class UserCreateSerializer(serializers.ModelSerializer):
         user = User.objects.create(**validated_data)
         user.set_password(password)
         user.save()
+        
+        # Assign specialties to doctor
+        if specialty_ids:
+            user.specialties.set(specialty_ids)
 
         # Update the auto-created profile
         profile, _ = Profile.objects.get_or_create(user=user)
@@ -269,10 +284,25 @@ class UserCreateSerializer(serializers.ModelSerializer):
 
 class UserUpdateSerializer(serializers.ModelSerializer):
     employee_id = serializers.CharField(read_only=True)
+    specialty_ids = serializers.ListField(child=serializers.IntegerField(), required=False, write_only=True, help_text='List of specialty IDs for doctors')
     
     class Meta:
         model = User
-        fields = ['full_name', 'phone', 'role', 'employee_id', 'hospital', 'department', 'district', 'is_active']
+        fields = ['full_name', 'phone', 'role', 'employee_id', 'hospital', 'department', 'district', 'is_active', 'specialty_ids']
+    
+    def update(self, instance, validated_data):
+        specialty_ids = validated_data.pop('specialty_ids', None)
+        
+        # Update user fields
+        for attr, value in validated_data.items():
+            setattr(instance, attr, value)
+        instance.save()
+        
+        # Update specialties if provided
+        if specialty_ids is not None:
+            instance.specialties.set(specialty_ids)
+        
+        return instance
 
 
 class RolePermissionAssignSerializer(serializers.Serializer):
@@ -479,6 +509,53 @@ class HospitalCreateSerializer(serializers.ModelSerializer):
                 attrs[field] = None
         
         return attrs
+
+
+# ============ Medical Specialty Serializers ============
+
+class MedicalSpecialtySerializer(serializers.ModelSerializer):
+    """Full Medical Specialty serializer with all details"""
+    department_name = serializers.CharField(source='department.name', read_only=True)
+    department_display = serializers.CharField(source='department.get_name_display', read_only=True)
+    category_display = serializers.CharField(source='get_category_display', read_only=True)
+    doctors_count = serializers.SerializerMethodField()
+    created_by_name = serializers.CharField(source='created_by.full_name', read_only=True)
+    
+    class Meta:
+        model = MedicalSpecialty
+        fields = [
+            'id', 'specialty_id', 'name', 'description', 'category', 'category_display',
+            'department', 'department_name', 'department_display',
+            'is_active', 'doctors_count', 'created_at', 'updated_at',
+            'created_by', 'created_by_name'
+        ]
+        read_only_fields = ['specialty_id', 'created_at', 'updated_at', 'created_by']
+    
+    def get_doctors_count(self, obj):
+        return obj.get_doctors_count()
+
+
+class MedicalSpecialtyCreateSerializer(serializers.ModelSerializer):
+    """Serializer for creating medical specialties"""
+    class Meta:
+        model = MedicalSpecialty
+        fields = ['name', 'description', 'category', 'department', 'is_active']
+
+
+class MedicalSpecialtyUpdateSerializer(serializers.ModelSerializer):
+    """Serializer for updating medical specialties"""
+    class Meta:
+        model = MedicalSpecialty
+        fields = ['name', 'description', 'category', 'department', 'is_active']
+
+
+class SimpleMedicalSpecialtySerializer(serializers.ModelSerializer):
+    """Minimal specialty info for dropdowns and selections"""
+    category_display = serializers.CharField(source='get_category_display', read_only=True)
+    
+    class Meta:
+        model = MedicalSpecialty
+        fields = ['id', 'specialty_id', 'name', 'category', 'category_display', 'is_active']
 
 
 # ============ Patient Serializers ============

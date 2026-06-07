@@ -60,8 +60,6 @@ const adminNav = [
       { path: '/admin/chiefdoms', icon: 'fas fa-sitemap', text: 'Chiefdoms' },
       { path: '/admin/towns', icon: 'fas fa-city', text: 'Towns' },
       { path: '/admin/hospitals', icon: 'fas fa-hospital', text: 'Hospitals' },
-      { path: '/admin/departments', icon: 'fas fa-building', text: 'Departments' },
-      { path: '/billing', icon: 'fas fa-file-invoice-dollar', text: 'Billing & Invoices' },
     ],
   },
   {
@@ -423,6 +421,7 @@ const _haSection = {
     label: 'Staff Management',
     items: [
       { path: '/admin/users',           icon: 'fas fa-users',        text: 'Department Staff' },
+      { path: '/admin/specialties',     icon: 'fas fa-stethoscope',  text: 'Medical Specialties' },
       { path: '/hospital-admin/wards',  icon: 'fas fa-hospital-user', text: 'Wards & Beds'     },
     ],
   },
@@ -510,31 +509,10 @@ const _deptNav = {
  * Returns a navigation array scoped to the hospital admin's assigned department.
  * Falls back to the full hospital admin nav when no department is assigned.
  */
-function getHospitalAdminNav(user) {
-  const dept = user?.department_name;
-  
-  // If no department or department is admin/general/administration, show full nav
-  if (!dept || dept === 'admin' || dept === 'administration' || dept === 'general' || dept === 'management') {
-    return hospitalAdminNav;
-  }
-  
-  // Check if department has specific navigation
-  const specific = _deptNav[dept];
-  
-  if (!specific) {
-    // Department not in our map → show full hospital view
-    return hospitalAdminNav;
-  }
-
-  // Department-specific navigation
-  return [
-    _haSection.dashboard,
-    _haSection.staff,
-    ...specific,
-    _haSection.leave,
-    _haSection.communication,
-    _haSection.account,
-  ];
+function getHospitalAdminNav() {
+  // All hospital admins get full navigation with Departments and Billing
+  // Updated: 2026-06-05 - Includes Operations section with Departments & Billing
+  return hospitalAdminNav;
 }
 
 // ── Static full-access nav (used when no department is assigned) ────────────

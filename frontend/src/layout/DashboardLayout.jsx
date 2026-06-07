@@ -4,33 +4,78 @@ import { useAuth } from '../context/AuthContext';
 import '../assets/css/dashboard.css';
 
 const THEME_PRESETS = [
-  { name: 'Default Blue', primary: '#4361ee', sidebar: '#1e293b' },
-  { name: 'Royal Purple', primary: '#7c3aed', sidebar: '#1e1b4b' },
-  { name: 'Emerald', primary: '#059669', sidebar: '#14532d' },
-  { name: 'Rose', primary: '#e11d48', sidebar: '#4c0519' },
-  { name: 'Amber', primary: '#d97706', sidebar: '#451a03' },
-  { name: 'Cyan', primary: '#0891b2', sidebar: '#164e63' },
-  { name: 'Slate', primary: '#475569', sidebar: '#0f172a' },
-  { name: 'Indigo', primary: '#4f46e5', sidebar: '#1e1b4b' },
-  { name: 'Teal', primary: '#0d9488', sidebar: '#134e4a' },
-  { name: 'Pink', primary: '#db2777', sidebar: '#500724' },
-  { name: 'Sky', primary: '#0284c7', sidebar: '#0c4a6e' },
-  { name: 'Orange', primary: '#ea580c', sidebar: '#431407' },
+  // ── Dark Sidebar Presets ──────────────────────────────────────────
+  { name: 'Midnight Blue',   primary: '#4361ee', sidebar: '#1e293b', bg: '#f1f5f9' },
+  { name: 'Deep Indigo',     primary: '#4f46e5', sidebar: '#1e1b4b', bg: '#eef2ff' },
+  { name: 'Navy & Teal',     primary: '#0d9488', sidebar: '#0f172a', bg: '#f0fdfa' },
+  { name: 'Corporate Blue',  primary: '#2563eb', sidebar: '#1e3a5f', bg: '#eff6ff' },
+  { name: 'Slate Pro',       primary: '#475569', sidebar: '#0f172a', bg: '#f8fafc' },
+  { name: 'Medical Green',   primary: '#16a34a', sidebar: '#052e16', bg: '#f0fdf4' },
+  { name: 'Forest Teal',     primary: '#0891b2', sidebar: '#134e4a', bg: '#ecfeff' },
+  { name: 'Executive',       primary: '#6d28d9', sidebar: '#1a1f2e', bg: '#f5f3ff' },
+  // ── Light Sidebar Presets ─────────────────────────────────────────
+  { name: 'Clean Blue',      primary: '#2563eb', sidebar: '#ffffff', bg: '#f1f5f9' },
+  { name: 'Clean Indigo',    primary: '#4f46e5', sidebar: '#f8fafc', bg: '#eef2ff' },
+  { name: 'Clean Teal',      primary: '#0d9488', sidebar: '#f0fdfa', bg: '#f8fafc' },
+  { name: 'Clean Green',     primary: '#16a34a', sidebar: '#f0fdf4', bg: '#f8fafc' },
+  { name: 'Clean Purple',    primary: '#7c3aed', sidebar: '#faf5ff', bg: '#f5f3ff' },
+  { name: 'Clean Slate',     primary: '#475569', sidebar: '#f8fafc', bg: '#f1f5f9' },
+  { name: 'Clean Sky',       primary: '#0284c7', sidebar: '#f0f9ff', bg: '#f8fafc' },
+  { name: 'Clean Rose',      primary: '#e11d48', sidebar: '#fff1f2', bg: '#fdf2f8' },
 ];
 
 const SIDEBAR_COLORS = [
-  { name: 'Dark Navy', value: '#1e293b' },
-  { name: 'Charcoal', value: '#1f2937' },
-  { name: 'Deep Black', value: '#0f172a' },
-  { name: 'Dark Purple', value: '#1e1b4b' },
-  { name: 'Dark Green', value: '#14532d' },
-  { name: 'Dark Wine', value: '#4c0519' },
-  { name: 'Dark Blue', value: '#172554' },
-  { name: 'Dark Teal', value: '#134e4a' },
-  { name: 'Midnight', value: '#111827' },
-  { name: 'Dark Brown', value: '#451a03' },
-  { name: 'Dark Slate', value: '#0f172a' },
-  { name: 'True Black', value: '#09090b' },
+  // ── White & Light ─────────────────────────────────────────────────
+  { name: 'Pure White',    value: '#ffffff' },
+  { name: 'Off White',     value: '#f8fafc' },
+  { name: 'Pearl',         value: '#f1f5f9' },
+  { name: 'Light Gray',    value: '#e2e8f0' },
+  { name: 'Silver',        value: '#cbd5e1' },
+  { name: 'Pale Blue',     value: '#dbeafe' },
+  { name: 'Pale Purple',   value: '#ede9fe' },
+  { name: 'Pale Green',    value: '#dcfce7' },
+  { name: 'Pale Teal',     value: '#ccfbf1' },
+  { name: 'Pale Sky',      value: '#e0f2fe' },
+  // ── Medium ────────────────────────────────────────────────────────
+  { name: 'Blue Gray',     value: '#64748b' },
+  { name: 'Steel Blue',    value: '#3b82f6' },
+  { name: 'Indigo Mid',    value: '#4338ca' },
+  { name: 'Teal Mid',      value: '#0f766e' },
+  { name: 'Green Mid',     value: '#15803d' },
+  // ── Dark ──────────────────────────────────────────────────────────
+  { name: 'Dark Navy',     value: '#1e293b' },
+  { name: 'Charcoal',      value: '#1f2937' },
+  { name: 'Deep Black',    value: '#0f172a' },
+  { name: 'Midnight',      value: '#111827' },
+  { name: 'Dark Blue',     value: '#172554' },
+  { name: 'Steel Dark',    value: '#1e3a5f' },
+  { name: 'Dark Indigo',   value: '#1e1b4b' },
+  { name: 'Dark Teal',     value: '#134e4a' },
+  { name: 'Gunmetal',      value: '#1a1f2e' },
+  { name: 'True Black',    value: '#09090b' },
+];
+
+const BG_COLORS = [
+  { name: 'Cool Gray',     value: '#f1f5f9' },
+  { name: 'White Smoke',   value: '#f8fafc' },
+  { name: 'Pure White',    value: '#ffffff' },
+  { name: 'Light Blue',    value: '#eff6ff' },
+  { name: 'Light Purple',  value: '#f5f3ff' },
+  { name: 'Light Green',   value: '#f0fdf4' },
+  { name: 'Light Teal',    value: '#f0fdfa' },
+  { name: 'Light Cyan',    value: '#ecfeff' },
+  { name: 'Light Pink',    value: '#fdf2f8' },
+  { name: 'Light Rose',    value: '#fff1f2' },
+  { name: 'Light Amber',   value: '#fffbeb' },
+  { name: 'Light Orange',  value: '#fff7ed' },
+  { name: 'Light Lime',    value: '#f7fee7' },
+  { name: 'Warm White',    value: '#fafaf9' },
+  { name: 'Soft Gray',     value: '#f4f4f5' },
+  { name: 'Pale Blue',     value: '#f0f9ff' },
+  { name: 'Cream',         value: '#fefce8' },
+  { name: 'Light Fuchsia', value: '#fdf4ff' },
+  { name: 'Light Indigo',  value: '#eef2ff' },
+  { name: 'Warm Gray',     value: '#f5f5f4' },
 ];
 
 function DashboardLayout({ children, navItems = [], brandTitle = 'NEHR', roleBadge = '', hideBanner = false }) {
@@ -115,7 +160,7 @@ function DashboardLayout({ children, navItems = [], brandTitle = 'NEHR', roleBad
 
   const [themeColors, setThemeColors] = useState(() => {
     const saved = localStorage.getItem('dashboard_theme');
-    return saved ? JSON.parse(saved) : { primary: '#4361ee', sidebar: '#1e293b' };
+    return saved ? JSON.parse(saved) : { primary: '#4361ee', sidebar: '#1e293b', bg: '#f1f5f9' };
   });
 
   const handleLogout = () => {
@@ -142,11 +187,22 @@ function DashboardLayout({ children, navItems = [], brandTitle = 'NEHR', roleBad
   useEffect(() => {
     document.documentElement.style.setProperty('--dash-primary', themeColors.primary);
     document.documentElement.style.setProperty('--dash-sidebar-bg', themeColors.sidebar);
+    document.documentElement.style.setProperty('--dash-body-bg', themeColors.bg || '#f1f5f9');
     const r = parseInt(themeColors.primary.slice(1, 3), 16);
     const g = parseInt(themeColors.primary.slice(3, 5), 16);
     const b = parseInt(themeColors.primary.slice(5, 7), 16);
     document.documentElement.style.setProperty('--dash-primary-light', `rgba(${r},${g},${b},0.08)`);
     document.documentElement.style.setProperty('--dash-sidebar-active', themeColors.primary);
+    // Auto-detect light vs dark sidebar and adjust text/hover colors
+    const sr = parseInt(themeColors.sidebar.slice(1, 3), 16);
+    const sg = parseInt(themeColors.sidebar.slice(3, 5), 16);
+    const sb = parseInt(themeColors.sidebar.slice(5, 7), 16);
+    const brightness = (sr * 299 + sg * 587 + sb * 114) / 1000;
+    const isLight = brightness > 160;
+    document.documentElement.style.setProperty('--dash-sidebar-text', isLight ? '#475569' : '#94a3b8');
+    document.documentElement.style.setProperty('--dash-sidebar-hover', isLight ? '#e2e8f0' : '#334155');
+    document.documentElement.style.setProperty('--dash-sidebar-nav-text', isLight ? '#1e293b' : '#e2e8f0');
+    document.documentElement.style.setProperty('--dash-sidebar-border', isLight ? 'rgba(0,0,0,0.08)' : 'rgba(255,255,255,0.06)');
     localStorage.setItem('dashboard_theme', JSON.stringify(themeColors));
   }, [themeColors]);
 
@@ -155,11 +211,15 @@ function DashboardLayout({ children, navItems = [], brandTitle = 'NEHR', roleBad
   }, [darkMode]);
 
   const applyPreset = (preset) => {
-    setThemeColors({ primary: preset.primary, sidebar: preset.sidebar });
+    setThemeColors({ primary: preset.primary, sidebar: preset.sidebar, bg: preset.bg || '#f1f5f9' });
   };
 
   const applySidebarColor = (color) => {
     setThemeColors(prev => ({ ...prev, sidebar: color }));
+  };
+
+  const applyBgColor = (color) => {
+    setThemeColors(prev => ({ ...prev, bg: color }));
   };
 
   const toggleCollapse = () => {
@@ -612,7 +672,7 @@ function DashboardLayout({ children, navItems = [], brandTitle = 'NEHR', roleBad
             <div className="color-theme-panel-header">
               <span><i className="fas fa-palette me-2"></i>Theme Colors</span>
               <button onClick={() => {
-                setThemeColors({ primary: '#4361ee', sidebar: '#1e293b' });
+                setThemeColors({ primary: '#4361ee', sidebar: '#1e293b', bg: '#f1f5f9' });
               }} style={{ background: 'none', border: 'none', fontSize: '12px', color: '#6c757d', cursor: 'pointer' }}>
                 <i className="fas fa-undo me-1"></i>Reset
               </button>
@@ -624,8 +684,8 @@ function DashboardLayout({ children, navItems = [], brandTitle = 'NEHR', roleBad
                   {THEME_PRESETS.map((preset) => (
                     <div
                       key={preset.name}
-                      className={`color-swatch ${themeColors.primary === preset.primary ? 'active' : ''}`}
-                      style={{ background: preset.primary }}
+                      className={`color-swatch ${themeColors.primary === preset.primary && themeColors.sidebar === preset.sidebar ? 'active' : ''}`}
+                      style={{ background: `linear-gradient(135deg, ${preset.sidebar} 50%, ${preset.primary} 50%)` }}
                       onClick={() => applyPreset(preset)}
                       title={preset.name}
                     ></div>
@@ -633,7 +693,7 @@ function DashboardLayout({ children, navItems = [], brandTitle = 'NEHR', roleBad
                 </div>
               </div>
               <div className="color-theme-section">
-                <label>Sidebar Background</label>
+                <label>Sidebar Color</label>
                 <div className="color-swatch-grid">
                   {SIDEBAR_COLORS.map((color) => (
                     <div
@@ -641,6 +701,20 @@ function DashboardLayout({ children, navItems = [], brandTitle = 'NEHR', roleBad
                       className={`color-swatch ${themeColors.sidebar === color.value ? 'active' : ''}`}
                       style={{ background: color.value }}
                       onClick={() => applySidebarColor(color.value)}
+                      title={color.name}
+                    ></div>
+                  ))}
+                </div>
+              </div>
+              <div className="color-theme-section">
+                <label>Page Background</label>
+                <div className="color-swatch-grid">
+                  {BG_COLORS.map((color) => (
+                    <div
+                      key={color.name}
+                      className={`color-swatch ${themeColors.bg === color.value ? 'active' : ''}`}
+                      style={{ background: color.value, border: '1px solid #e2e8f0' }}
+                      onClick={() => applyBgColor(color.value)}
                       title={color.name}
                     ></div>
                   ))}

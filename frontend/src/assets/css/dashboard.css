@@ -16,6 +16,8 @@
   --dash-sidebar-hover: #334155;
   --dash-sidebar-active: #4361ee;
   --dash-sidebar-text: #94a3b8;
+  --dash-sidebar-nav-text: #e2e8f0;
+  --dash-sidebar-border: rgba(255,255,255,0.06);
   --dash-sidebar-width: 260px;
   --dash-header-height: 64px;
   --dash-body-bg: #f1f5f9;
@@ -44,7 +46,7 @@
    ============================================ */
 .dash-sidebar {
   width: var(--dash-sidebar-width);
-  min-height: 100vh;
+  height: 100vh;
   background: var(--dash-sidebar-bg);
   position: fixed;
   top: 0;
@@ -53,7 +55,7 @@
   transition: var(--dash-transition);
   display: flex;
   flex-direction: column;
-  overflow-y: auto;
+  overflow-y: hidden;
   overflow-x: hidden;
 }
 
@@ -105,7 +107,7 @@
   display: flex;
   align-items: center;
   gap: 10px;
-  border-bottom: 1px solid rgba(255,255,255,0.06);
+  border-bottom: 1px solid var(--dash-sidebar-border);
 }
 
 .dash-sidebar-user .user-avatar {
@@ -124,7 +126,7 @@
 }
 
 .dash-sidebar-user .user-info h6 {
-  color: #fff;
+  color: var(--dash-sidebar-nav-text);
   margin: 0;
   font-size: 14px;
   font-weight: 600;
@@ -172,14 +174,15 @@
 }
 
 .dash-nav-item a:hover {
-  color: #fff;
+  color: var(--dash-sidebar-nav-text);
   background: var(--dash-sidebar-hover);
 }
 
 .dash-nav-item a.active {
-  color: #fff;
-  background: rgba(67, 97, 238, 0.15);
+  color: var(--dash-primary);
+  background: var(--dash-primary-light);
   border-left-color: var(--dash-primary);
+  font-weight: 600;
 }
 
 .dash-nav-item a i {
@@ -1344,12 +1347,15 @@
   position: fixed;
   bottom: 84px;
   right: 24px;
-  width: 280px;
+  width: 320px;
+  max-height: 520px;
   background: #fff;
   border-radius: 16px;
   box-shadow: 0 12px 40px rgba(0,0,0,0.15);
   z-index: 1200;
   overflow: hidden;
+  display: flex;
+  flex-direction: column;
   border: 1px solid #e9ecef;
   animation: slideUp 0.2s ease;
 }
@@ -1372,6 +1378,8 @@
 
 .color-theme-panel-body {
   padding: 16px 20px;
+  overflow-y: auto;
+  flex: 1;
 }
 
 .color-theme-section {
@@ -1394,8 +1402,8 @@
 
 .color-swatch-grid {
   display: grid;
-  grid-template-columns: repeat(6, 1fr);
-  gap: 8px;
+  grid-template-columns: repeat(8, 1fr);
+  gap: 6px;
 }
 
 .color-swatch {

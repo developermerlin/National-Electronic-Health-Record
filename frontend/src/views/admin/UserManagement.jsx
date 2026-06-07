@@ -28,6 +28,7 @@ function UserManagement() {
     email: '', full_name: '', phone: '', role: '',
     hospital: '', department: '', district: '',
     password: '', is_active: false,
+    specialty_ids: [],
     // Demographics
     date_of_birth: '', gender: '', nationality: 'Sierra Leonean',
     nin_number: '', marital_status: '', address: '', city: '', state: '', country: 'Sierra Leone',
@@ -330,6 +331,7 @@ function UserManagement() {
       hospital: user.hospital_id || (isHospitalAdmin ? (user.hospital_id || '') : ''), department: user.department_id || '',
       district: user.district || '', is_active: user.is_active,
       password: '',
+      specialty_ids: user.specialties_list ? user.specialties_list.map(s => s.id) : [],
       date_of_birth: '', gender: '', nationality: 'Sierra Leonean',
       nin_number: '', marital_status: '', address: '', city: '', state: '', country: 'Sierra Leone',
       qualification: '', specialization: '', license_number: '', years_of_experience: '',
@@ -371,6 +373,7 @@ function UserManagement() {
       email: '', full_name: '', phone: '', role: '',
       hospital: isHospitalAdmin ? (user.hospital_id || '') : '', department: '', district: '',
       password: '', is_active: false,
+      specialty_ids: [],
       date_of_birth: '', gender: '', nationality: 'Sierra Leonean',
       nin_number: '', marital_status: '', address: '', city: '', state: '', country: 'Sierra Leone',
       qualification: '', specialization: '', license_number: '', years_of_experience: '',
@@ -550,6 +553,20 @@ function UserManagement() {
                     <div>
                       <div style={{ fontWeight:700, fontSize:14, color:'#0f172a' }}>{u.full_name || u.username}</div>
                       {u.employee_id && <div style={{ fontSize:11, color:'#94a3b8', fontFamily:'monospace' }}>{u.employee_id}</div>}
+                      {u.specialties_list && u.specialties_list.length > 0 && (
+                        <div style={{ fontSize:10, color:'#8b5cf6', marginTop:2, display:'flex', gap:4, flexWrap:'wrap' }}>
+                          {u.specialties_list.slice(0, 2).map(s => (
+                            <span key={s.id} style={{ background:'#ede9fe', padding:'2px 6px', borderRadius:4 }}>
+                              {s.name}
+                            </span>
+                          ))}
+                          {u.specialties_list.length > 2 && (
+                            <span style={{ background:'#f3f4f6', padding:'2px 6px', borderRadius:4, color:'#6b7280' }}>
+                              +{u.specialties_list.length - 2}
+                            </span>
+                          )}
+                        </div>
+                      )}
                     </div>
                   </div>
 
@@ -926,6 +943,7 @@ function UserManagement() {
                         <span style={labelStyle}>Years of Experience</span>
                         <input style={inputStyle} type="number" min="0" max="60" placeholder="e.g. 5" value={formData.years_of_experience} onChange={e => setFormData({...formData, years_of_experience: e.target.value})} />
                       </div>
+                      
                       <div style={{ gridColumn: '1/-1', background: '#f8fafc', borderRadius: 10, padding: 14, border: '1px solid #e2e8f0' }}>
                         <div style={{ fontSize: 12, color: '#64748b', marginBottom: 6 }}><i className="fas fa-info-circle me-1 text-primary"></i>Upload supporting documents in the next step.</div>
                         <div style={{ fontSize: 12, color: '#94a3b8' }}>Accepted formats: PDF, JPG, PNG, DOC, DOCX</div>
